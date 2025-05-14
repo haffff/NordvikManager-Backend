@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Commands\Actions\AddAction\" />
+    <Folder Include="Commands\Addons\SwitchAddonState\" />
+    <Folder Include="Commands\Auth\" />
+    <Folder Include="Commands\Properties\GetProperty\" />
+    <Folder Include="Commands\Properties\AddProperty\" />
+    <Folder Include="Commands\Properties\RemoveProperty\" />
+    <Folder Include="Commands\Properties\UpdateProperty\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="12.0.1" />
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
+    <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.8" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DndOnePlaceManager.Domain\DndOnePlaceManager.Domain.csproj" />
+    <ProjectReference Include="..\DndOnePlaceManager.Infrastructure\DndOnePlaceManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
