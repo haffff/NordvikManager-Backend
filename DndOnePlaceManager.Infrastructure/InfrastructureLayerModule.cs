@@ -16,8 +16,7 @@ namespace DndOnePlaceManager.Infrastructure
             var connectionString = configuration.GetSection("ConnectionStrings")["DBData"];
             var authConnectionString = configuration.GetSection("ConnectionStrings")["AuthData"];
 
-            var useSqlite = configuration.GetValue<bool>("UseSqlite");
-            if (useSqlite)
+            if (bool.TryParse(configuration["UseSqlite"], out var useSqlite) && useSqlite)
             {
                 services.AddDbContext<IDbContext, DndOneContext>(options => options.UseSqlite(connectionString));
                 services.AddDbContext<IAuthDBContext, AuthContext>(options => options.UseSqlite(authConnectionString));
@@ -27,6 +26,8 @@ namespace DndOnePlaceManager.Infrastructure
                 services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString));
                 services.AddDbContext<IAuthDBContext, AuthContext>(options => options.UseMySQL(authConnectionString));
             }
+
+            services.AddOptions<AddonsConfiguration>("");
 
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
