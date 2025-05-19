@@ -2,7 +2,6 @@
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Application.Services.Implementations;
 using DndOnePlaceManager.Application.Services.Interfaces;
-using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
@@ -16,11 +15,10 @@ namespace DndOnePlaceManager.Application
             services.AddScoped<IPermissionService, PermissionsService>();
             services.AddScoped<IChatService, ChatService>();
 
-            var handlers = Assembly.GetExecutingAssembly().GetTypes().Where(x => x.FullName?.EndsWith("CommandHandler") == true);
-            foreach (var handler in handlers)
+            services.AddMediatR(configuration =>
             {
-                services.AddMediatR(handler);
-            }
+                configuration.RegisterServicesFromAssembly(Assembly.GetExecutingAssembly());
+            });
         }
 
         public static void AfterBuild(IServiceProvider provider)
