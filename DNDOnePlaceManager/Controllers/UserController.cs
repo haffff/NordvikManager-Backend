@@ -1,4 +1,5 @@
 ﻿using DNDOnePlaceManager.Controllers.Responses;
+using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Engine.Attribs;
 using DNDOnePlaceManager.Services.Interfaces;
@@ -257,9 +258,7 @@ namespace DNDOnePlaceManager.Controllers
 
                 //check if value is valid
 
-            }
-
-            if (await authService.SetKeyboardBindings(user.Id, bindings))
+            }            if (await authService.SetKeyboardBindings(user.Id, bindings))
             {
                 return Ok();
             }
@@ -267,6 +266,73 @@ namespace DNDOnePlaceManager.Controllers
             {
                 return BadRequest();
             }
+        }
+
+        [HttpDelete]
+        [Authorize]
+        [Route("deleteuser")]
+        public async Task<IActionResult> DeleteUser([FromQuery] string userID)
+        {
+            var currentUser = HttpContext.Items["User"] as User;
+
+            if (!currentUser?.IsAdmin == true)
+                return Unauthorized();
+
+            if (string.IsNullOrEmpty(userID))
+                return BadRequest();
+
+            if (await authService.DeleteUser(userID))
+                return Ok();
+
+            return NotFound();
+        }
+
+        [HttpPost]
+        [Authorize]
+        [Route("toggleadmin")]
+        public async Task<IActionResult> ToggleAdmin([FromBody] ToggleAdminRequest request)
+        {
+            var currentUser = HttpContext.Items["User"] as User;
+
+            if (!currentUser?.IsAdmin == true)
+                return Unauthorized();
+
+            if (await authService.ToggleAdmin(request.UserID, request.IsAdmin))
+                return Ok();
+
+            return BadRequest();
+        }        [HttpPost]
+        [Authorize]
+        [Route("resetpassword")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            var currentUser = HttpContext.Items["User"] as User;
+
+            if (!currentUser?.IsAdmin == true)
+                return Unauthorized();
+
+            if (await authService.ResetPassword(request.UserID, request.NewPassword))
+                return Ok();
+
+            return BadRequest();
+        }
+
+        [HttpPost]
+        [Authorize]
+        [Route("createuser")]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
+        {
+            var currentUser = HttpContext.Items["User"] as User;
+
+            if (!currentUser?.IsAdmin == true)
+                return Unauthorized();
+
+            var (success, message) = await authService.CreateUser(request.UserName, request.Email, request.Password, request.IsAdmin);
+
+            if (success)
+                return Ok(new { message });
+
+            return BadRequest(new { message });
         }
     }
 }

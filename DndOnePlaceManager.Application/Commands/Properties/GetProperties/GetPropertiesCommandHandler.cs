@@ -32,14 +32,16 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperties
             else
             {
                 properties = dbContext.Properties.Where(x => x.ParentID == request.ParentID);
-            }
-
-            if (request.PropertyName != null)
+            }            if (request.PropertyName != null)
             {
                 properties = properties.Where(x => x.Name == request.PropertyName);
-            }
-
-            return properties.Select(x => mapper.Map<PropertyDTO>(x)).ToList();
+            }            return properties.AsEnumerable().Select(x =>
+            {
+                var dto = mapper.Map<PropertyDTO>(x);
+                if (x.IsProtected)
+                    dto.Value = null;
+                return dto;
+            }).ToList();
         }
     }
 }

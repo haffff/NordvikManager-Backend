@@ -10,7 +10,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class IfStepDefinition : IActionStepDefinition
     {
-        private static DataTable DT = new System.Data.DataTable();
+        [ThreadStatic]
+        private static DataTable DT;
+        private static DataTable GetDT() => DT ??= new DataTable();
 
         public string Name => "If";
         public string Value => "If";
@@ -24,7 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             var condition = isStep.Condition;
 
-            var result = DT.Compute(condition, "");
+            var result = GetDT().Compute(condition, "");
 
             //await DebugLog(mediator, new { Step = step, Message = "Comparsion finished with:", Value = condition }, false);
             string action = (bool)result ? isStep.ActionTrue : isStep.ActionFalse;

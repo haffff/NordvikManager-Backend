@@ -22,6 +22,7 @@ using Microsoft.IdentityModel.Tokens;
 using System;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using WebSocketManager = DNDOnePlaceManager.WebSockets.WebSocketManager;
@@ -41,7 +42,22 @@ namespace DNDOnePlaceManager
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            var envSecret = Configuration["JWTSecret"];
+            var jwtSecret = Configuration["JWTSecret"];
+
+            if (string.IsNullOrEmpty(jwtSecret))
+            {
+                // generate temporary jwt secret
+                var key = new byte[32];
+                RandomNumberGenerator.Create().GetBytes(key);
+                var base64Secret = Convert.ToBase64String(key)
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+
+                Console.WriteLine($"JWT Secret not set, generated temporary one: {base64Secret}");
+                Configuration["JWTSecret"] = base64Secret;
+                jwtSecret = base64Secret;
+            }
 
             services.AddLogging(options => options.AddConsole());
             services.AddControllers().AddJsonOptions(options =>
@@ -196,7 +212,7 @@ namespace DNDOnePlaceManager
                     ValidateIssuerSigningKey = true,
                     ValidAudience = Configuration["JWT:ValidAudience"],
                     ValidIssuer = Configuration["JWT:ValidIssuer"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(envSecret))
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret))
                 };
             });
         }
@@ -230,7 +246,6 @@ namespace DNDOnePlaceManager
             app.UseCors("SuperPolicy");
             app.UseMiddleware<HandleExceptionMiddleWare>();
             app.UseMiddleware<GetUserIntoItemsMiddleWare>();
-            app.UseHttpsRedirection();
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGet("/", async context =>

@@ -19,6 +19,14 @@ namespace DndOnePlaceManager.Infrastructure.Data.Contexts
                 user.Email = "admin@dndmanager.pl";
                 PasswordHasher<User> passwordHasher = new PasswordHasher<User>();
                 string adminPass = configuration["InitialAdminPassword"];
+
+                if (string.IsNullOrEmpty(configuration["InitialAdminPassword"]))
+                {
+                    //generate random password
+                    adminPass = Guid.NewGuid().ToString("N").Substring(0, 8);
+                    Console.WriteLine($"WARNING: InitialAdminPassword is not set in configuration. Generated password '{adminPass}'.");
+                }
+
                 user.PasswordHash = passwordHasher.HashPassword(user, adminPass);
                 user.IsAdmin = true;
 

@@ -41,13 +41,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 else
                 {
                     variables[stepData.Output] = result;
-                }
+                
+                }            
             }
-        }
-
-        public string GetName()
-        {
-            return "GetData";
         }
     }
 }

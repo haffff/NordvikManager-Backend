@@ -72,7 +72,7 @@ namespace DNDOnePlaceManager.Implementations
                 var authClaims = new List<Claim>
                 {
                     new(ClaimTypes.Name, user.UserName),
-                    new(ClaimTypes.Email, user.Email),
+                    new(ClaimTypes.Email, user.Email ?? ""),
                     new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()
                     )
                 };
@@ -138,15 +138,62 @@ namespace DNDOnePlaceManager.Implementations
             var user = await _userManager.FindByIdAsync(id);
             var deserialized = JsonConvert.DeserializeObject<Dictionary<string, string>>(user.KeyBindings);
             return deserialized;
-        }
-
-        public async Task<bool> SetKeyboardBindings(string id, Dictionary<string, string> bindings)
+        }        public async Task<bool> SetKeyboardBindings(string id, Dictionary<string, string> bindings)
         {
             string serializedBindings = JsonConvert.SerializeObject(bindings);
             var user = await _userManager.FindByIdAsync(id);
             user.KeyBindings = serializedBindings;
             var result = await _userManager.UpdateAsync(user);
             return result.Succeeded;
+        }
+
+        public async Task<bool> DeleteUser(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return false;
+            var result = await _userManager.DeleteAsync(user);
+            return result.Succeeded;
+        }
+
+        public async Task<bool> ToggleAdmin(string id, bool isAdmin)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return false;
+            user.IsAdmin = isAdmin;
+            var result = await _userManager.UpdateAsync(user);
+            return result.Succeeded;
+        }        
+        
+        public async Task<bool> ResetPassword(string id, string newPassword)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return false;
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
+            return result.Succeeded;
+        }
+
+        public async Task<(bool, string)> CreateUser(string userName, string email, string password, bool isAdmin)
+        {
+            var userExists = await _userManager.FindByNameAsync(userName);
+            if (userExists != null)
+                return (false, "User already exists!");
+
+            var user = new User()
+            {
+                Email = email,
+                SecurityStamp = Guid.NewGuid().ToString(),
+                UserName = userName,
+                IsAdmin = isAdmin,
+                KeyBindings = _configuration["DefaultKeyBindings"] ?? "{}"
+            };
+
+            var result = await _userManager.CreateAsync(user, password);
+
+            if (!result.Succeeded)
+                return (false, GetErrorsText(result.Errors));
+
+            return (true, "User created successfully!");
         }
     }
 }

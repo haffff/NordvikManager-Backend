@@ -14,8 +14,9 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
     {
         private IMediator mediator;
 
-        public PropertiesHandler()
+        public PropertiesHandler(IMediator mediator)
         {
+            this.mediator = mediator;
         }
 
         public async Task<CommandResponse?> Handle(WebSocketCommand parsedMsg, PlayerDTO player)
@@ -25,8 +26,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 case WebSocketCommandNames.PropertyUpdate:
                     return await UpdateProperty(parsedMsg, player);
                 case WebSocketCommandNames.PropertyRemove:
-                    return await RemoveProperty(parsedMsg, player);
-                case WebSocketCommandNames.PropertyAdd:
+                    return await RemoveProperty(parsedMsg, player);                case WebSocketCommandNames.PropertyAdd:
                     var (response, id) = await AddProperty(parsedMsg, player);
                     parsedMsg.Data["id"] = id;
                     return response;
@@ -56,9 +56,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             };
 
             return await mediator.Send(removePropertyCommand);
-        }
-
-        private async Task<CommandResponse?> UpdateProperty(WebSocketCommand parsedMsg, PlayerDTO player)
+        }        private async Task<CommandResponse?> UpdateProperty(WebSocketCommand parsedMsg, PlayerDTO player)
         {
             UpdatePropertyCommand updatePropertyCommand = new UpdatePropertyCommand()
             {

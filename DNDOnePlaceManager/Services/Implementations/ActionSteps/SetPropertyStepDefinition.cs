@@ -14,9 +14,8 @@ using System;
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class SetPropertyStepDefinition : IActionStepDefinition
-    {
-        public string Name => "SetProperty";
-        public string Value => "Set Property";
+    {        public string Name => "Set Property";
+        public string Value => "SetProperty";
         public string Category => "Data";
 
         public string Description => "Set a property on a DTO";

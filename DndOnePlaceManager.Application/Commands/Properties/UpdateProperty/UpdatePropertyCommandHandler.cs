@@ -36,10 +36,15 @@ namespace DndOnePlaceManager.Application.Commands.Properties
                 if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Edit))
                 {
                     return CommandResponse.NoPermission;
-                }
+                }                propertyEntity.Name = request.Property.Name;
+                propertyEntity.IsProtected = request.Property.IsProtected;
 
-                propertyEntity.Name = request.Property.Name;
-                propertyEntity.Value = request.Property.Value;
+                // When unprotecting a property, wipe the stored value so secrets
+                // that were hidden can never be silently exposed after the flag change.
+                if (propertyEntity.IsProtected && !request.Property.IsProtected)
+                    propertyEntity.Value = null;
+                else
+                    propertyEntity.Value = request.Property.Value;
 
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return CommandResponse.Ok;

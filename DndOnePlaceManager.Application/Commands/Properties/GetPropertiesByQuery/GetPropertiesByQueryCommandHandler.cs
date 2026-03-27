@@ -48,11 +48,15 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
             if(request.Prefix != null)
             {
                 collection = collection.Where(x => x.Name?.StartsWith(request.Prefix) == true);
-            }
+            }            var collectionList = collection.ToList().Where(x => permissionService.CheckIfHasPermissions(request.Player, x.ParentID, Domain.Enums.Permission.Read));
 
-            var collectionList = collection.ToList().Where(x => permissionService.CheckIfHasPermissions(request.Player, x.ParentID, Domain.Enums.Permission.Read));
-
-            return collectionList.Select(mapper.Map<PropertyDTO>).ToList();
+            return collectionList.Select(x =>
+            {
+                var dto = mapper.Map<PropertyDTO>(x);
+                if (x.IsProtected)
+                    dto.Value = null;
+                return dto;
+            }).ToList();
         }
     }
 }

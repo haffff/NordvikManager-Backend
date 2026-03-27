@@ -1,6 +1,5 @@
 ﻿using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Options;
 using Newtonsoft.Json.Linq;
 using System.Net;
 
@@ -19,16 +18,16 @@ namespace DndOnePlaceManager.Infrastructure.Services
 
         bool canAccessNotAllowedRepository = false;
 
-        public AddonRepositoryService(IOptions<AddonsConfiguration> options)
+        public AddonRepositoryService(IConfiguration configuration)
         {
             if (httpClient == null)
             {
                 httpClient = new HttpClient();
             }
 
-            mainRepository = options.Value?.MainRepository;
-            trustedRepositories = options.Value?.TrustedRepositories ?? Array.Empty<string>();
-            canAccessNotAllowedRepository = options.Value?.CanAccessNotAllowedRepository ?? false;
+            mainRepository = configuration["AddonsConfiguration:MainRepository"];
+            trustedRepositories = configuration.GetSection("AddonsConfiguration:TrustedRepositories").Get<string[]>();
+            canAccessNotAllowedRepository = configuration.GetValue<bool?>("AddonsConfiguration:CanAccessNotAllowedRepository") ?? false;
         }
 
         public async Task<byte[]> GetAddonByKey(string key, string? version)

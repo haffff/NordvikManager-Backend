@@ -5,6 +5,7 @@ using MediatR;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DndOnePlaceManager.Application.Exceptions;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
@@ -19,8 +20,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<SetVariableStepData>();
-            Type type = Type.GetType(stepData.Type) ?? typeof(System.String);
-            var varValue = step.Data["Value"].ToObject(type);
+
+            if (string.IsNullOrWhiteSpace(stepData.Name))
+                throw new ActionProcessException("SetVariable: 'Name' argument is required.");
+
+            Type type = Type.GetType(stepData.Type) ?? typeof(string);
+            var varValue = step.Data["Value"]?.ToObject(type);
             variables[stepData.Name] = varValue;
         }
     }

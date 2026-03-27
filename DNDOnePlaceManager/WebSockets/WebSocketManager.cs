@@ -1,5 +1,4 @@
-﻿using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
-using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
+using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Enums;
@@ -12,30 +11,33 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
 namespace DNDOnePlaceManager.WebSockets
 {
     public class WebSocketManager : IWebSocketManager, IDisposable
     {
-        static private readonly Dictionary<Guid, GameLobby> games = new Dictionary<Guid, GameLobby>();
-        GameLobby lobby;
-        PlayerDTO player;
-        User user;
-        Guid gameId;
-        private byte[] buffer = new byte[1024];
+        // ── Constants ───────────────────────────────────────────────────────
+        private const int ReceiveBufferSize = 1024;
+        // ── Static lobby registry (shared across all connections) ───────────
+        private static readonly ConcurrentDictionary<Guid, GameLobby> games = new ConcurrentDictionary<Guid, GameLobby>();
+        // ── Per-connection state ────────────────────────────────────────────
+        private GameLobby lobby;
+        private PlayerDTO player;
+        private User user;
+        private Guid gameId;
+        private readonly byte[] buffer = new byte[ReceiveBufferSize];
         private HttpContext httpContext;
+        private WebSocket ws;
         private readonly IServiceScope scope;
         private readonly IMediator mediator;
         private readonly IServiceScopeFactory serviceScopeFactory;
-        private WebSocket ws = null;
 
         public WebSocketManager(IServiceScopeFactory serviceScopeFactory, IWebSocketTokenValidator webSocketTokenValidator)
         {
@@ -43,117 +45,49 @@ namespace DNDOnePlaceManager.WebSockets
             mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             this.serviceScopeFactory = serviceScopeFactory;
         }
-
+        
         public async Task Handle(HttpContext httpContext)
         {
             this.httpContext = httpContext;
             using var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
             ws = webSocket;
-
             if (!await HandleLobbyJoining(webSocket))
             {
-                await webSocket.CloseAsync(WebSocketCloseStatus.ProtocolError, "Joining lobby failed", CancellationToken.None);
+                await webSocket.CloseAsync(
+                    WebSocketCloseStatus.ProtocolError,
+                    WebSocketCommandNames.LobbyJoinFailedReason,
+                    CancellationToken.None);
                 return;
             }
-
-            await webSocket.SendText("OK");
+            await webSocket.SendText(WebSocketCommandNames.HandshakeOk);
             await HandleReceivingMessages(webSocket);
-        }
-
-        private async Task<bool> HandleReceivingMessages(WebSocket webSocket)
-        {
-            WebSocketReceiveResult result = null;
-            do
-            {
-                (string message, WebSocketReceiveResult loopResult) = await ReceiveMessage(webSocket);
-                result = loopResult;
-
-                await lobby.HandleCommand(player, message);
-            } while (!result.CloseStatus.HasValue);
-
-            lobby.ConnectedPlayers[player].Remove(this);
-
-            if (lobby.ConnectedPlayers[player].Count == 0)
-            {
-                lobby.ConnectedPlayers.Remove(player);
-
-                await lobby.ActionProcessingService.CallHookAsync(Hook.PlayerLeave, new PlayerHookArgs { Player = player });
-
-                foreach (var item in lobby.ConnectedPlayers)
-                {
-                    item.Value.SendMessageToPlayer(new { command = "player_leave", data = player });
-                }
-            }
-
-            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
-            return true;
-        }
-
-        private async Task<(string, WebSocketReceiveResult)> ReceiveMessage(WebSocket webSocket)
-        {
-            WebSocketReceiveResult result = null;
-            string message = string.Empty;
-            do
-            {
-                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-                message += Encoding.UTF8.GetString(buffer).TrimEnd('\0');
-                for (int i = 0; i < buffer.Length; i++)
-                    buffer[i] = 0;
-            } while (!result.EndOfMessage);
-
-
-            return (message, result);
         }
 
         public async Task<bool> SendMessageToPlayer(object message)
         {
-            ws.SendObject(message);
+            if (ws != null)
+                await ws.SendObject(message);
             return true;
         }
 
-        public static void SendCommandToUser(User user, WebSocketCommand command)
+        public async Task HandleCommandInLobby(Guid? gameId, WebSocketCommand command, PlayerDTO player)
         {
-            var clients = games.Values.SelectMany(x => x.ConnectedPlayers.SelectMany(y => y.Value.Where(z => z.user.Id == user.Id)));
-            foreach (var item in clients)
-            {
-                item.SendMessageToPlayer(command);
-            }
+            if (gameId == null)
+                return;
+            if (games.TryGetValue(gameId.Value, out var gameLobby))
+                await gameLobby.HandleCommand(player, command);
         }
 
-        public static void SendCommandToLobby(WebSocketCommand command, PlayerDTO[] players = null)
+        public GameLobby GetLobby(Guid gameId)
         {
-            if (command.GameId == null)
-            {
-                return;
-            }
-
-            var game = games[command.GameId.Value];
-
-            if (players == null)
-            {
-                if (command.PlayerId != null)
-                {
-                    var player = game.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == command.PlayerId);
-                    players = [ player ];
-                }
-                else
-                {
-                    players = game.ConnectedPlayers.Keys?.ToArray() ?? [];
-                }
-            }
-
-            foreach (var item in players)
-            {
-                if (game.ConnectedPlayers.ContainsKey(item))
-                {
-                    game.ConnectedPlayers[item].ForEach(async (ws) => await ws.SendMessageToPlayer(command));
-                }
-            }
+            games.TryGetValue(gameId, out var lobby);
+            return lobby;
         }
 
         public async Task<bool> ExecuteActionInGameLobby(ActionDto action, Guid gameId)
         {
-            await games[gameId].ActionProcessingService.ExecActionAsync(action, new BackEndHookArgs() { GameId = gameId });
+            await games[gameId].ActionProcessingService.ExecActionAsync(
+                action, new BackEndHookArgs { GameId = gameId });
             return true;
         }
 
@@ -164,45 +98,94 @@ namespace DNDOnePlaceManager.WebSockets
             if (playerClients != null)
             {
                 foreach (var item in game.ConnectedPlayers[playerClients])
-                {
-                    item.SendMessageToPlayer(new { command = "log", data = new { message, code, logType } });
-                }
+                    await item.SendMessageToPlayer(
+                        new { command = WebSocketCommandNames.LogCommand, data = new { message, code, logType } });
             }
             return true;
         }
 
+        // Static broadcast helpers 
+        public static void SendCommandToUser(User user, WebSocketCommand command)
+        {
+            var clients = games.Values
+                .SelectMany(g => g.ConnectedPlayers
+                    .SelectMany(kv => kv.Value.Where(wsm => wsm.user.Id == user.Id)));
+            foreach (var client in clients)
+                _ = client.SendMessageToPlayer(command);
+        }
+
+        public static void SendCommandToLobby(WebSocketCommand command, PlayerDTO[] players = null)
+        {
+            if (command.GameId == null)
+                return;
+            if (!games.TryGetValue(command.GameId.Value, out var game))
+                return;
+            if (players == null)
+            {
+                players = command.PlayerId != null
+                    ? new[] { game.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == command.PlayerId) }
+                    : game.ConnectedPlayers.Keys.ToArray();
+            }
+            foreach (var p in players)
+            {
+                if (game.ConnectedPlayers.TryGetValue(p, out var connections))
+                    connections.ForEach(async wsm => await wsm.SendMessageToPlayer(command));
+            }
+        }
+
+        // Receive loop 
+        private async Task HandleReceivingMessages(WebSocket webSocket)
+        {
+            WebSocketReceiveResult result;
+            do
+            {
+                string message;
+                (message, result) = await ReceiveMessage(webSocket);
+                await lobby.HandleCommand(player, message);
+            }
+            while (!result.CloseStatus.HasValue);
+            await OnPlayerDisconnected();
+            await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty, CancellationToken.None);
+        }
+
+        private async Task<(string message, WebSocketReceiveResult result)> ReceiveMessage(WebSocket webSocket)
+        {
+            var sb = new StringBuilder();
+            WebSocketReceiveResult result;
+            do
+            {
+                result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                Array.Clear(buffer, 0, result.Count);
+            }
+            while (!result.EndOfMessage);
+            return (sb.ToString(), result);
+        }
+        
         private async Task<bool> HandleLobbyJoining(WebSocket webSocket)
         {
             try
             {
-                user = httpContext.Items["User"] as User;
+                user = httpContext.Items[WebSocketCommandNames.UserContextKey] as User;
                 if (user == null)
-                {
                     return false;
-                }
-
-                (string gameIdStr, _) = await ReceiveMessage(webSocket);
-
+                (string gameIdStr, WebSocketReceiveResult _) = await ReceiveMessage(webSocket);
                 gameId = Guid.Parse(gameIdStr);
-
-                var response = await mediator.Send(new GetPlayerCommand() { GameID = gameId, User = user });
-
+                var response = await mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });
                 if (response.Player == null)
                     return false;
-
                 player = response.Player;
-
-                if (!games.ContainsKey(gameId))
+                lobby = games.GetOrAdd(gameId, _ =>
                 {
-                    GetSystemPlayerCommand getSystemPlayerCommand = new GetSystemPlayerCommand() { GameID = gameId };
-                    var systemPlayer = await mediator.Send(getSystemPlayerCommand);
-
-                    games.Add(gameId, new GameLobby(serviceScopeFactory) { GameId = gameId, SystemPlayer = systemPlayer, ConnectedPlayers = new Dictionary<PlayerDTO, List<WebSocketManager>>() });
-                }
-
-                lobby = games[gameId];
-                await AddPlayerAndAssingWebsocket();
-
+                    var systemPlayer = mediator.Send(new GetSystemPlayerCommand { GameID = gameId }).GetAwaiter().GetResult();
+                    return new GameLobby(serviceScopeFactory)
+                    {
+                        GameId = gameId,
+                        SystemPlayer = systemPlayer,
+                        ConnectedPlayers = new Dictionary<PlayerDTO, List<WebSocketManager>>()
+                    };
+                });
+                await AddPlayerAndAssignWebSocket();
                 return true;
             }
             catch (FormatException)
@@ -211,56 +194,48 @@ namespace DNDOnePlaceManager.WebSockets
             }
         }
 
-        private async Task AddPlayerAndAssingWebsocket()
+        private async Task AddPlayerAndAssignWebSocket()
         {
             if (!lobby.CheckForPlayer(player))
             {
-                lobby.ConnectedPlayers.Add(player, new List<WebSocketManager>() { this });
-
-                await lobby.ActionProcessingService.CallHookAsync(Hook.PlayerJoin, new PlayerHookArgs { Player = player });
-
-                foreach (var item in lobby.ConnectedPlayers)
-                {
-                    item.Value.SendMessageToPlayer(new { command = "player_join", data = player });
-                }
+                lobby.ConnectedPlayers[player] = new List<WebSocketManager> { this };
+                await lobby.ActionProcessingService.CallHookAsync(
+                    Hook.PlayerJoin, new PlayerHookArgs { Player = player });
+                foreach (var kv in lobby.ConnectedPlayers)
+                    await kv.Value.SendMessageToPlayer(
+                        new { command = WebSocketCommandNames.PlayerJoin, data = player });
             }
             else
             {
-                player = lobby.ConnectedPlayers.First(x => x.Key.Id == player.Id).Key;
+                player = lobby.ConnectedPlayers.First(kv => kv.Key.Id == player.Id).Key;
                 lobby.ConnectedPlayers[player].Add(this);
             }
         }
 
-        public async Task HandleCommandInLobby(Guid? gameId, WebSocketCommand command, PlayerDTO player)
+        private async Task OnPlayerDisconnected()
         {
-            if (games.ContainsKey(gameId.Value))
-            {
-                var gameLobby = games[gameId.Value];
-                await gameLobby.HandleCommand(player, command);
-            }
+            lobby.ConnectedPlayers[player].Remove(this);
+            if (lobby.ConnectedPlayers[player].Count > 0)
+                return;
+            lobby.ConnectedPlayers.Remove(player);
+            await lobby.ActionProcessingService.CallHookAsync(
+                Hook.PlayerLeave, new PlayerHookArgs { Player = player });
+            foreach (var kv in lobby.ConnectedPlayers)
+                await kv.Value.SendMessageToPlayer(
+                    new { command = WebSocketCommandNames.PlayerLeave, data = player });
         }
 
-
+        // ── IDisposable ─────────────────────────────────────────────────────
         public void Dispose()
         {
-            if (lobby?.ConnectedPlayers?.ContainsKey(player) == true)
+            if (lobby != null && lobby.ConnectedPlayers != null && lobby.ConnectedPlayers.ContainsKey(player))
             {
-                if (lobby.ConnectedPlayers[player].Contains(this))
-                {
-                    lobby.ConnectedPlayers[player].Remove(this);
-                }
-
+                lobby.ConnectedPlayers[player].Remove(this);
                 if (lobby.ConnectedPlayers[player].Count == 0)
-                {
                     lobby.ConnectedPlayers.Remove(player);
-                }
             }
-
-            if (lobby?.ConnectedPlayers?.Count == 0)
-            {
-                games.Remove(gameId);
-            }
-
+            if (lobby != null && lobby.ConnectedPlayers != null && lobby.ConnectedPlayers.Count == 0)
+                games.TryRemove(gameId, out _);
             scope?.Dispose();
             ws?.Dispose();
         }
