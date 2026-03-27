@@ -35,12 +35,12 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
             }
 
             var game = dbContext.Games
-                .Include(x=>x.Maps).ThenInclude(x=>x.Elements)
-                .Include(x=>x.Actions)
-                .Include(x=>x.BattleMaps)
-                .Include(x=>x.Cards)
-                .Include(x=>x.Layouts)
-                .Include(x=>x.Properties)
+                .Include(x => x.Maps).ThenInclude(x => x.Elements)
+                .Include(x => x.Actions)
+                .Include(x => x.BattleMaps)
+                .Include(x => x.Cards)
+                .Include(x => x.Layouts)
+                .Include(x => x.Properties)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             if (request.Name != null)
@@ -59,7 +59,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
                 case "ActionModel":
                     return game.Actions.ToList().Select(x => mapper.Map<ActionDto>(x)).Cast<IGameDataTransferObject>().ToList();
                 case "ElementModel":
-                    return game.Maps.SelectMany(x=>x.Elements).ToList().Select(x => mapper.Map<ElementDTO>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return game.Maps.SelectMany(x => x.Elements).ToList().Select(x => mapper.Map<ElementDTO>(x)).Cast<IGameDataTransferObject>().ToList();
                 default:
                     break;
             }
@@ -73,7 +73,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
 
             var entities = dbContext.GetEntitiesList(request.GameID, request.EntityType);
 
-            foreach (var property in dbContext.Properties.Where(x=>x.EntityName == request.EntityType && x.Name == request.Property))
+            foreach (var property in dbContext.Properties.Where(x => x.EntityName == request.EntityType && x.Name == request.Property))
             {
                 var entity = entities.FirstOrDefault(x => x.Id == property.ParentID);
                 if (entity != null)
@@ -99,7 +99,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
             switch (type.Name)
             {
                 case "MapModel":
-                    return game.Maps.Where(x => x.Name == name).ToList().Select(x=>mapper.Map<MapDTO>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return game.Maps.Where(x => x.Name == name).ToList().Select(x => mapper.Map<MapDTO>(x)).Cast<IGameDataTransferObject>().ToList();
                 case "CardModel":
                     return game.Cards.Where(x => x.Name == name).ToList().Select(x => mapper.Map<CardDto>(x)).Cast<IGameDataTransferObject>().ToList();
                 case "LayoutModel":

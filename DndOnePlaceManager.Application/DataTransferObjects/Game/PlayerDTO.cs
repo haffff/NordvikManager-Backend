@@ -20,6 +20,6 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public string? Color { get; set; }
         public string? Image { get; set; }
         public Permission? Permission { get; set; }
-        public Dictionary<Guid,Permission>? Permissions { get; set; }
+        public Dictionary<Guid, Permission>? Permissions { get; set; }
     }
 }

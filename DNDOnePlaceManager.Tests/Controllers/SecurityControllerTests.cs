@@ -14,7 +14,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
-{    public class SecurityControllerTests
+{
+    public class SecurityControllerTests
     {
         // -------------------------------------------------------------------------
         // Helpers

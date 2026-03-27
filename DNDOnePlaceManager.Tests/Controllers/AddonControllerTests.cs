@@ -24,7 +24,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
-{    public class AddonControllerTests
+{
+    public class AddonControllerTests
     {
         // -------------------------------------------------------------------------
         // Helpers

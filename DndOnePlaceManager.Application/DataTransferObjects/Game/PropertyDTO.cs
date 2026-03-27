@@ -1,7 +1,8 @@
 ﻿using DndOnePlaceManager.Domain.Enums;
 
 namespace DndOnePlaceManager.Application.DataTransferObjects.Game
-{    public class PropertyDTO : IGameDataTransferObject
+{
+    public class PropertyDTO : IGameDataTransferObject
     {
         public Guid? Id { get; set; }
         public string? Name { get; set; }

@@ -31,7 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 throw new PermissionException(Permission.Edit);
             }
 
-            if(image.GameId != request.GameId)
+            if (image.GameId != request.GameId)
             {
                 throw new WrongArgumentsException(nameof(request.GameId));
             }

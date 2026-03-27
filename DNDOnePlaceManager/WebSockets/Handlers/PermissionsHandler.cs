@@ -13,7 +13,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
     public class PermissionsHandler : IWebSocketHandler
     {
         private IMediator mediator;
-        
+
         public PermissionsHandler(IMediator mediator)
         {
             this.mediator = mediator;

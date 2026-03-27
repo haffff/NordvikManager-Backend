@@ -17,7 +17,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.GetFlatMaps
         public override IEnumerable<MapModel> GetEntities(GetFlatMapsCommand request)
         {
             return dbContext.Games
-                .Include(x=>x.Maps)
+                .Include(x => x.Maps)
                 .FirstOrDefault(x => x.Id == request.GameID)?
                 .Maps
                 .ToList() ?? Enumerable.Empty<MapModel>();

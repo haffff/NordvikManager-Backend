@@ -18,7 +18,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
-{    public class MaterialsControllerTests
+{
+    public class MaterialsControllerTests
     {
         // -------------------------------------------------------------------------
         // Helpers

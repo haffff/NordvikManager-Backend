@@ -86,7 +86,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                     prop.Id = default;
                 }
 
-                if(owner.HasValue)
+                if (owner.HasValue)
                 {
                     SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand()
                     {

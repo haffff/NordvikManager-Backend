@@ -5,7 +5,8 @@ namespace DndOnePlaceManager.Application.Exceptions
 {
     public class PermissionException : Exception
     {
-        public PermissionException(Permission playerPermission, Permission requiredPermission) : base($"Insufficient permissions.\n Player permission: {playerPermission.ToString()}.\n Required permission: {requiredPermission.ToString()}") {
+        public PermissionException(Permission playerPermission, Permission requiredPermission) : base($"Insufficient permissions.\n Player permission: {playerPermission.ToString()}.\n Required permission: {requiredPermission.ToString()}")
+        {
             PlayerPermission = playerPermission;
             RequiredPremission = requiredPermission;
         }

@@ -19,7 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<Dictionary<string, string>> GetMaterials(string filter)
         {
-            var files =  Directory.GetFiles(PathToMaterials);
+            var files = Directory.GetFiles(PathToMaterials);
             var dict = files.ToDictionary(x => Path.GetFileNameWithoutExtension(x), y => y);
             return dict;
         }

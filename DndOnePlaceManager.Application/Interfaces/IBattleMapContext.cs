@@ -11,7 +11,7 @@ namespace DndOnePlaceManager.Application.Interfaces
     public interface IBattleMapContext : IDbContextBase
     {
         DbSet<GameModel> Games { get; }
-        DbSet<PlayerModel> Players{ get; }
+        DbSet<PlayerModel> Players { get; }
         DbSet<MapModel> Maps { get; }
         DbSet<ElementModel> Elements { get; }
         DbSet<PropertyModel> Properties { get; }

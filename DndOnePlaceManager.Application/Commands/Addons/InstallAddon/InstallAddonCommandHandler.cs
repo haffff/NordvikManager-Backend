@@ -166,7 +166,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
                 var (resp, res) = await mediator.Send(addCardCommand);
 
-                addon.Templates?.Add(game.Cards.First(x=>x.Id == res));
+                addon.Templates?.Add(game.Cards.First(x => x.Id == res));
             }
         }
 
@@ -187,8 +187,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                     Action = deserializedDto
                 };
 
-                var (resp ,result) = await mediator.Send(addActionCommand);
-                addon.Actions?.Add(game.Actions.First(x=>x.Id == result));
+                var (resp, result) = await mediator.Send(addActionCommand);
+                addon.Actions?.Add(game.Actions.First(x => x.Id == result));
             }
         }
 

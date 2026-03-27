@@ -26,7 +26,8 @@ namespace DndOnePlaceManager.Infrastructure
             {
                 services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString));
                 services.AddDbContext<IAuthDBContext, AuthContext>(options => options.UseMySQL(authConnectionString));
-            }            services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
+            }
+            services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
             services.AddHttpClient();
             services.AddScoped<IProxyHttpService, ProxyHttpService>();

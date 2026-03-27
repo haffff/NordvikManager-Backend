@@ -20,7 +20,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 .Include(x => x.Properties)
                 .Where(x => x.Players.Any(y => y.User == request.UserId)).ToListAsync();
 
-            var mapped = result.Select( x =>
+            var mapped = result.Select(x =>
             {
                 string? longDescription = x.Properties.FirstOrDefault(y => y.Name == "longDescription")?.Value;
                 string? shortDescription = x.Properties.FirstOrDefault(y => y.Name == "shortDescription")?.Value;

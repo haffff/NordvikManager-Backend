@@ -13,7 +13,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         public string Name { get; set; }
         [Required]
         public bool PasswordRequired { get; set; }
-        
+
         public string? Password { get; set; }
 
         public string? Image { get; set; }

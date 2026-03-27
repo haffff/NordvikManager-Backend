@@ -4,7 +4,8 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace DNDOnePlaceManager.Domain.Entities.BattleMap
-{    public class PropertyModel : INamedEntity
+{
+    public class PropertyModel : INamedEntity
     {
         [Key]
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]

@@ -275,7 +275,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                 parsedMsg.Data = JToken.FromObject(ConnectedPlayers.Keys);
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
-            }            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
+            }
+            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
             {
                 parsedMsg.OnlyToSender = true;
                 _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs() { Player = player }));
@@ -296,8 +297,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                 parsedMsg.OnlyToSender = true;
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
-            }            
-            
+            }
+
             if (parsedMsg.Command == WebSocketCommandNames.CmdExecuteAction)
             {
                 if (parsedMsg.Data == null)
@@ -323,7 +324,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                 return true;
             }
-            
+
             if (parsedMsg.Command == WebSocketCommandNames.CmdDebugActionResponse ||
                 parsedMsg.Command == WebSocketCommandNames.CmdInputValue)
             {

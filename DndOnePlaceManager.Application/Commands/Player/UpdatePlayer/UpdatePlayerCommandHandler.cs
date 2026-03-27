@@ -18,7 +18,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
         public override async Task<CommandResponse> Handle(UpdatePlayerCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var game = dbContext.Games.Include(x=>x.Players).FirstOrDefault(x => x.Id == request.GameId);
+            var game = dbContext.Games.Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameId);
             if (game == null)
             {
                 throw new ResourceNotFoundException(nameof(game));

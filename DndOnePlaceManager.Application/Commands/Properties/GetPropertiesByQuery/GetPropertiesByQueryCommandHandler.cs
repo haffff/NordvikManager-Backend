@@ -45,10 +45,11 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
                 collection = collection.Where(x => names.Contains(x.Name));
             }
 
-            if(request.Prefix != null)
+            if (request.Prefix != null)
             {
                 collection = collection.Where(x => x.Name?.StartsWith(request.Prefix) == true);
-            }            var collectionList = collection.ToList().Where(x => permissionService.CheckIfHasPermissions(request.Player, x.ParentID, Domain.Enums.Permission.Read));
+            }
+            var collectionList = collection.ToList().Where(x => permissionService.CheckIfHasPermissions(request.Player, x.ParentID, Domain.Enums.Permission.Read));
 
             return collectionList.Select(x =>
             {

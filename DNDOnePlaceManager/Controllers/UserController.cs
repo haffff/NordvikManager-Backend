@@ -241,7 +241,7 @@ namespace DNDOnePlaceManager.Controllers
         [HttpPost]
         [Authorize]
         [Route("KeyboardBindings")]
-        public async Task<IActionResult> SaveKeyboardBindings(Dictionary<string,string> bindings)
+        public async Task<IActionResult> SaveKeyboardBindings(Dictionary<string, string> bindings)
         {
             var user = HttpContext.Items["User"] as User;
             var regex = new System.Text.RegularExpressions.Regex(@"(Ctrl\+)*(Alt\+)*(Shift\+)*(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
@@ -258,7 +258,8 @@ namespace DNDOnePlaceManager.Controllers
 
                 //check if value is valid
 
-            }            if (await authService.SetKeyboardBindings(user.Id, bindings))
+            }
+            if (await authService.SetKeyboardBindings(user.Id, bindings))
             {
                 return Ok();
             }
@@ -301,7 +302,8 @@ namespace DNDOnePlaceManager.Controllers
                 return Ok();
 
             return BadRequest();
-        }        [HttpPost]
+        }
+        [HttpPost]
         [Authorize]
         [Route("resetpassword")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)

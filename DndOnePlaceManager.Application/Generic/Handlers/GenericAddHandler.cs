@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Generic.Handlers
 {
-    internal class GenericAddHandler<TCommand,TModel,TDto> : HandlerBase<TCommand, (CommandResponse, Guid)>
+    internal class GenericAddHandler<TCommand, TModel, TDto> : HandlerBase<TCommand, (CommandResponse, Guid)>
         where TCommand : GenericAddCommand<TDto>
         where TModel : class, IEntity
         where TDto : class, IGameDataTransferObject
@@ -77,7 +77,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
 
             request.Dto = request.Dto ?? GetDefault();
 
-            if(request.Dto == null)
+            if (request.Dto == null)
             {
                 return (CommandResponse.WrongArguments, Guid.Empty);
             }

@@ -27,7 +27,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.GetMap
 
             foreach (var item in dto.Elements)
             {
-                item.Permission = permissionService.GetPermission(playerId,item.Id ?? default, true);
+                item.Permission = permissionService.GetPermission(playerId, item.Id ?? default, true);
             }
         }
 
@@ -35,10 +35,10 @@ namespace DndOnePlaceManager.Application.Commands.Map.GetMap
         {
             var map = dbContext.Maps
                 .Include(x => x.Properties)
-                .Include(x => x.Elements).ThenInclude(x=>x.Details)
-                .Include(x=>x.Elements).ThenInclude(x => x.Properties)
+                .Include(x => x.Elements).ThenInclude(x => x.Details)
+                .Include(x => x.Elements).ThenInclude(x => x.Properties)
                 .FirstOrDefault(x => x.Id == request.Id);
-            
+
             if (map == null || request.Player == null || !map.HasPermission(request.Player.Id ?? Guid.Empty))
             {
                 return null;

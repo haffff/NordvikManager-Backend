@@ -15,14 +15,14 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
     {
         private readonly IMediator mediator;
 
-        public AddCardCommandHandler(IDbContext context, IMapper mapper, IMediator mediator) : base(context,mapper, mediator)
+        public AddCardCommandHandler(IDbContext context, IMapper mapper, IMediator mediator) : base(context, mapper, mediator)
         {
             this.mediator = mediator;
         }
 
         public override GameModel GetGame(AddCardCommand request)
         {
-            return dbContext.Games.Include(x => x.Cards).ThenInclude(x=>x.Properties).FirstOrDefault(x => x.Id == request.GameID);
+            return dbContext.Games.Include(x => x.Cards).ThenInclude(x => x.Properties).FirstOrDefault(x => x.Id == request.GameID);
         }
 
         public override void AddToGame(GameModel game, CardModel model, AddCardCommand request)
@@ -43,9 +43,9 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             model.IsTemplate = request.IsTemplate;
             model.FirstOpen = true;
 
-            if(request.Dto.TemplateId != null)
+            if (request.Dto.TemplateId != null)
             {
-                var template = game.Cards.FirstOrDefault(x=>x.Id == request.Dto.TemplateId);
+                var template = game.Cards.FirstOrDefault(x => x.Id == request.Dto.TemplateId);
 
                 if (template != null)
                 {

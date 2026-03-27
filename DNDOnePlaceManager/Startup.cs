@@ -267,7 +267,8 @@ namespace DNDOnePlaceManager
             {
                 app.UseSwagger();
                 app.UseSwaggerUI(
-                    o => {
+                    o =>
+                    {
                         o.RoutePrefix = "swagger";
                         o.SwaggerEndpoint("/swagger/v1/swagger.json", "V1 Docs");
                     }

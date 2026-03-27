@@ -259,7 +259,7 @@ namespace DNDOnePlaceManager.Controllers
             cmd.Player = player.Player;
             cmd.Templates = false;
             cmd.CustomUis = false;
-            
+
             var result = await mediator.Send(cmd);
 
             return Ok(result.Item2);

@@ -12,7 +12,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties.Proxy
             : base(dbContext, mapper)
         {
             this.proxyHttpService = proxyHttpService;
-        }        public override async Task<ProxyCommandResult> Handle(ProxyCommand request, CancellationToken cancellationToken)
+        }
+        public override async Task<ProxyCommandResult> Handle(ProxyCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
 
@@ -55,7 +56,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.Proxy
             // Resolve bearer token from its dedicated protected property (never put in body)
             string? bearerToken = null;
             if (request.BearerTokenPropertyName != null)
-                resolvedProtected.TryGetValue(request.BearerTokenPropertyName, out bearerToken);            var (success, statusCode, responseBody) = await proxyHttpService.SendJsonAsync(
+                resolvedProtected.TryGetValue(request.BearerTokenPropertyName, out bearerToken); var (success, statusCode, responseBody) = await proxyHttpService.SendJsonAsync(
                 request.HttpMethod, request.TargetUrl, body, bearerToken, cancellationToken);
 
             // Strip all protected names (body properties + token property) from the response

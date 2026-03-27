@@ -1,5 +1,6 @@
 namespace DndOnePlaceManager.Infrastructure.Interfaces
-{    public interface IProxyHttpService
+{
+    public interface IProxyHttpService
     {
         /// <summary>
         /// Sends a JSON request to the given URL using the specified HTTP method.

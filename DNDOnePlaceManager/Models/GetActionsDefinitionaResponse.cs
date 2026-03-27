@@ -2,7 +2,8 @@
 using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Models
-{    public class ActionDefinitionArgument
+{
+    public class ActionDefinitionArgument
     {
         public string Name { get; set; }
         public string Type { get; set; }

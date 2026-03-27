@@ -25,7 +25,7 @@ namespace DndOnePlaceManager.Application
             CreateMap<MapModel, MapDTO>();
 
             CreateMap<ElementDTO, ElementModel>().ForMember(x => x.Details, (opt) => opt.MapFrom(src => DetailsParseHelper.ParseFabricJSToElementDetals(src.Id, src.Object).Values));
-            CreateMap<ElementModel, ElementDTO>().ForMember(x=>x.Object, (opt) => opt.MapFrom(src => DetailsParseHelper.ParseElementDetailsToFabricJS(src.Details)));
+            CreateMap<ElementModel, ElementDTO>().ForMember(x => x.Object, (opt) => opt.MapFrom(src => DetailsParseHelper.ParseElementDetailsToFabricJS(src.Details)));
 
             CreateMap<PropertyDTO, PropertyModel>();
             CreateMap<PropertyModel, PropertyDTO>();
@@ -35,13 +35,13 @@ namespace DndOnePlaceManager.Application
 
             CreateMap<GameModel, GameItemDTO>();
 
-            CreateMap<MessageDTO, MessageModel>().ForMember(x=>x.Content,(opt)=> opt.MapFrom(src => src.Data));
+            CreateMap<MessageDTO, MessageModel>().ForMember(x => x.Content, (opt) => opt.MapFrom(src => src.Data));
             CreateMap<MessageModel, MessageDTO>().ForMember(x => x.Data, (opt) => opt.MapFrom(src => src.Content));
 
             CreateMap<BattleMapDto, BattleMapModel>();
             CreateMap<BattleMapModel, BattleMapDto>();
 
-            CreateMap<CardModel, CardDto>().ForMember(x=>x.AdditionalResources, (opt) => opt.MapFrom(src => JsonConvert.DeserializeObject<List<Guid>>(src.AdditionalResources)));
+            CreateMap<CardModel, CardDto>().ForMember(x => x.AdditionalResources, (opt) => opt.MapFrom(src => JsonConvert.DeserializeObject<List<Guid>>(src.AdditionalResources)));
             CreateMap<CardDto, CardModel>().ForMember(x => x.AdditionalResources, (opt) => opt.MapFrom(src => JsonConvert.SerializeObject(src.AdditionalResources)));
 
             CreateMap<ActionModel, ActionDto>();
@@ -51,16 +51,16 @@ namespace DndOnePlaceManager.Application
             CreateMap<AddonDto, AddonModel>();
 
             CreateMap<ResourceModel, ResourceDTO>()
-                .ForMember(x=>x.MimeType, (opt) => opt.MapFrom((dto,model) => dto.MimeType.GetDescriptionValue() ));
+                .ForMember(x => x.MimeType, (opt) => opt.MapFrom((dto, model) => dto.MimeType.GetDescriptionValue()));
             CreateMap<ResourceDTO, ResourceModel>()
-                .ForMember(x=>x.MimeType, (opt) => opt.MapFrom((dto,model) => dto.MimeType.ToEnumUsingDescriptionAttribute<MimeType>() ));
+                .ForMember(x => x.MimeType, (opt) => opt.MapFrom((dto, model) => dto.MimeType.ToEnumUsingDescriptionAttribute<MimeType>()));
 
             CreateMap<TreeEntryDto, TreeEntryModel>()
-                .ForMember(x=>x.Parent, (opt) => opt.MapFrom((dto,model) => model.Parent))
-                .ForMember(x=>x.Next, (opt) => opt.MapFrom((dto,model) => model.Next));
+                .ForMember(x => x.Parent, (opt) => opt.MapFrom((dto, model) => model.Parent))
+                .ForMember(x => x.Next, (opt) => opt.MapFrom((dto, model) => model.Next));
             CreateMap<TreeEntryModel, TreeEntryDto>()
-                .ForMember(x=>x.ParentId , (opt) => opt.MapFrom((model,dto) => model.Parent?.Id))
-                .ForMember(x=>x.Next , (opt) => opt.MapFrom((model, dto) => model.Next?.Id));
+                .ForMember(x => x.ParentId, (opt) => opt.MapFrom((model, dto) => model.Parent?.Id))
+                .ForMember(x => x.Next, (opt) => opt.MapFrom((model, dto) => model.Next?.Id));
         }
     }
 }

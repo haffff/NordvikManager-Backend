@@ -64,8 +64,8 @@ namespace DNDOnePlaceManager.Services.Implementations
         }
 
         public GameLobby GameLobby { get; set; }        /// <summary>
-        /// Put here commands that are feedback from user for action processing
-        /// </summary>
+                                                        /// Put here commands that are feedback from user for action processing
+                                                        /// </summary>
         public ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>> InputHandler { get; init; } = new ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>>();
 
         /// <summary>
@@ -106,8 +106,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                 throw new Exception(WebSocketCommandNames.ErrFailedToGetActions);
 
             return result;
-        }        
-          public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null)
+        }
+        public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null)
         {
             if (mediator == null)
             {
@@ -124,7 +124,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                 var variables = sharedVariables ?? new Dictionary<string, object>();
 
                 if (sharedVariables == null)
-                    FillHookArgs(hookArg, variables);                await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
+                    FillHookArgs(hookArg, variables); await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
 
                 foreach (var step in steps)
                 {
@@ -144,7 +144,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                         {
                             entry.SetCompleted();
                             return;
-                        }                        await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
+                        }
+                        await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
                         continue;
                     }
                     else
@@ -159,7 +160,8 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                         await stepDefinition.Execute(mediator, variables, GameLobby, step.ToObject<ActionStep>());
                     }
-                }                await DebugLog(mediator, DebugLogData.Finishing(action, steps, variables), entry: entry);
+                }
+                await DebugLog(mediator, DebugLogData.Finishing(action, steps, variables), entry: entry);
                 entry.SetCompleted();
             }
             catch (OperationCanceledException)
@@ -170,7 +172,8 @@ namespace DNDOnePlaceManager.Services.Implementations
             {
                 entry.SetFaulted(e.Message);
                 await DebugLog(mediator, DebugLogData.Fault(e.Message), false, entry: entry);
-            }finally
+            }
+            finally
             {
                 // Keep the entry briefly so callers can observe terminal state, then remove it
                 _ = Task.Delay(TimeSpan.FromSeconds(30))
@@ -186,15 +189,15 @@ namespace DNDOnePlaceManager.Services.Implementations
             var foundActionDto = (await GetActionsAsync(mediator)).FirstOrDefault(x => x.Name == action);
             if (foundActionDto != null)
                 await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator);
-        }        
-          private async Task<WebSocketCommand> DebugLog(IMediator mediator, object data, bool expectInput = true, ActionRunEntry entry = null)
+        }
+        private async Task<WebSocketCommand> DebugLog(IMediator mediator, object data, bool expectInput = true, ActionRunEntry entry = null)
         {
             if (!GameLobby.Debug)
-                return null;            var cmd = new WebSocketCommand()
-            {
-                Command = WebSocketCommandNames.CmdDebugAction,
-                Data = JObject.FromObject(data),
-            };
+                return null; var cmd = new WebSocketCommand()
+                {
+                    Command = WebSocketCommandNames.CmdDebugAction,
+                    Data = JObject.FromObject(data),
+                };
 
             if (!expectInput)
             {
@@ -206,7 +209,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             cmd.InputToken = token;
 
             var tcs = new TaskCompletionSource<WebSocketCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
-            InputHandler[token] = tcs;            GameLobby.Broadcast(cmd, GameLobby.SystemPlayer);
+            InputHandler[token] = tcs; GameLobby.Broadcast(cmd, GameLobby.SystemPlayer);
 
             entry?.SetWaitingForInput(token);
             try

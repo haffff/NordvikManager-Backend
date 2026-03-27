@@ -31,7 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Elements
             model.Selectable = true;
             model.Id = default;
 
-            if(model.Map == null)
+            if (model.Map == null)
             {
                 return null;
             }

@@ -31,11 +31,11 @@ namespace DNDOnePlaceManager.Enums
 
                 result.Add(new HookInfoDto
                 {
-                    Value       = (int)field.GetValue(null),
-                    Key         = field.Name,
-                    Name        = meta.Name,
+                    Value = (int)field.GetValue(null),
+                    Key = field.Name,
+                    Name = meta.Name,
                     Description = meta.Description,
-                    Category    = meta.Category
+                    Category = meta.Category
                 });
             }
 

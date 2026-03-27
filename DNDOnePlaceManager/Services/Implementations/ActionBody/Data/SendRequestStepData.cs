@@ -8,8 +8,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         public string TargetUrl { get; set; }
 
         [Description("HTTP method to use: GET, POST, PUT, PATCH, DELETE. Defaults to POST.")]
-        public string HttpMethod { get; set; } = "POST";        
-        
+        public string HttpMethod { get; set; } = "POST";
+
         [Description("Parent entity ID used to scope the protected-property lookup. Accepts a literal Guid or a variable name holding a Guid. Defaults to the current game ID when not provided.")]
         public string ParentId { get; set; }
 

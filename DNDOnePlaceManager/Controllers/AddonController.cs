@@ -63,8 +63,8 @@ namespace DNDOnePlaceManager.Controllers
             }
 
             return Ok(dto);
-        }        
-        
+        }
+
         [Route("StepDefinitions")]
         [HttpGet]
         public async Task<IActionResult> GetStepDefinitions()
@@ -92,17 +92,17 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             return Ok(stepDefinitions);
-        }        
-        
+        }
+
         [Route("Hooks")]
         [HttpGet]
         public async Task<IActionResult> GetHooks()
         {
             var hooks = Enum.GetValues(typeof(Hook)).Cast<Hook>().Select(x => new { Name = x.ToString(), Value = (int)x }).ToArray();
             return Ok(hooks);
-        }        
+        }
 
-                [Route("RunningActions")]
+        [Route("RunningActions")]
         [HttpGet]
         public async Task<IActionResult> GetRunningActions([FromQuery] Guid gameId)
         {
@@ -134,7 +134,7 @@ namespace DNDOnePlaceManager.Controllers
 
             return Ok(entries);
         }
-        
+
         [Route("SupplyInput")]
         [HttpPost]
         public async Task<IActionResult> SupplyInput([FromQuery] Guid gameId, [FromQuery] Guid token, [FromBody] object data)
@@ -160,7 +160,7 @@ namespace DNDOnePlaceManager.Controllers
                 InputToken = token,
                 Data = data == null ? null : Newtonsoft.Json.Linq.JToken.FromObject(data),
                 Command = WebSocketCommandNames.CmdDebugAction
-            };            tcs.TrySetResult(cmd);
+            }; tcs.TrySetResult(cmd);
             return Ok(new { resolved = token });
         }
 
@@ -223,7 +223,7 @@ namespace DNDOnePlaceManager.Controllers
 
         public class InstallAddonRequest
         {
-            [FromForm(Name= "file")]
+            [FromForm(Name = "file")]
             public IFormFile File { get; set; }
             [FromForm(Name = "url")]
             public string Url { get; set; }
@@ -270,7 +270,7 @@ namespace DNDOnePlaceManager.Controllers
 
         [Route("uninstall")]
         [HttpPost]
-        public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromQuery]  Guid addonId)
+        public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromQuery] Guid addonId)
         {
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 

@@ -45,7 +45,7 @@ namespace DNDOnePlaceManager.WebSockets
             mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             this.serviceScopeFactory = serviceScopeFactory;
         }
-        
+
         public async Task Handle(HttpContext httpContext)
         {
             this.httpContext = httpContext;
@@ -161,7 +161,7 @@ namespace DNDOnePlaceManager.WebSockets
             while (!result.EndOfMessage);
             return (sb.ToString(), result);
         }
-        
+
         private async Task<bool> HandleLobbyJoining(WebSocket webSocket)
         {
             try

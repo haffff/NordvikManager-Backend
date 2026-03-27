@@ -66,7 +66,7 @@ namespace DNDOnePlaceManager.WebSockets.Core
         public const string PropertyUpdate = "property_update";
         public const string PropertyRemove = "property_remove";
         public const string PropertyAdd = "property_add";
-        
+
         // Connection / handshake
         public const string HandshakeOk = "OK";
         public const string LogCommand = "log";

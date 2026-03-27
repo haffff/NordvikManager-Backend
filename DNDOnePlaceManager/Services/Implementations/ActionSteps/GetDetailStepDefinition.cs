@@ -35,7 +35,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var dto = variables[stepData.Input];
 
             // ensure dto exists
-            if(dto == null)
+            if (dto == null)
                 throw new ActionProcessException($"GetDetail: variable with name '{stepData.Input}' doesn't exists.");
 
             if (stepData.IsElement)

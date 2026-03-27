@@ -59,8 +59,8 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
         {
             UpdateBattleMapCommand cmd = new UpdateBattleMapCommand()
             {
-               Dto = new BattleMapDto() { Id = command.Data["id"].ToGuid(), Name = command.Data["name"].ToString() },
-               Player = player,
+                Dto = new BattleMapDto() { Id = command.Data["id"].ToGuid(), Name = command.Data["name"].ToString() },
+                Player = player,
             };
 
             var result = await mediator.Send(cmd);
@@ -72,7 +72,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
         {
             AddBattleMapCommand cmd = new AddBattleMapCommand()
             {
-                Dto = new BattleMapDto() { Name = command.Data["name"].ToString(), MapId= command.Data["mapId"].ToGuid() },
+                Dto = new BattleMapDto() { Name = command.Data["name"].ToString(), MapId = command.Data["mapId"].ToGuid() },
                 Player = player,
                 GameID = command.GameId ?? default
             };
@@ -100,7 +100,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
         private async Task<CommandResponse> UngroupElements(WebSocketCommand parsedMsg, PlayerDTO player)
         {
             ElementDTO dto = null;
-            Dictionary<Guid,Permission?> perm = null;
+            Dictionary<Guid, Permission?> perm = null;
 
             foreach (var id in parsedMsg.ElementIds)
             {
@@ -131,7 +131,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 };
 
                 var nullablePerm = await mediator.Send(permissionsCommand);
-                perm = new Dictionary<Guid, Permission?> (nullablePerm.Select(x => new KeyValuePair<Guid, Permission?>(x.Key,x.Value)));
+                perm = new Dictionary<Guid, Permission?>(nullablePerm.Select(x => new KeyValuePair<Guid, Permission?>(x.Key, x.Value)));
                 RemoveElement(id, player);
             }
 
@@ -154,7 +154,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
                 var (message, oldId, newId) = await AddElement(newElement, player, parsedMsg.GameId ?? default);
 
-                if(message != CommandResponse.Ok)
+                if (message != CommandResponse.Ok)
                 {
                     return message;
                 }
@@ -190,7 +190,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                     RequiredPermission = Permission.Edit
                 };
 
-                if(!await mediator.Send(checkCommand))
+                if (!await mediator.Send(checkCommand))
                 {
                     return CommandResponse.NoPermission;
                 }
@@ -209,12 +209,12 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
             (var result, var oldId, var newId) = await AddElement(parsedMsg, player);
 
-            SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand() 
-            { 
-                EntityId = newId, 
-                Player = player, 
-                EntityType = "ElementModel", 
-                GameID = parsedMsg.GameId ?? Guid.Empty, 
+            SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand()
+            {
+                EntityId = newId,
+                Player = player,
+                EntityType = "ElementModel",
+                GameID = parsedMsg.GameId ?? Guid.Empty,
                 Permissions = perm
             };
 

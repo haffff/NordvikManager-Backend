@@ -26,7 +26,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
         {
             var result = await base.Handle(request, cancellationToken);
 
-            if(result.Item1 != CommandResponse.Ok || OmitTreeCreation)
+            if (result.Item1 != CommandResponse.Ok || OmitTreeCreation)
             {
                 return result;
             }
@@ -48,7 +48,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
                 Player = request.Player
             });
 
-            if(newResult == CommandResponse.Ok)
+            if (newResult == CommandResponse.Ok)
             {
                 return result;
             }

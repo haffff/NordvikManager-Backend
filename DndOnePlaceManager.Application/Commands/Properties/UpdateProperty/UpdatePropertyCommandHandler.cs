@@ -36,7 +36,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties
                 if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Edit))
                 {
                     return CommandResponse.NoPermission;
-                }                propertyEntity.Name = request.Property.Name;
+                }
+                propertyEntity.Name = request.Property.Name;
                 propertyEntity.IsProtected = request.Property.IsProtected;
 
                 // When unprotecting a property, wipe the stored value so secrets

@@ -8,7 +8,7 @@ namespace DNDOnePlaceManager.Services.Interfaces
 {
     public interface IMaterialsService
     {
-        public Task<Dictionary<string,string>> GetMaterials(string filter);
+        public Task<Dictionary<string, string>> GetMaterials(string filter);
         public Task<byte[]> GetMaterial(string name);
     }
 }

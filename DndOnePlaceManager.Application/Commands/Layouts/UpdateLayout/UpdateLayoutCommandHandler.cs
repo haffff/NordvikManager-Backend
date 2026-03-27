@@ -28,7 +28,7 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.UpdateLayout
 
             var layout = dbContext.Layouts.FirstOrDefault(x => x.Id == request.Dto.Id);
 
-            if(layout == null)
+            if (layout == null)
             {
                 throw new ResourceNotFoundException(nameof(layout));
             }

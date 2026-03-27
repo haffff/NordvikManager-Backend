@@ -143,7 +143,7 @@ namespace DNDOnePlaceManager.Controllers
 
         private async Task AddDefaultCharacterSheet(Guid? gameId, Guid? playerId)
         {
-            if(gameId == null || playerId == null)
+            if (gameId == null || playerId == null)
                 return;
 
             GetSystemPlayerCommand getSystemPlayerCommand = new GetSystemPlayerCommand()

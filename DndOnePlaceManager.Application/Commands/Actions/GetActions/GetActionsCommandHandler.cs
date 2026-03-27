@@ -11,7 +11,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.GetActions
 {
     public class GetActions : HandlerBase<GetActionsCommand, (CommandResponse, List<ActionDto>)>
     {
-        public GetActions(IDbContext dbContext, IMapper mapper) : base (dbContext, mapper)
+        public GetActions(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
 
@@ -38,9 +38,9 @@ namespace DndOnePlaceManager.Application.Commands.Actions.GetActions
 
             var actionsDtos = mapper.Map<List<ActionDto>>(actions);
 
-            if(request.flatList)
+            if (request.flatList)
             {
-                actionsDtos = actionsDtos.Select(x => new ActionDto() { Prefix= x.Prefix, Name = x.Name, Id = x.Id , Hook = x.Hook, IsEnabled = x.IsEnabled }).ToList();
+                actionsDtos = actionsDtos.Select(x => new ActionDto() { Prefix = x.Prefix, Name = x.Name, Id = x.Id, Hook = x.Hook, IsEnabled = x.IsEnabled }).ToList();
             }
 
             // Return the command response and the list of action DTOs

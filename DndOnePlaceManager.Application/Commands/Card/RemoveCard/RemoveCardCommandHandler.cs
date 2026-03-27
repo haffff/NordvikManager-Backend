@@ -15,7 +15,7 @@ namespace DndOnePlaceManager.Application.Commands.Card
 
         public override async Task<CommandResponse> Handle(RemoveCardCommand request, CancellationToken cancellationToken)
         {
-            return await base.Handle(request, cancellationToken); 
+            return await base.Handle(request, cancellationToken);
         }
     }
 }

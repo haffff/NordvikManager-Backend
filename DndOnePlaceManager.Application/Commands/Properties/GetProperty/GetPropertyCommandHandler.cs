@@ -23,7 +23,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
 
             PropertyModel property = null;
 
-            if(request.Id == null && request.ParentID != null && request.Name != null)
+            if (request.Id == null && request.ParentID != null && request.Name != null)
             {
                 property = dbContext.Properties.FirstOrDefault(p => p.ParentID == request.ParentID && p.Name == request.Name);
             }
@@ -31,7 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
             {
                 property = dbContext.Properties.FirstOrDefault(p => p.Id == request.Id);
             }
-            
+
             if (property == null)
             {
                 return (CommandResponse.NoResource, null);
@@ -51,7 +51,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
                 if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Read))
                 {
                     return (CommandResponse.NoPermission, null);
-                }                var propertyDto = mapper.Map<PropertyDTO>(property);
+                }
+                var propertyDto = mapper.Map<PropertyDTO>(property);
                 if (property.IsProtected)
                     propertyDto.Value = null;
 

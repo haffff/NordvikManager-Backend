@@ -9,7 +9,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetAllCards
         public Guid GameId { get; set; }
         public bool Templates { get; set; }
         public bool CustomUis { get; set; }
-		public PlayerDTO Player { get; set; }
+        public PlayerDTO Player { get; set; }
         public bool Flat { get; set; } = false;
     }
 }

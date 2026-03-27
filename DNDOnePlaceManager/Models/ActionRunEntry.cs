@@ -41,7 +41,8 @@ namespace DNDOnePlaceManager.Models
         {
             State = ActionRunState.Running;
             WaitingOnToken = null;
-        }        public void SetCompleted()
+        }
+        public void SetCompleted()
         {
             State = ActionRunState.Completed;
             FinishedAt = DateTime.UtcNow;

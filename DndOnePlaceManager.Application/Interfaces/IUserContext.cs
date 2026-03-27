@@ -10,6 +10,6 @@ namespace DndOnePlaceManager.Application.Interfaces
 {
     public interface IUserContext : IDbContextBase
     {
-       DbSet<User> Users { get; }
+        DbSet<User> Users { get; }
     }
 }

@@ -22,7 +22,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
-            var stepData = step.Data.ToObject<QueryPropertiesStepData>();            var propNames = stepData.PropertyNames?.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray();
+            var stepData = step.Data.ToObject<QueryPropertiesStepData>(); var propNames = stepData.PropertyNames?.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray();
             var parentIds = stepData.ParentIds?.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray();
             var ids = stepData.Ids?.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToArray();
 

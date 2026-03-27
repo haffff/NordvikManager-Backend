@@ -14,13 +14,15 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using Moq;using System;
+using Moq;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
-{    public class GameListControllerTests
+{
+    public class GameListControllerTests
     {
         // -------------------------------------------------------------------------
         // Helpers
@@ -37,7 +39,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
                      .ReturnsAsync(PlayerResponse(SomePlayer()));
 
             _controller = CreateController(_mediator, _config, _ws, RegularUser());
-        }        private static GameListController CreateController(
+        }
+        private static GameListController CreateController(
             Mock<IMediator> mediatorMock,
             Mock<IConfiguration>? configMock = null,
             Mock<IWebSocketManager>? wsMock = null,
@@ -125,6 +128,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
         // GetFeaturedAddons
         // =========================================================================        [Fact]
+        [Fact]
         public async Task GetFeaturedAddons_ReturnsOk_WithFilteredAddons()
         {
             // Arrange
@@ -225,8 +229,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             // Assert
             Assert.IsType<BadRequestResult>(result);
-        }        
-        
+        }
+
         [Fact]
         public async Task JoinGame_ReturnsOk_WhenPlayerJoinsSuccessfully()
         {

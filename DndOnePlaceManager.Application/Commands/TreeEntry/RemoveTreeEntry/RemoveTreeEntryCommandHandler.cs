@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
 {
-    public class RemoveTreeEntryCommandHandler : HandlerBase<RemoveTreeEntryCommand,CommandResponse>
+    public class RemoveTreeEntryCommandHandler : HandlerBase<RemoveTreeEntryCommand, CommandResponse>
     {
         public RemoveTreeEntryCommandHandler(IDbContext ctx, IMapper mapper) : base(ctx, mapper)
         {
@@ -57,7 +57,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
             }
             else
             {
-                if(nextFromDeleted != null)
+                if (nextFromDeleted != null)
                     nextFromDeleted.Head = true;
             }
 

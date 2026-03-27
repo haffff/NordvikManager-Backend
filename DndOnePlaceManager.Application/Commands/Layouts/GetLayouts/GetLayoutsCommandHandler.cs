@@ -10,7 +10,7 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.GetLayouts
     internal class GetLayoutsCommandHandler : HandlerBase<GetLayoutsCommand, List<LayoutDTO>>
     {
 
-        public GetLayoutsCommandHandler(IDbContext dbContext,  IMapper mapper) : base(dbContext, mapper)
+        public GetLayoutsCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
 
@@ -28,7 +28,8 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.GetLayouts
 
             if (request.Flat)
             {
-                return itemsQuery.Select(x => new LayoutDTO() {
+                return itemsQuery.Select(x => new LayoutDTO()
+                {
                     Id = x.Id,
                     Name = x.Name,
                     Default = x.Default,
@@ -36,11 +37,12 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.GetLayouts
             }
             else
             {
-                return itemsQuery.Select(x => {
-                     var dto = mapper.Map<LayoutDTO>(x);
-                     dto.Permission = x.GetPermission(request.Player.Id ?? Guid.Empty);
-                     return dto;
-                 }).ToList();
+                return itemsQuery.Select(x =>
+                {
+                    var dto = mapper.Map<LayoutDTO>(x);
+                    dto.Permission = x.GetPermission(request.Player.Id ?? Guid.Empty);
+                    return dto;
+                }).ToList();
             }
         }
     }

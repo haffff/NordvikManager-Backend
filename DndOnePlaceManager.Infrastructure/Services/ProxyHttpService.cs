@@ -12,7 +12,8 @@ namespace DndOnePlaceManager.Infrastructure.Services
         public ProxyHttpService(IHttpClientFactory httpClientFactory)
         {
             this.httpClientFactory = httpClientFactory;
-        }        public async Task<(bool Success, int StatusCode, string? ResponseBody)> SendJsonAsync(
+        }
+        public async Task<(bool Success, int StatusCode, string? ResponseBody)> SendJsonAsync(
             string method,
             string url,
             Dictionary<string, object?> body,

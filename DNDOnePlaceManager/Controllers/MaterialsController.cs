@@ -224,7 +224,7 @@ namespace DNDOnePlaceManager.Controllers
         [HttpPost]
         [Authorize]
         [Route("AddResource")]
-        public async Task<IActionResult> AddResource([FromQuery]Guid gameId , [FromBody] AddResourceRequest request) 
+        public async Task<IActionResult> AddResource([FromQuery] Guid gameId, [FromBody] AddResourceRequest request)
         {
             var user = HttpContext.Items["User"] as User;
 

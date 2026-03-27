@@ -5,6 +5,6 @@ namespace DndOnePlaceManager.Application.Commands.Map.GetFlatMaps
 {
     public class GetFlatMapsCommand : GenericGetListCommand<MapDTO>
     {
-        
+
     }
 }

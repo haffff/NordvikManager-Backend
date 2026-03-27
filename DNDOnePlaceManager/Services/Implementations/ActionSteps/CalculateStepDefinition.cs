@@ -20,7 +20,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Category => "Math";
         public string Description => "Performs calculation provided in Expression argument";
 
-        public Type DataType => typeof(CalculateStepData);        public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
+        public Type DataType => typeof(CalculateStepData); public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<CalculateStepData>();
 

@@ -9,7 +9,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 {
     public class GetResourceDataCommandHandler : HandlerBase<GetResourceDataCommand, (byte[], MimeType)>
     {
-        public GetResourceDataCommandHandler(IMapper mapper , IDbContext ctx) : base(ctx, mapper)
+        public GetResourceDataCommandHandler(IMapper mapper, IDbContext ctx) : base(ctx, mapper)
         {
         }
 
@@ -27,7 +27,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 return (image.Data, image.MimeType);
             }
 
-            return (null,MimeType.None);
+            return (null, MimeType.None);
         }
     }
 }

@@ -129,16 +129,17 @@ namespace DNDOnePlaceManager.Implementations
                 x.UserName,
                 x.Email,
                 x.IsAdmin
-            }).Cast<object>().ToList(), 
+            }).Cast<object>().ToList(),
             _userManager.Users.Count());
         }
 
-        public async Task<Dictionary<string,string>> GetKeyboardBindings(string id)
+        public async Task<Dictionary<string, string>> GetKeyboardBindings(string id)
         {
             var user = await _userManager.FindByIdAsync(id);
             var deserialized = JsonConvert.DeserializeObject<Dictionary<string, string>>(user.KeyBindings);
             return deserialized;
-        }        public async Task<bool> SetKeyboardBindings(string id, Dictionary<string, string> bindings)
+        }
+        public async Task<bool> SetKeyboardBindings(string id, Dictionary<string, string> bindings)
         {
             string serializedBindings = JsonConvert.SerializeObject(bindings);
             var user = await _userManager.FindByIdAsync(id);
@@ -162,8 +163,8 @@ namespace DNDOnePlaceManager.Implementations
             user.IsAdmin = isAdmin;
             var result = await _userManager.UpdateAsync(user);
             return result.Succeeded;
-        }        
-        
+        }
+
         public async Task<bool> ResetPassword(string id, string newPassword)
         {
             var user = await _userManager.FindByIdAsync(id);

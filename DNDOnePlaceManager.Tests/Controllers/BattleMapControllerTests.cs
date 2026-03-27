@@ -21,7 +21,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
-{    public class BattleMapControllerTests
+{
+    public class BattleMapControllerTests
     {
         // -------------------------------------------------------------------------
         // Helpers

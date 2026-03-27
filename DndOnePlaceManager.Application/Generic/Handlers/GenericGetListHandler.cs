@@ -47,7 +47,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
 
             var mappedDTOs = mapper.Map<IEnumerable<TResponse>>(entities).ToList();
             var modifiedDTOs = ModifyOutput(mappedDTOs);
-            
+
             return modifiedDTOs;
         }
     }

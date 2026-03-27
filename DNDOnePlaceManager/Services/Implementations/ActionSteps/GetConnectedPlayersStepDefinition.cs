@@ -17,7 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<ValueStepData>()?.Value;
-            var players = gameLobby.ConnectedPlayers.Keys;            
+            var players = gameLobby.ConnectedPlayers.Keys;
             variables[stepData] = players;
         }
     }

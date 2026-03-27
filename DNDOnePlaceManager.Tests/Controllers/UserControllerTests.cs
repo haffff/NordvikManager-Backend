@@ -723,7 +723,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(contextUser: RegularUser());
             var request = new CreateUserRequest
             {
-                UserName = "new", Email = "new@test.com", Password = "pass", IsAdmin = false
+                UserName = "new",
+                Email = "new@test.com",
+                Password = "pass",
+                IsAdmin = false
             };
 
             // Act
@@ -743,7 +746,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(auth, contextUser: AdminUser());
             var request = new CreateUserRequest
             {
-                UserName = "new", Email = "new@test.com", Password = "pass", IsAdmin = false
+                UserName = "new",
+                Email = "new@test.com",
+                Password = "pass",
+                IsAdmin = false
             };
 
             // Act
@@ -764,7 +770,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(auth, contextUser: AdminUser());
             var request = new CreateUserRequest
             {
-                UserName = "newuser", Email = "new@test.com", Password = "pass", IsAdmin = true
+                UserName = "newuser",
+                Email = "new@test.com",
+                Password = "pass",
+                IsAdmin = true
             };
 
             // Act

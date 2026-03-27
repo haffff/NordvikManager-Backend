@@ -40,7 +40,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry
             }
 
             var newTreeEntries = game.TreeEntries.Where(x => x.NewItem == true && x.EntryType == request.EntityType);
-            if(newTreeEntries.Any())
+            if (newTreeEntries.Any())
             {
                 logger.LogInformation("New tree entries found. Connecting to tree");
             }
