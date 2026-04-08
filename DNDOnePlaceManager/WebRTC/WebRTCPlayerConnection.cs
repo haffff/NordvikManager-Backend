@@ -23,7 +23,7 @@ namespace DNDOnePlaceManager.WebRTC
         public Task<bool> SendMessageToPlayer(object message)
         {
             if (_dataChannel.readyState != RTCDataChannelState.open)
-                return Task.FromResult(true);
+                return Task.FromResult(false);
 
             var json = JsonConvert.SerializeObject(message);
 

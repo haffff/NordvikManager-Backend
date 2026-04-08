@@ -126,8 +126,7 @@ namespace DNDOnePlaceManager.Controllers
         {
             var user = HttpContext.Items["User"] as User;
 
-            //For now
-            if (!user?.IsAdmin == true)
+            if (user?.IsAdmin != true)
                 return BadRequest();
 
             addGameCommand.User = user;
@@ -184,7 +183,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> AssignSession([FromQuery] Guid gameId)
         {
             var user = HttpContext.Items["User"] as User;
-            if (!user?.IsAdmin == true)
+            if (user?.IsAdmin != true) 
                 return Unauthorized();
 
             var centralToken = Request.Cookies["CentralToken"];

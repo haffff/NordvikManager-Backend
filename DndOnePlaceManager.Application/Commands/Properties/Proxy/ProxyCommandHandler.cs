@@ -1,11 +1,15 @@
 using AutoMapper;
 using DndOnePlaceManager.Infrastructure.Interfaces;
-using Newtonsoft.Json;
+using System.Net;
+using System.Net.Sockets;
 
 namespace DndOnePlaceManager.Application.Commands.Properties.Proxy
 {
     public class ProxyCommandHandler : HandlerBase<ProxyCommand, ProxyCommandResult>
     {
+        private static readonly HashSet<string> AllowedSchemes =
+            new(StringComparer.OrdinalIgnoreCase) { "http", "https" };
+
         private readonly IProxyHttpService proxyHttpService;
 
         public ProxyCommandHandler(IDbContext dbContext, IMapper mapper, IProxyHttpService proxyHttpService)
@@ -16,6 +20,11 @@ namespace DndOnePlaceManager.Application.Commands.Properties.Proxy
         public override async Task<ProxyCommandResult> Handle(ProxyCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
+
+            if (!await IsUrlAllowedAsync(request.TargetUrl))
+            {
+                return new ProxyCommandResult { Success = false, StatusCode = 400 };
+            }
 
             // Collect all protected property names that need to be resolved
             // (body properties + the bearer token property, deduplicated)
@@ -59,39 +68,96 @@ namespace DndOnePlaceManager.Application.Commands.Properties.Proxy
                 resolvedProtected.TryGetValue(request.BearerTokenPropertyName, out bearerToken); var (success, statusCode, responseBody) = await proxyHttpService.SendJsonAsync(
                 request.HttpMethod, request.TargetUrl, body, bearerToken, cancellationToken);
 
-            // Strip all protected names (body properties + token property) from the response
+            // Redact all resolved protected values from the response regardless of structure
             return new ProxyCommandResult
             {
                 Success = success,
                 StatusCode = statusCode,
-                ResponseBody = StripProtectedValues(responseBody, allProtectedNames)
+                ResponseBody = RedactProtectedValues(responseBody, resolvedProtected)
             };
         }
 
         /// <summary>
-        /// Parses the external response and removes any keys that match protected property names,
-        /// ensuring protected values are never leaked back to the caller.
+        /// Returns false if the URL is invalid, uses a disallowed scheme, or resolves to
+        /// a private, loopback, or link-local address (SSRF protection).
         /// </summary>
-        private static string? StripProtectedValues(string? responseBody, string[]? protectedNames)
+        private static async Task<bool> IsUrlAllowedAsync(string targetUrl)
         {
-            if (string.IsNullOrWhiteSpace(responseBody) || protectedNames == null || protectedNames.Length == 0)
-                return responseBody;
+            if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri))
+                return false;
 
+            if (!AllowedSchemes.Contains(uri.Scheme))
+                return false;
+
+            IPAddress[] addresses;
             try
             {
-                var obj = JsonConvert.DeserializeObject<Dictionary<string, object?>>(responseBody);
-                if (obj == null) return responseBody;
-
-                foreach (var name in protectedNames)
-                    obj.Remove(name);
-
-                return JsonConvert.SerializeObject(obj);
+                addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost);
             }
             catch
             {
-                // If the response isn't a JSON object we can't strip — return as-is
-                return responseBody;
+                return false;
             }
+
+            if (addresses.Length == 0)
+                return false;
+
+            foreach (var ip in addresses)
+            {
+                if (IsPrivateOrLoopback(ip))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Returns true for loopback, private RFC-1918, link-local, and unique-local addresses.
+        /// </summary>
+        private static bool IsPrivateOrLoopback(IPAddress ip)
+        {
+            if (IPAddress.IsLoopback(ip))
+                return true;
+
+            var bytes = ip.GetAddressBytes();
+
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return bytes[0] == 127                                          // 127.0.0.0/8  loopback
+                    || bytes[0] == 10                                           // 10.0.0.0/8   private
+                    || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)   // 172.16.0.0/12 private
+                    || (bytes[0] == 192 && bytes[1] == 168)                    // 192.168.0.0/16 private
+                    || (bytes[0] == 169 && bytes[1] == 254)                    // 169.254.0.0/16 link-local
+                    || bytes[0] == 0;                                           // 0.0.0.0/8    unspecified
+            }
+
+            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                return (bytes[0] & 0xfe) == 0xfc                               // fc00::/7 unique local
+                    || (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80);        // fe80::/10 link-local
+            }
+
+            return true; // block any unexpected address family
+        }
+
+        /// <summary>
+        /// Replaces every occurrence of each resolved protected value in the response with
+        /// "[REDACTED]". Value-based redaction works across nested objects, arrays, plain-text
+        /// bodies, and any key name the external service may use. Empty or null values are
+        /// skipped to avoid corrupting the response.
+        /// </summary>
+        private static string? RedactProtectedValues(string? responseBody, Dictionary<string, string?> resolvedProtected)
+        {
+            if (string.IsNullOrWhiteSpace(responseBody) || resolvedProtected.Count == 0)
+                return responseBody;
+
+            foreach (var secret in resolvedProtected.Values)
+            {
+                if (!string.IsNullOrEmpty(secret))
+                    responseBody = responseBody.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+            }
+
+            return responseBody;
         }
     }
 }

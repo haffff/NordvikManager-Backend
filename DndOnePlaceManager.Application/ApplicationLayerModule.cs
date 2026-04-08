@@ -16,11 +16,7 @@ namespace DndOnePlaceManager.Application
             services.AddScoped<IPermissionService, PermissionsService>();
             services.AddScoped<IChatService, ChatService>();
 
-            var handlers = Assembly.GetExecutingAssembly().GetTypes().Where(x => x.FullName?.EndsWith("CommandHandler") == true);
-            foreach (var handler in handlers)
-            {
-                services.AddMediatR(handler);
-            }
+            services.AddMediatR(Assembly.GetExecutingAssembly());
         }
 
         public static void AfterBuild(IServiceProvider provider)

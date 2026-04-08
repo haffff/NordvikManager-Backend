@@ -14,29 +14,29 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProtectedPropert
         {
             await base.Handle(request, cancellationToken);
 
-            var collection = dbContext.Properties.Where(x => x.IsProtected).AsEnumerable();
+            var query = dbContext.Properties.Where(x => x.IsProtected);
 
             if (request.ParentID.HasValue)
             {
-                collection = collection.Where(x => x.ParentID == request.ParentID.Value);
+                query = query.Where(x => x.ParentID == request.ParentID.Value);
             }
 
             if (request.Ids?.Any() == true)
             {
-                collection = collection.Where(x => request.Ids.Contains(x.Id));
+                query = query.Where(x => request.Ids.Contains(x.Id));
             }
 
             if (request.PropertyNames?.Any() == true)
             {
-                collection = collection.Where(x => request.PropertyNames.Contains(x.Name));
+                query = query.Where(x => request.PropertyNames.Contains(x.Name));
             }
 
             if (request.Prefix != null)
             {
-                collection = collection.Where(x => x.Name?.StartsWith(request.Prefix) == true);
+                query = query.Where(x => x.Name != null && x.Name.StartsWith(request.Prefix));
             }
 
-            return collection.Select(mapper.Map<PropertyDTO>).ToList();
+            return query.Select(x => mapper.Map<PropertyDTO>(x)).ToList();
         }
     }
 }
