@@ -1,5 +1,5 @@
+using DndOnePlaceManager.Application.Commands.Player.GetLocalPlayers;
 using DNDOnePlaceManager.Controllers;
-using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Models;
 using DNDOnePlaceManager.Services.Interfaces;
@@ -8,9 +8,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Moq;
-using System;
 using System.Collections.Generic;
-using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Tests.Controllers
@@ -22,45 +21,33 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // -------------------------------------------------------------------------
 
         private static UserController CreateController(
-            Mock<IAuthService>? authMock = null,
+            Mock<ICentralServerService>? centralMock = null,
+            Mock<IMediator>? mediatorMock = null,
             User? contextUser = null)
         {
-            authMock ??= new Mock<IAuthService>();
-            var mediatorMock = new Mock<IMediator>();
-            var configMock = new Mock<IConfiguration>();
+            centralMock ??= new Mock<ICentralServerService>();
+            mediatorMock ??= new Mock<IMediator>();
 
-            var controller = new UserController(mediatorMock.Object, authMock.Object, configMock.Object);
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["JWTSecret"] = "test-secret-that-is-long-enough-for-hmacsha256-x",
+                    ["JWT:ExpireHours"] = "3"
+                })
+                .Build();
+
+            var controller = new UserController(centralMock.Object, mediatorMock.Object, config);
 
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
 
-            controller.ControllerContext = new ControllerContext
-            {
-                HttpContext = httpContext
-            };
-
+            controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
             return controller;
         }
 
         private static User AdminUser() => new User { Id = "admin-id", UserName = "admin", IsAdmin = true };
         private static User RegularUser() => new User { Id = "user-id", UserName = "regular", IsAdmin = false };
-
-        private static void ClearInvites()
-        {
-            var field = typeof(UserController)
-                .GetField("registrationInvite", BindingFlags.NonPublic | BindingFlags.Static)!;
-            var dict = (Dictionary<string, DateTime>)field.GetValue(null)!;
-            dict.Clear();
-        }
-
-        private static void SeedInvite(string code, DateTime expiry)
-        {
-            var field = typeof(UserController)
-                .GetField("registrationInvite", BindingFlags.NonPublic | BindingFlags.Static)!;
-            var dict = (Dictionary<string, DateTime>)field.GetValue(null)!;
-            dict[code] = expiry;
-        }
 
         // =========================================================================
         // Login
@@ -69,34 +56,33 @@ namespace DNDOnePlaceManager.Tests.Controllers
         [Fact]
         public async Task Login_ReturnsOk_WhenCredentialsAreValid()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.Login(It.IsAny<LoginRequest>(), It.IsAny<HttpContext>()))
-                .ReturnsAsync("jwt-token");
-            var controller = CreateController(auth);
-            var request = new LoginRequest { Username = "user", Password = "pass" };
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.LoginAsync("user", "pass"))
+                .ReturnsAsync(new CentralLoginResult
+                {
+                    CentralToken = "central-jwt",
+                    UserId = "abc123",
+                    UserName = "user",
+                    Email = "u@test.com",
+                    IsAdmin = false
+                });
+            var controller = CreateController(central);
 
-            // Act
-            var result = await controller.Login(request);
+            var result = await controller.Login(new LoginRequest { Username = "user", Password = "pass" });
 
-            // Assert
             Assert.IsType<OkObjectResult>(result);
         }
 
         [Fact]
         public async Task Login_ReturnsUnauthorized_WhenCredentialsAreInvalid()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.Login(It.IsAny<LoginRequest>(), It.IsAny<HttpContext>()))
-                .ReturnsAsync((string?)null);
-            var controller = CreateController(auth);
-            var request = new LoginRequest { Username = "user", Password = "wrong" };
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.LoginAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync((CentralLoginResult?)null);
+            var controller = CreateController(central);
 
-            // Act
-            var result = await controller.Login(request);
+            var result = await controller.Login(new LoginRequest { Username = "user", Password = "wrong" });
 
-            // Assert
             Assert.IsType<UnauthorizedObjectResult>(result);
         }
 
@@ -107,13 +93,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
         [Fact]
         public void CheckLogin_ReturnsOk()
         {
-            // Arrange
             var controller = CreateController(contextUser: RegularUser());
-
-            // Act
             var result = controller.CheckLogin();
-
-            // Assert
             Assert.IsType<OkResult>(result);
         }
 
@@ -122,15 +103,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task Logout_ReturnsOk()
+        public void Logout_ReturnsOk()
         {
-            // Arrange
             var controller = CreateController(contextUser: RegularUser());
-
-            // Act
-            var result = await controller.Logout();
-
-            // Assert
+            var result = controller.Logout();
             Assert.IsType<OkResult>(result);
         }
 
@@ -139,16 +115,13 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetUserInfo_ReturnsOkWithUserData()
+        public void GetUserInfo_ReturnsOkWithUserData()
         {
-            // Arrange
             var user = new User { UserName = "testuser", Email = "test@example.com", IsAdmin = false };
             var controller = CreateController(contextUser: user);
 
-            // Act
-            var result = await controller.GetUserInfo();
+            var result = controller.GetUserInfo();
 
-            // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.NotNull(ok.Value);
         }
@@ -158,19 +131,29 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetUserNameById_ReturnsOkWithName()
+        public async Task GetUserNameById_ReturnsOk_WhenFound()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.GetUserName("some-id")).ReturnsAsync("John");
-            var controller = CreateController(auth, contextUser: RegularUser());
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), "some-id"))
+                .ReturnsAsync("John");
+            var controller = CreateController(central, contextUser: RegularUser());
 
-            // Act
             var result = await controller.GetUserNameById("some-id");
 
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal("John", ok.Value);
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task GetUserNameById_ReturnsNotFound_WhenMissing()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync((string?)null);
+            var controller = CreateController(central, contextUser: RegularUser());
+
+            var result = await controller.GetUserNameById("unknown");
+
+            Assert.IsType<NotFoundResult>(result);
         }
 
         // =========================================================================
@@ -178,45 +161,23 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task Invites_ReturnsBadRequest_WhenUserIsNotAdmin()
+        public async Task Invites_ReturnsUnauthorized_WhenNotAdmin()
         {
-            // Arrange
-            ClearInvites();
             var controller = CreateController(contextUser: RegularUser());
+            var result = await controller.Invites();
+            Assert.IsType<UnauthorizedResult>(result);
+        }
 
-            // Act
+        [Fact]
+        public async Task Invites_ReturnsOk_WhenAdmin()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.GetInvitesAsync(It.IsAny<string>(), 1))
+                .ReturnsAsync(new { data = new object[] { } });
+            var controller = CreateController(central, contextUser: AdminUser());
+
             var result = await controller.Invites(1);
 
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task Invites_ReturnsBadRequest_WhenPageIsZero()
-        {
-            // Arrange
-            ClearInvites();
-            var controller = CreateController(contextUser: AdminUser());
-
-            // Act
-            var result = await controller.Invites(0);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task Invites_ReturnsOk_WhenAdminRequestsValidPage()
-        {
-            // Arrange
-            ClearInvites();
-            SeedInvite("code1", DateTime.Now.AddHours(1));
-            var controller = CreateController(contextUser: AdminUser());
-
-            // Act
-            var result = await controller.Invites(1, 10);
-
-            // Assert
             Assert.IsType<OkObjectResult>(result);
         }
 
@@ -225,30 +186,23 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GenerateInvite_ReturnsUnauthorized_WhenUserIsNotAdmin()
+        public async Task GenerateInvite_ReturnsUnauthorized_WhenNotAdmin()
         {
-            // Arrange
-            ClearInvites();
             var controller = CreateController(contextUser: RegularUser());
-
-            // Act
             var result = await controller.GenerateInvite();
-
-            // Assert
             Assert.IsType<UnauthorizedResult>(result);
         }
 
         [Fact]
-        public async Task GenerateInvite_ReturnsOkWithInviteCode_WhenAdmin()
+        public async Task GenerateInvite_ReturnsOk_WhenAdmin()
         {
-            // Arrange
-            ClearInvites();
-            var controller = CreateController(contextUser: AdminUser());
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.GenerateInviteAsync(It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync("invite-key-123");
+            var controller = CreateController(central, contextUser: AdminUser());
 
-            // Act
-            var result = await controller.GenerateInvite();
+            var result = await controller.GenerateInvite(24);
 
-            // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.NotNull(ok.Value);
         }
@@ -258,97 +212,35 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task Register_ReturnsUnauthorized_WhenInviteCodeIsInvalid()
+        public async Task Register_ReturnsOk_WhenSuccessful()
         {
-            // Arrange
-            ClearInvites();
-            var controller = CreateController();
-            var request = new RegisterRequest
-            {
-                InviteCode = "invalid-code",
-                Username = "user",
-                Password = "pass",
-                Email = "a@b.com"
-            };
-
-            // Act
-            var result = await controller.Register(request);
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task Register_ReturnsUnauthorized_WhenInviteCodeIsExpired()
-        {
-            // Arrange
-            ClearInvites();
-            SeedInvite("expired-code", DateTime.Now.AddHours(-1));
-            var controller = CreateController();
-            var request = new RegisterRequest
-            {
-                InviteCode = "expired-code",
-                Username = "user",
-                Password = "pass",
-                Email = "a@b.com"
-            };
-
-            // Act
-            var result = await controller.Register(request);
-
-            // Assert
-            var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result);
-            Assert.NotNull(unauthorized.Value);
-        }
-
-        [Fact]
-        public async Task Register_ReturnsBadRequest_WhenAuthServiceFails()
-        {
-            // Arrange
-            ClearInvites();
-            SeedInvite("valid-code", DateTime.Now.AddHours(1));
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.Register(It.IsAny<RegisterRequest>()))
-                .ReturnsAsync((false, "User already exists!"));
-            var controller = CreateController(auth);
-            var request = new RegisterRequest
-            {
-                InviteCode = "valid-code",
-                Username = "user",
-                Password = "pass",
-                Email = "a@b.com"
-            };
-
-            // Act
-            var result = await controller.Register(request);
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task Register_ReturnsOk_WhenRegistrationSucceeds()
-        {
-            // Arrange
-            ClearInvites();
-            SeedInvite("valid-code2", DateTime.Now.AddHours(1));
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.Register(It.IsAny<RegisterRequest>()))
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync((true, "User created successfully!"));
-            var controller = CreateController(auth);
-            var request = new RegisterRequest
+            var controller = CreateController(central);
+
+            var result = await controller.Register(new RegisterRequest
             {
-                InviteCode = "valid-code2",
-                Username = "newuser",
-                Password = "pass",
-                Email = "new@b.com"
-            };
+                Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code"
+            });
 
-            // Act
-            var result = await controller.Register(request);
-
-            // Assert
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task Register_ReturnsBadRequest_WhenFailed()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync((false, "User already exists!"));
+            var controller = CreateController(central);
+
+            var result = await controller.Register(new RegisterRequest
+            {
+                Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code"
+            });
+
+            Assert.IsType<BadRequestObjectResult>(result);
         }
 
         // =========================================================================
@@ -356,32 +248,27 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task CheckRegistrationKey_ReturnsBadRequest_WhenKeyDoesNotExist()
+        public async Task CheckRegistrationKey_ReturnsOk_WhenValid()
         {
-            // Arrange
-            ClearInvites();
-            var controller = CreateController();
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.CheckRegistrationKeyAsync("valid-key")).ReturnsAsync(true);
+            var controller = CreateController(central);
 
-            // Act
-            var result = await controller.CheckRegistrationKey("nonexistent");
+            var result = await controller.CheckRegistrationKey("valid-key");
 
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<OkObjectResult>(result);
         }
 
         [Fact]
-        public async Task CheckRegistrationKey_ReturnsOk_WhenKeyExists()
+        public async Task CheckRegistrationKey_ReturnsBadRequest_WhenInvalid()
         {
-            // Arrange
-            ClearInvites();
-            SeedInvite("existing-key", DateTime.Now.AddHours(1));
-            var controller = CreateController();
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.CheckRegistrationKeyAsync(It.IsAny<string>())).ReturnsAsync(false);
+            var controller = CreateController(central);
 
-            // Act
-            var result = await controller.CheckRegistrationKey("existing-key");
+            var result = await controller.CheckRegistrationKey("bad-key");
 
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<BadRequestResult>(result);
         }
 
         // =========================================================================
@@ -389,44 +276,31 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task Users_ReturnsBadRequest_WhenUserIsNotAdmin()
+        public async Task Users_ReturnsUnauthorized_WhenNotAdmin()
         {
-            // Arrange
             var controller = CreateController(contextUser: RegularUser());
-
-            // Act
             var result = await controller.Users(1);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<UnauthorizedResult>(result);
         }
 
         [Fact]
         public async Task Users_ReturnsBadRequest_WhenPageIsZero()
         {
-            // Arrange
             var controller = CreateController(contextUser: AdminUser());
-
-            // Act
             var result = await controller.Users(0);
-
-            // Assert
             Assert.IsType<BadRequestResult>(result);
         }
 
         [Fact]
         public async Task Users_ReturnsOk_WhenAdminRequestsValidPage()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.GetUsers(0, 10))
-                .Returns((new List<object> { new { Id = "1", UserName = "u" } }, 1));
-            var controller = CreateController(auth, contextUser: AdminUser());
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<GetLocalPlayersCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new GetLocalPlayersCommandResponse { Page = 1, Count = 10, Total = 0, Data = new() });
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
-            // Act
             var result = await controller.Users(1, 10);
 
-            // Assert
             Assert.IsType<OkObjectResult>(result);
         }
 
@@ -435,353 +309,91 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task DeleteInvite_ReturnsBadRequest_WhenUserIsNotAdmin()
+        public async Task DeleteInvite_ReturnsUnauthorized_WhenNotAdmin()
         {
-            // Arrange
             var controller = CreateController(contextUser: RegularUser());
-
-            // Act
             var result = await controller.DeleteInvite("any-key");
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<UnauthorizedResult>(result);
         }
 
         [Fact]
-        public async Task DeleteInvite_ReturnsNotFound_WhenKeyDoesNotExist()
+        public async Task DeleteInvite_ReturnsNotFound_WhenKeyMissing()
         {
-            // Arrange
-            ClearInvites();
-            var controller = CreateController(contextUser: AdminUser());
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.DeleteInviteAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            var controller = CreateController(central, contextUser: AdminUser());
 
-            // Act
             var result = await controller.DeleteInvite("missing-key");
 
-            // Assert
             Assert.IsType<NotFoundResult>(result);
         }
 
         [Fact]
-        public async Task DeleteInvite_ReturnsOk_WhenKeyExists()
+        public async Task DeleteInvite_ReturnsOk_WhenKeyDeleted()
         {
-            // Arrange
-            ClearInvites();
-            SeedInvite("delete-me", DateTime.Now.AddHours(1));
-            var controller = CreateController(contextUser: AdminUser());
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.DeleteInviteAsync(It.IsAny<string>(), "delete-me")).ReturnsAsync(true);
+            var controller = CreateController(central, contextUser: AdminUser());
 
-            // Act
             var result = await controller.DeleteInvite("delete-me");
 
-            // Assert
             Assert.IsType<OkObjectResult>(result);
         }
 
         // =========================================================================
-        // KeyboardBindings (GET)
+        // KeyboardBindings
         // =========================================================================
 
         [Fact]
         public async Task KeyboardBindings_ReturnsOk_WithBindings()
         {
-            // Arrange
-            var bindings = new Dictionary<string, string> { { "Ctrl+S", "save" } };
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.GetKeyboardBindings("user-id")).ReturnsAsync(bindings);
-            var controller = CreateController(auth, contextUser: RegularUser());
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.GetKeyboardBindingsAsync(It.IsAny<string>()))
+                .ReturnsAsync(new Dictionary<string, string> { { "Ctrl+S", "save" } });
+            var controller = CreateController(central, contextUser: RegularUser());
 
-            // Act
             var result = await controller.KeyboardBindings();
 
-            // Assert
             Assert.IsType<OkObjectResult>(result);
         }
-
-        // =========================================================================
-        // SaveKeyboardBindings (POST)
-        // =========================================================================
 
         [Fact]
         public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenKeyIsInvalid()
         {
-            // Arrange
             var controller = CreateController(contextUser: RegularUser());
             var invalidBindings = new Dictionary<string, string> { { "INVALID KEY!!", "action" } };
 
-            // Act
             var result = await controller.SaveKeyboardBindings(invalidBindings);
 
-            // Assert
             Assert.IsType<BadRequestResult>(result);
         }
 
         [Fact]
         public async Task SaveKeyboardBindings_ReturnsOk_WhenBindingsAreValid()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.SetKeyboardBindings("user-id", It.IsAny<Dictionary<string, string>>()))
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
                 .ReturnsAsync(true);
-            var controller = CreateController(auth, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string>
-            {
-                { "Ctrl+S", "save" },
-                { "Alt+F4", "close" }
-            };
+            var controller = CreateController(central, contextUser: RegularUser());
+            var validBindings = new Dictionary<string, string> { { "Ctrl+S", "save" }, { "Alt+F4", "close" } };
 
-            // Act
             var result = await controller.SaveKeyboardBindings(validBindings);
 
-            // Assert
             Assert.IsType<OkResult>(result);
         }
 
         [Fact]
         public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenServiceFails()
         {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.SetKeyboardBindings("user-id", It.IsAny<Dictionary<string, string>>()))
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
                 .ReturnsAsync(false);
-            var controller = CreateController(auth, contextUser: RegularUser());
+            var controller = CreateController(central, contextUser: RegularUser());
             var validBindings = new Dictionary<string, string> { { "Ctrl+Z", "undo" } };
 
-            // Act
             var result = await controller.SaveKeyboardBindings(validBindings);
 
-            // Assert
             Assert.IsType<BadRequestResult>(result);
-        }
-
-        // =========================================================================
-        // DeleteUser
-        // =========================================================================
-
-        [Fact]
-        public async Task DeleteUser_ReturnsUnauthorized_WhenUserIsNotAdmin()
-        {
-            // Arrange
-            var controller = CreateController(contextUser: RegularUser());
-
-            // Act
-            var result = await controller.DeleteUser("some-id");
-
-            // Assert
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteUser_ReturnsBadRequest_WhenUserIdIsEmpty()
-        {
-            // Arrange
-            var controller = CreateController(contextUser: AdminUser());
-
-            // Act
-            var result = await controller.DeleteUser(string.Empty);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteUser_ReturnsNotFound_WhenServiceReturnsFalse()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.DeleteUser("ghost-id")).ReturnsAsync(false);
-            var controller = CreateController(auth, contextUser: AdminUser());
-
-            // Act
-            var result = await controller.DeleteUser("ghost-id");
-
-            // Assert
-            Assert.IsType<NotFoundResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteUser_ReturnsOk_WhenDeletionSucceeds()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.DeleteUser("target-id")).ReturnsAsync(true);
-            var controller = CreateController(auth, contextUser: AdminUser());
-
-            // Act
-            var result = await controller.DeleteUser("target-id");
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        // =========================================================================
-        // ToggleAdmin
-        // =========================================================================
-
-        [Fact]
-        public async Task ToggleAdmin_ReturnsUnauthorized_WhenUserIsNotAdmin()
-        {
-            // Arrange
-            var controller = CreateController(contextUser: RegularUser());
-            var request = new ToggleAdminRequest { UserID = "id", IsAdmin = true };
-
-            // Act
-            var result = await controller.ToggleAdmin(request);
-
-            // Assert
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task ToggleAdmin_ReturnsBadRequest_WhenServiceFails()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.ToggleAdmin("id", true)).ReturnsAsync(false);
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new ToggleAdminRequest { UserID = "id", IsAdmin = true };
-
-            // Act
-            var result = await controller.ToggleAdmin(request);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task ToggleAdmin_ReturnsOk_WhenServiceSucceeds()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.ToggleAdmin("id", false)).ReturnsAsync(true);
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new ToggleAdminRequest { UserID = "id", IsAdmin = false };
-
-            // Act
-            var result = await controller.ToggleAdmin(request);
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        // =========================================================================
-        // ResetPassword
-        // =========================================================================
-
-        [Fact]
-        public async Task ResetPassword_ReturnsUnauthorized_WhenUserIsNotAdmin()
-        {
-            // Arrange
-            var controller = CreateController(contextUser: RegularUser());
-            var request = new ResetPasswordRequest { UserID = "id", NewPassword = "new" };
-
-            // Act
-            var result = await controller.ResetPassword(request);
-
-            // Assert
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task ResetPassword_ReturnsBadRequest_WhenServiceFails()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.ResetPassword("id", "newpass")).ReturnsAsync(false);
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new ResetPasswordRequest { UserID = "id", NewPassword = "newpass" };
-
-            // Act
-            var result = await controller.ResetPassword(request);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task ResetPassword_ReturnsOk_WhenServiceSucceeds()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.ResetPassword("id", "newpass")).ReturnsAsync(true);
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new ResetPasswordRequest { UserID = "id", NewPassword = "newpass" };
-
-            // Act
-            var result = await controller.ResetPassword(request);
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        // =========================================================================
-        // CreateUser
-        // =========================================================================
-
-        [Fact]
-        public async Task CreateUser_ReturnsUnauthorized_WhenUserIsNotAdmin()
-        {
-            // Arrange
-            var controller = CreateController(contextUser: RegularUser());
-            var request = new CreateUserRequest
-            {
-                UserName = "new",
-                Email = "new@test.com",
-                Password = "pass",
-                IsAdmin = false
-            };
-
-            // Act
-            var result = await controller.CreateUser(request);
-
-            // Assert
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task CreateUser_ReturnsBadRequest_WhenServiceFails()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.CreateUser("new", "new@test.com", "pass", false))
-                .ReturnsAsync((false, "User already exists!"));
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new CreateUserRequest
-            {
-                UserName = "new",
-                Email = "new@test.com",
-                Password = "pass",
-                IsAdmin = false
-            };
-
-            // Act
-            var result = await controller.CreateUser(request);
-
-            // Assert
-            var bad = Assert.IsType<BadRequestObjectResult>(result);
-            Assert.NotNull(bad.Value);
-        }
-
-        [Fact]
-        public async Task CreateUser_ReturnsOk_WhenCreationSucceeds()
-        {
-            // Arrange
-            var auth = new Mock<IAuthService>();
-            auth.Setup(x => x.CreateUser("newuser", "new@test.com", "pass", true))
-                .ReturnsAsync((true, "User created successfully!"));
-            var controller = CreateController(auth, contextUser: AdminUser());
-            var request = new CreateUserRequest
-            {
-                UserName = "newuser",
-                Email = "new@test.com",
-                Password = "pass",
-                IsAdmin = true
-            };
-
-            // Act
-            var result = await controller.CreateUser(request);
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
         }
     }
 }

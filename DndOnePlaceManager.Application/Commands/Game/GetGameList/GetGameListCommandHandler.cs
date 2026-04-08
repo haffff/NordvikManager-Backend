@@ -18,7 +18,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             var result = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.Properties)
-                .Where(x => x.Players.Any(y => y.User == request.UserId)).ToListAsync();
+                .Where(x => x.Players.Any(y => y.CentralServerUserId == request.UserId)).ToListAsync();
 
             var mapped = result.Select(x =>
             {
@@ -26,16 +26,18 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 string? shortDescription = x.Properties.FirstOrDefault(y => y.Name == "shortDescription")?.Value;
                 string? color = x.Properties.FirstOrDefault(y => y.Name == "color")?.Value;
                 string? image = x.Properties.FirstOrDefault(y => y.Name == "image")?.Value;
+                
 
                 GameItemDTO gameItem = new GameItemDTO()
                 {
                     Id = x.Id,
+                    CentralSessionId = x.CentralSessionId,
                     Name = x.Name,
                     LongDescription = longDescription,
                     ShortDescription = shortDescription,
                     Image = image,
                     Color = color,
-                    IsOwner = x.Players.FirstOrDefault(y => y.User == request.UserId)?.Id == x.MasterId
+                    IsOwner = x.Players.FirstOrDefault(y => y.CentralServerUserId == request.UserId)?.Id == x.MasterId
                 };
 
                 return gameItem;

@@ -1,16 +1,23 @@
-﻿using DNDOnePlaceManager.Controllers.Responses;
-using DNDOnePlaceManager.Controllers.Requests;
+using DndOnePlaceManager.Application.Commands.Player.BanUser;
+using DndOnePlaceManager.Application.Commands.Player.CheckUserBanned;
+using DndOnePlaceManager.Application.Commands.Player.GetLocalPlayers;
+using DndOnePlaceManager.Application.Commands.Player.KickPlayer;
+using DndOnePlaceManager.Application.Commands.Player.RemoveUserPlayers;
+using DndOnePlaceManager.Application.Commands.Player.UnbanUser;
 using DNDOnePlaceManager.Domain.Entities.Auth;
-using DNDOnePlaceManager.Engine.Attribs;
+using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Interfaces;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Controllers
@@ -19,71 +26,81 @@ namespace DNDOnePlaceManager.Controllers
     [ApiController]
     public class UserController : Controller
     {
-        private readonly IMediator mediator;
-        IAuthService authService;
-        private readonly IConfiguration configuration;
-        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();
+        private readonly ICentralServerService _centralServer;
+        private readonly IMediator _mediator;
+        private readonly IConfiguration _configuration;
+        private readonly ILobbyService _lobbyService;
 
-        public UserController(IMediator mediator, IAuthService auth, IConfiguration configuration)
+        public UserController(ICentralServerService centralServer, IMediator mediator, IConfiguration configuration, ILobbyService lobbyService)
         {
-            this.mediator = mediator;
-            authService = auth;
-            this.configuration = configuration;
-
+            _centralServer = centralServer;
+            _mediator = mediator;
+            _configuration = configuration;
+            _lobbyService = lobbyService;
+            _configuration = configuration;
         }
 
         [HttpPost]
         [Route("Login")]
         public async Task<IActionResult> Login([FromBody] Models.LoginRequest loginData)
         {
-            var result = await authService.Login(loginData, HttpContext);
+            var centralResult = await _centralServer.LoginAsync(loginData.Username, loginData.Password);
+            if (centralResult == null)
+                return Unauthorized("Wrong credentials");
 
-            if (result != null)
+            var isBanned = await _mediator.Send(new CheckUserBannedCommand { CentralUserId = centralResult.UserId });
+            if (isBanned)
+                return Unauthorized("User is banned from this server");
+
+            // Issue a LOCAL JWT signed with this GM Backend's own secret.
+            // The Central Server's JWT_SECRET is never used or stored here.
+            var localToken = IssueLocalToken(centralResult);
+
+            var cookieOptions = new CookieOptions
             {
-                HttpContext.Response.Cookies.Append("Authorization", result, new CookieOptions()
-                {
-                    HttpOnly = true,
-                    IsEssential = true,
-                    SameSite = SameSiteMode.None,
-                    Secure = true
-                });
-                return Ok(new { result });
-            }
+                HttpOnly = true,
+                IsEssential = true,
+                SameSite = SameSiteMode.None,
+                Secure = true
+            };
 
-            return Unauthorized("Wrong Pass");
+            // Local JWT — used by the GM Admin Frontend for all GM Backend requests.
+            HttpContext.Response.Cookies.Append("Authorization", localToken, cookieOptions);
+
+            // Central Server token — stored server-side via a separate HttpOnly cookie so
+            // proxied calls (invites, keyboard bindings, etc.) can forward it to the Central Server.
+            HttpContext.Response.Cookies.Append("CentralToken", centralResult.CentralToken, cookieOptions);
+
+            return Ok(new { token = localToken });
         }
 
         [Authorize]
         [HttpGet]
         [Route("CheckLogin")]
-        public IActionResult CheckLogin()
-        {
-            return Ok();
-        }
+        public IActionResult CheckLogin() => Ok();
 
         [Authorize]
         [HttpGet]
         [Route("Logout")]
-        public async Task<IActionResult> Logout()
+        public IActionResult Logout()
         {
             HttpContext.Response.Cookies.Delete("Authorization");
-
+            HttpContext.Response.Cookies.Delete("CentralToken");
             return Ok();
         }
 
         [Authorize]
         [HttpGet]
         [Route("UserInfo")]
-        public async Task<IActionResult> GetUserInfo()
+        public IActionResult GetUserInfo()
         {
             var user = HttpContext.Items["User"] as User;
-            return Ok(
-                new
-                {
-                    Admin = user.IsAdmin,
-                    UserName = user.UserName,
-                    Email = user.Email
-                });
+            return Ok(new
+            {
+                Admin = user?.IsAdmin,
+                UserName = user?.UserName,
+                Email = user?.Email
+            });
         }
 
         [Authorize]
@@ -91,119 +108,73 @@ namespace DNDOnePlaceManager.Controllers
         [Route("GetUserNameById")]
         public async Task<IActionResult> GetUserNameById(string id)
         {
-            return Ok(await authService.GetUserName(id));
+            var centralToken = CentralToken();
+            var userName = await _centralServer.GetUserNameAsync(centralToken, id);
+            if (userName == null) return NotFound();
+            return Ok(new { userName });
         }
 
         [Authorize]
         [HttpGet]
         [Route("Invites")]
-        public async Task<IActionResult> Invites(int page, int count = 10)
+        public async Task<IActionResult> Invites(int page = 1)
         {
             var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            if (!user?.IsAdmin == true)
-                return BadRequest();
-
-            if (page < 1 || count < 1)
-                return BadRequest();
-
-            var invites = registrationInvite
-                .Skip((page - 1) * count)
-                .Take(count)
-                .Select(x => new { x.Key, x.Value })
-                .ToList();
-            return Ok(new PaginatedResponse(page, count, invites, registrationInvite.Count));
+            var result = await _centralServer.GetInvitesAsync(CentralToken(), page);
+            if (result == null) return StatusCode(502, "Central server unavailable");
+            return Ok(result);
         }
 
         [Authorize]
         [HttpGet]
         [Route("GenerateInvite")]
-        public async Task<IActionResult> GenerateInvite(int numberOfUsages = 1, int lifeTime = 24)
+        public async Task<IActionResult> GenerateInvite(int hours = 24)
         {
-            var currentUser = HttpContext.Items["User"] as User;
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            if (!currentUser?.IsAdmin ?? false)
-            {
-                return Unauthorized();
-            }
-
-            Guid inviteGuid = Guid.NewGuid();
-            Guid inviteGuidSecond = Guid.NewGuid();
-
-            string inviteCode = inviteGuid.ToString().Replace("-", "") + inviteGuidSecond.ToString().Replace("-", "");
-            inviteCode = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(inviteCode));
-
-            registrationInvite.Add(inviteCode, DateTime.Now.AddHours(lifeTime));
-
-            return Ok(new { InviteCode = inviteCode });
+            var key = await _centralServer.GenerateInviteAsync(CentralToken(), hours);
+            if (key == null) return StatusCode(502, "Central server unavailable");
+            return Ok(new { InviteCode = key });
         }
 
         [HttpPost]
         [Route("Register")]
-        public async Task<IActionResult> Register(Models.RegisterRequest registerRequest)
+        public async Task<IActionResult> Register([FromBody] Models.RegisterRequest registerRequest)
         {
-            var inviteCode = registerRequest.InviteCode;
-            if (registrationInvite.ContainsKey(inviteCode))
-            {
-                if (registrationInvite[inviteCode] > DateTime.Now)
-                {
+            var (success, message) = await _centralServer.RegisterAsync(
+                registerRequest.Username,
+                registerRequest.Email,
+                registerRequest.Password,
+                registerRequest.InviteCode);
 
-                    (bool success, string message) = await authService.Register(registerRequest);
-                    if (success)
-                    {
-                        registrationInvite.Remove(inviteCode);
-                        return Ok(new { message });
-                    }
-
-                    return BadRequest(new { message });
-                }
-                else
-                {
-                    registrationInvite.Remove(inviteCode);
-                    return Unauthorized(new { message = "Invite expired" });
-                }
-            }
-
-            return Unauthorized(new { message = "Invalid invite code" });
+            if (success) return Ok(new { message });
+            return BadRequest(new { message });
         }
 
         [HttpGet]
         [Route("CheckRegistrationKey")]
         public async Task<IActionResult> CheckRegistrationKey(string key)
         {
-            if (registrationInvite.ContainsKey(key))
-            {
-                return Ok(new { result = "ok" });
-            }
-            else
-            {
-                return BadRequest();
-            }
+            var valid = await _centralServer.CheckRegistrationKeyAsync(key);
+            if (valid) return Ok(new { result = "ok" });
+            return BadRequest();
         }
 
         [HttpGet]
         [Authorize]
         [Route("users")]
-        public async Task<IActionResult> Users(int page, int count = 10)
+        public async Task<IActionResult> Users(int page = 1, int count = 10)
         {
             var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            //For now
-            if (!user?.IsAdmin == true)
-                return BadRequest();
+            if (page < 1 || count < 1) return BadRequest();
 
-            if (page < 1 || count < 1)
-                return BadRequest();
-
-            var (users, usersTotal) = authService.GetUsers(page - 1, count);
-
-            return Ok(new PaginatedResponse()
-            {
-                Page = page,
-                Count = count,
-                Total = usersTotal,
-                Data = users
-            });
+            var result = await _mediator.Send(new GetLocalPlayersCommand { Page = page, Count = count });
+            return Ok(result);
         }
 
         [HttpDelete]
@@ -212,20 +183,11 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> DeleteInvite([FromQuery] string key)
         {
             var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            //For now
-            if (!user?.IsAdmin == true)
-                return BadRequest();
-
-            if (registrationInvite.ContainsKey(key))
-            {
-                registrationInvite.Remove(key);
-                return Ok(new { result = "ok" });
-            }
-            else
-            {
-                return NotFound();
-            }
+            var success = await _centralServer.DeleteInviteAsync(CentralToken(), key);
+            if (success) return Ok(new { result = "ok" });
+            return NotFound();
         }
 
         [HttpGet]
@@ -233,108 +195,124 @@ namespace DNDOnePlaceManager.Controllers
         [Route("KeyboardBindings")]
         public async Task<IActionResult> KeyboardBindings()
         {
-            var user = HttpContext.Items["User"] as User;
-
-            return Ok(authService.GetKeyboardBindings(user.Id));
+            var bindings = await _centralServer.GetKeyboardBindingsAsync(CentralToken());
+            if (bindings == null) return StatusCode(502, "Central server unavailable");
+            return Ok(bindings);
         }
 
         [HttpPost]
         [Authorize]
         [Route("KeyboardBindings")]
-        public async Task<IActionResult> SaveKeyboardBindings(Dictionary<string, string> bindings)
+        public async Task<IActionResult> SaveKeyboardBindings([FromBody] Dictionary<string, string> bindings)
         {
-            var user = HttpContext.Items["User"] as User;
-            var regex = new System.Text.RegularExpressions.Regex(@"(Ctrl\+)*(Alt\+)*(Shift\+)*(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
-
-            //sanitize bindings
+            var regex = new System.Text.RegularExpressions.Regex(
+                @"(Ctrl\+)*(Alt\+)*(Shift\+)*(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
 
             foreach (var key in bindings.Keys)
             {
-                //check if key is valid
                 if (!regex.IsMatch(key))
-                {
                     return BadRequest();
-                }
-
-                //check if value is valid
-
             }
-            if (await authService.SetKeyboardBindings(user.Id, bindings))
-            {
-                return Ok();
-            }
-            else
-            {
-                return BadRequest();
-            }
-        }
 
-        [HttpDelete]
-        [Authorize]
-        [Route("deleteuser")]
-        public async Task<IActionResult> DeleteUser([FromQuery] string userID)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            if (!currentUser?.IsAdmin == true)
-                return Unauthorized();
-
-            if (string.IsNullOrEmpty(userID))
-                return BadRequest();
-
-            if (await authService.DeleteUser(userID))
-                return Ok();
-
-            return NotFound();
-        }
-
-        [HttpPost]
-        [Authorize]
-        [Route("toggleadmin")]
-        public async Task<IActionResult> ToggleAdmin([FromBody] ToggleAdminRequest request)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            if (!currentUser?.IsAdmin == true)
-                return Unauthorized();
-
-            if (await authService.ToggleAdmin(request.UserID, request.IsAdmin))
-                return Ok();
-
+            var success = await _centralServer.SetKeyboardBindingsAsync(CentralToken(), bindings);
+            if (success) return Ok();
             return BadRequest();
         }
+
+        [HttpGet]
+        [Authorize]
+        [Route("getplayers")]
+        public async Task<IActionResult> GetPlayers(int page = 1, int count = 10)
+        {
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
+
+            if (page < 1 || count < 1) return BadRequest();
+
+            var result = await _mediator.Send(new GetLocalPlayersCommand { Page = page, Count = count });
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize]
-        [Route("resetpassword")]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        [Route("kickplayer")]
+        public async Task<IActionResult> KickPlayer([FromBody] Models.KickPlayerRequest request)
         {
-            var currentUser = HttpContext.Items["User"] as User;
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            if (!currentUser?.IsAdmin == true)
-                return Unauthorized();
+            var result = await _mediator.Send(new KickPlayerCommand { PlayerId = request.PlayerId });
+            if (result != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return BadRequest();
 
-            if (await authService.ResetPassword(request.UserID, request.NewPassword))
-                return Ok();
+            _lobbyService.SendKickToPlayer(request.PlayerId);
+            return Ok();
+        }
 
+        [HttpPost]
+        [Authorize]
+        [Route("removeuser")]
+        public async Task<IActionResult> RemoveUser([FromBody] Models.CentralUserRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
+
+            var result = await _mediator.Send(new RemoveUserPlayersCommand { CentralUserId = request.CentralUserId });
+            if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();
             return BadRequest();
         }
 
         [HttpPost]
         [Authorize]
-        [Route("createuser")]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
+        [Route("banuser")]
+        public async Task<IActionResult> BanUser([FromBody] Models.CentralUserRequest request)
         {
-            var currentUser = HttpContext.Items["User"] as User;
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            if (!currentUser?.IsAdmin == true)
-                return Unauthorized();
+            var result = await _mediator.Send(new BanUserCommand { CentralUserId = request.CentralUserId });
+            if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();
+            return BadRequest();
+        }
 
-            var (success, message) = await authService.CreateUser(request.UserName, request.Email, request.Password, request.IsAdmin);
+        [HttpPost]
+        [Authorize]
+        [Route("unbanuser")]
+        public async Task<IActionResult> UnbanUser([FromBody] Models.CentralUserRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            if (user?.IsAdmin != true) return Unauthorized();
 
-            if (success)
-                return Ok(new { message });
+            var result = await _mediator.Send(new UnbanUserCommand { CentralUserId = request.CentralUserId });
+            if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();
+            return BadRequest();
+        }
 
-            return BadRequest(new { message });
+        // -------------------------------------------------------------------------
+
+        private string CentralToken() =>
+            HttpContext.Request.Cookies["CentralToken"] ?? string.Empty;
+
+        private string IssueLocalToken(CentralLoginResult centralResult)
+        {
+            var secret = _configuration["JWTSecret"]!;
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+            var expireHours = _configuration.GetValue<int>("JWT:ExpireHours", 3);
+
+            var claims = new[]
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, centralResult.UserId),
+                new Claim("username", centralResult.UserName ?? string.Empty),
+                new Claim("email",    centralResult.Email    ?? string.Empty),
+                new Claim("isAdmin",  centralResult.IsAdmin.ToString().ToLowerInvariant()),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            var token = new JwtSecurityToken(
+                claims: claims,
+                expires: DateTime.UtcNow.AddHours(expireHours),
+                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
 }

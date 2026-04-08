@@ -22,7 +22,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             //Todo - when getting from game. check for player
 
             //if (image != null && (image.PlayerId == request.Player.Id || player.System) && image.Game?.Id == request.GameID)
-            if (image != null && image.Game?.Id == request.GameID)
+            if (image != null && image.GameId == request.GameID)
             {
                 return (image.Data, image.MimeType);
             }

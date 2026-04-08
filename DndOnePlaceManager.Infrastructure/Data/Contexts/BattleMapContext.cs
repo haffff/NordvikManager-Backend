@@ -138,5 +138,6 @@ namespace DNDOnePlaceManager.Data.Contexts
         public DbSet<AddonModel>? Addons { get; set; }
         public DbSet<TreeEntryModel>? TreeEntries { get; set; }
         public DbSet<ElementDetailModel>? ElementsDetail { get; set; }
+        public DbSet<BannedUserModel> BannedUsers { get; set; }
     }
 }

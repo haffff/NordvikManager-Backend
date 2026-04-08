@@ -14,7 +14,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
 {
-    internal class AddGameCommandHandler : HandlerBase<AddGameCommand, bool>
+    internal class AddGameCommandHandler : HandlerBase<AddGameCommand, Guid?>
     {
         IMediator mediator;
         string? mainRepositoryUrl;
@@ -25,13 +25,14 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
-        public async override Task<bool> Handle(AddGameCommand request, CancellationToken cancellationToken)
+        public async override Task<Guid?> Handle(AddGameCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
             if (request.PasswordRequired && string.IsNullOrWhiteSpace(request.Password))
-            {
-                return false;
-            }
+                return null;
+
+            if (string.IsNullOrWhiteSpace(request.User?.Id) || !Guid.TryParse(request.User.Id, out _))
+                return null;
 
             var random = new Random();
 
@@ -39,7 +40,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             var green = random.Next(0, 255 / 10) * 10;
             var blue = random.Next(0, 255 / 10) * 10;
 
-            PlayerModel player = new PlayerModel() { Name = "Game Master", User = request.User?.Id, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
+            PlayerModel player = new PlayerModel() { Name = "Game Master", CentralServerUserId = request.User?.Id, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
             PlayerModel system = new PlayerModel() { Name = "System", System = true, User = null, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
 
             GameModel game = new GameModel()
@@ -47,7 +48,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 Name = request.Name,
                 Password = request.PasswordRequired ? request.Password : null,
                 Players = new List<PlayerModel>() { player, system },
-                Maps = new List<MapModel>()
+                Maps = new List<MapModel>(),
+                IsPublic = request.IsPublic,
             };
 
             dbContext.Add(game);
@@ -192,7 +194,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             if (request.AddonsSelected == null || mainRepositoryUrl == null)
             {
-                return true;
+                return game.Id;
             }
 
             foreach (var addon in request.AddonsSelected)
@@ -208,7 +210,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 await mediator.Send(installAddonCommand);
             }
 
-            return true;
+            return game.Id;
         }
     }
 }

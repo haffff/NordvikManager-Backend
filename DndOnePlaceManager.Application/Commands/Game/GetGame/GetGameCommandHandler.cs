@@ -46,6 +46,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 Id = fullGame.Id,
                 Name = fullGame.Name,
                 RequirePassword = !String.IsNullOrEmpty(fullGame.Password),
+                CentralSessionId = fullGame.CentralSessionId,
                 Master = mapper.Map<PlayerDTO>(fullGame.Players.First(x => x.Id == fullGame.MasterId)),
                 Players = fullGame.Players.Select(x => mapper.Map<PlayerDTO>(x)).ToList(),
                 DefaultLayout = mapper.Map<LayoutDTO>(fullGame.Layouts.FirstOrDefault(x => x.Default)),

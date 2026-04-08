@@ -6,6 +6,8 @@ using DndOnePlaceManager.Application.Commands.Resources.GetResource;
 using DndOnePlaceManager.Application.Extension;
 using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
+using DNDOnePlaceManager.Services;
+using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -22,10 +24,12 @@ namespace DNDOnePlaceManager.Controllers
     public class MaterialsController : Controller
     {
         private IMediator mediator;
+        private readonly ILobbyService _lobbyService;
 
-        public MaterialsController(IMediator mediator)
+        public MaterialsController(IMediator mediator, ILobbyService lobbyService)
         {
             this.mediator = mediator;
+            _lobbyService = lobbyService;
         }
 
         /// <summary>
@@ -245,7 +249,7 @@ namespace DNDOnePlaceManager.Controllers
 
             (var result, var id) = await mediator.Send(command);
 
-            WebSockets.WebSocketManager.SendCommandToUser(user, new WebSocketCommand { Command = "resource_notify" });
+            _lobbyService.SendCommandToUser(user, new WebSocketCommand { Command = "resource_notify" });
 
             return Ok(new { Id = id });
         }

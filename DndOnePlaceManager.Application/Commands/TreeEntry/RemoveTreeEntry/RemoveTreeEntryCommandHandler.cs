@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
@@ -36,17 +37,22 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
                 throw new WrongArgumentsException(nameof(request.TargetId), nameof(request.TreeEntryId));
             }
 
-            if (game.TreeEntries.Any(x => request.TreeEntryId != null && x.Parent?.Id == request.TreeEntryId))
-            {
-                throw new TreeException("Folder is not empty!");
-            }
-
             var treeEntry = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryId || x.TargetId == request.TargetId);
 
             if (treeEntry == null)
             {
                 //No change required
                 return CommandResponse.Ok;
+            }
+
+            if (treeEntry.IsFolder)
+            {
+                game.ThrowIfNoPermission(playerId, Permission.Edit);
+            }
+
+            if (game.TreeEntries.Any(x => x.Parent?.Id == treeEntry.Id))
+            {
+                throw new TreeException("Folder is not empty!");
             }
 
             var nextFromDeleted = treeEntry?.Next;

@@ -8,6 +8,7 @@ using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
+using DNDOnePlaceManager.Services;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -36,7 +37,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
         private static MaterialsController CreateController(Mock<IMediator> mediatorMock, User? contextUser = null)
         {
-            var controller = new MaterialsController(mediatorMock.Object);
+            var lobbyService = new Mock<ILobbyService>().Object;
+            var controller = new MaterialsController(mediatorMock.Object, lobbyService);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;

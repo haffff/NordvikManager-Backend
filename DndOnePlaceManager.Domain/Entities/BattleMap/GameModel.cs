@@ -20,7 +20,7 @@ namespace DNDOnePlaceManager.Domain.Entities.BattleMap
         public string? Name { get; set; }
         [JsonIgnore]
         public string? Password { get; set; }
-        public bool? Visible { get; set; }
+        public bool IsPublic { get; set; }
         public List<LayoutModel> Layouts { get; set; }
         public List<BattleMapModel> BattleMaps { get; set; }
         public bool UseMetric { get; set; }
@@ -30,5 +30,7 @@ namespace DNDOnePlaceManager.Domain.Entities.BattleMap
         public List<AddonModel> Addons { get; set; }
         public List<ResourceModel> Resources { get; set; }
         public List<TreeEntryModel> TreeEntries { get; set; }
+        /// <summary>ID of the session registered on the Central Server for this game's WebRTC signaling.</summary>
+        public string? CentralSessionId { get; set; }
     }
 }

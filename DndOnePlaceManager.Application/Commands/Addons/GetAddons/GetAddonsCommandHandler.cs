@@ -32,12 +32,14 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddons
                     Name = x.Name,
                     Key = x.Key,
                     Author = x.Author,
+                    Website = x.Website,
                     License = x.License,
                     Description = x.Description,
                     ReleaseUrl = x.ReleaseUrl,
                     RepositoryUrl = x.RepositoryUrl,
                     Version = x.Version,
                     Id = x.Id,
+                    IsEnabled = x.IsEnabled,
                 }).ToList();
             }
 

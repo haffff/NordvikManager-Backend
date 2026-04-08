@@ -6,11 +6,9 @@ using DndOnePlaceManager.Application.Commands.Layouts.GetLayout;
 using DndOnePlaceManager.Application.Commands.Layouts.GetLayouts;
 using DndOnePlaceManager.Application.Commands.TreeEntry.GetTreeEntries;
 using DNDOnePlaceManager.Domain.Entities.Auth;
-using DNDOnePlaceManager.WebSockets;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Swashbuckle.AspNetCore.Annotations;
 using System;
 using System.Threading.Tasks;
 
@@ -20,12 +18,10 @@ namespace DNDOnePlaceManager.Controllers
     [ApiController]
     public class BattleMapController : Controller
     {
-        private IWebSocketManager websocketManager;
         private readonly IMediator mediator;
 
-        public BattleMapController(IWebSocketManager websocketManager, IMediator mediator)
+        public BattleMapController(IMediator mediator)
         {
-            this.websocketManager = websocketManager;
             this.mediator = mediator;
         }
 
@@ -294,25 +290,5 @@ namespace DNDOnePlaceManager.Controllers
             return Ok(result);
         }
 
-        /// <summary>
-        /// Handles connection with websocket. It have to be called with ws:// protocol for more info look into readme (TODO)
-        /// </summary>
-        /// <returns></returns>
-        [Route("ws")]
-        [Authorize]
-        [SwaggerIgnore]
-        public async Task WebSockets()
-        {
-            if (HttpContext.WebSockets.IsWebSocketRequest)
-            {
-
-                //using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-                await websocketManager.Handle(HttpContext);
-            }
-            else
-            {
-                HttpContext.Response.StatusCode = 400;
-            }
-        }
     }
 }

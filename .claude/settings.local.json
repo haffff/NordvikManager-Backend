@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(grep -rn 'class PropertyDTO' E:ProjectsNordvikManagerNordvikManager-Backend --include=*.cs -A 15)",
+      "Bash(xargs wc:*)",
+      "Bash(wc:*)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -h \"case WebSocketCommandNames\\\\|WebSocketCommandNames\\\\.\" /e/Projects/NordvikManager/NordvikManager-Backend/DNDOnePlaceManager/WebSockets/Handlers/*.cs)"
+    ]
+  }
+}

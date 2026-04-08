@@ -19,7 +19,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         {
             await base.Handle(request, cancellationToken);
             var game = (await dbContext.Games.Include(x => x.Players).FirstOrDefaultAsync(x => x.Id == request.GameID));
-            var player = game?.Players?.FirstOrDefault(x => x.User == request.User.Id);
+            var player = game?.Players?.FirstOrDefault(x =>
+                x.CentralServerUserId == request.User.Id);
             if (player == null)
             {
                 return new GetPlayerCommandResponse();
@@ -33,7 +34,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                     Image = player.Image,
                     Id = player.Id,
                     Permission = player.GetPermission(player.Id),
-                    IsOwner = game?.MasterId == player.Id
+                    IsOwner = game?.MasterId == player.Id,
+                    CentralServerUserId = player.CentralServerUserId
                 }
             };
         }

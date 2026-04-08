@@ -6,6 +6,7 @@ using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DNDOnePlaceManager.Services.Interfaces;
+using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
 using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.WebSockets.Handlers;
@@ -50,7 +51,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid GameId { get; set; }
-        public Dictionary<PlayerDTO, List<WebSocketManager>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<WebSocketManager>>();
+        public Dictionary<PlayerDTO, List<IPlayerConnection>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<IPlayerConnection>>();
         public PlayerDTO SystemPlayer { get; set; }
         public IActionProcessingService ActionProcessingService { get; set; }
 

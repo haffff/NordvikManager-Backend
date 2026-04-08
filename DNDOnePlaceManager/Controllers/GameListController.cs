@@ -3,11 +3,18 @@ using DndOnePlaceManager.Application.Commands.Application;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
+using DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails;
+using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
+using DndOnePlaceManager.Application.Commands.Game.SetGameCentralSession;
 using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
+using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Engine.Attribs;
+using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Implementations;
+using DNDOnePlaceManager.Services.Interfaces;
+using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
 using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.WebSockets.Handlers;
@@ -33,13 +40,17 @@ namespace DNDOnePlaceManager.Controllers
         private readonly IConfiguration configuration;
         private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();
 
-        private readonly IWebSocketManager webSocketManager;
+        private readonly ILobbyService lobbyService;
+        private readonly ICentralServerService _centralServerService;
+        private readonly IWebRTCSessionService _webRtcSessionService;
 
-        public GameListController(IMediator mediator, IConfiguration configuration, IWebSocketManager manager)
+        public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService)
         {
             this.mediator = mediator;
             this.configuration = configuration;
-            this.webSocketManager = manager;
+            this.lobbyService = lobbyService;
+            _centralServerService = centralServerService;
+            _webRtcSessionService = webRtcSessionService;
         }
 
         /// <summary>
@@ -77,19 +88,29 @@ namespace DNDOnePlaceManager.Controllers
             var res = await mediator.Send(removeGameCommand);
 
             return Ok(res);
-        }
-
-        [HttpGet]
+        }        [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
         public async Task<IActionResult> GetFeaturedAddons()
         {
             GetAddonsFromRepositoryCommand command = new GetAddonsFromRepositoryCommand();
-
             var res = await mediator.Send(command);
 
-            var featuredAddonsConfig = configuration.GetSection("AddonsConfiguration:FeaturedAddons").Get<string[]>();
-            var featuredAddons = res.Where(x => featuredAddonsConfig.Contains(x.Key));
+            var featuredAddonsConfig = configuration.GetSection("AddonsConfiguration:FeaturedAddons").Get<string[]>()
+                ?? Array.Empty<string>();
+
+            var featuredAddons = res
+                .Where(x => featuredAddonsConfig.Contains(x.Key))
+                .Select(x => new FeaturedAddonDto
+                {
+                    Name = x.Name,
+                    Key = x.Key,
+                    Description = x.Description,
+                    Version = x.Version,
+                    Author = x.Author,
+                    License = x.License,
+                    Dependencies = x.Dependencies?.Select(d => d.Key).ToList()
+                });
 
             return Ok(featuredAddons);
         }
@@ -111,12 +132,91 @@ namespace DNDOnePlaceManager.Controllers
 
             addGameCommand.User = user;
 
-            var res = await mediator.Send(addGameCommand);
+            var gameId = await mediator.Send(addGameCommand);
 
-            if (!res)
+            if (gameId == null)
                 return BadRequest();
 
-            return Ok(res);
+            string? centralSessionId = null;
+            var centralToken = Request.Cookies["CentralToken"];
+            if (!string.IsNullOrEmpty(centralToken))
+            {
+                centralSessionId = await _centralServerService.CreateSessionAsync(
+                    centralToken,
+                    new GameItemDTO
+                    {
+                        Name = addGameCommand.Name,
+                        ShortDescription = addGameCommand.Summary,
+                        LongDescription = addGameCommand.Description,
+                        Image = addGameCommand.Image,
+                        PasswordRequired = addGameCommand.PasswordRequired,
+                        Password = addGameCommand.Password,
+                        IsPublic = addGameCommand.IsPublic
+                    });
+
+                if (centralSessionId != null)
+                {
+                    await mediator.Send(new SetGameCentralSessionCommand
+                    {
+                        GameId = gameId.Value,
+                        CentralSessionId = centralSessionId
+                    });
+
+                    await _webRtcSessionService.StartSessionAsync(gameId.Value, centralSessionId, centralToken);
+                }
+            }
+
+            return Ok(new
+            {
+                gameId,
+                centralSessionId,
+                sessionCreated = centralSessionId != null
+            });
+        }
+
+        /// <summary>
+        /// Retries Central Server session creation for an existing game.
+        /// Call this if AddGame reported sessionCreated=false.
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("assignSession")]
+        public async Task<IActionResult> AssignSession([FromQuery] Guid gameId)
+        {
+            var user = HttpContext.Items["User"] as User;
+            if (!user?.IsAdmin == true)
+                return Unauthorized();
+
+            var centralToken = Request.Cookies["CentralToken"];
+            if (string.IsNullOrEmpty(centralToken))
+                return BadRequest(new { error = "No CentralToken cookie. Please log in to the Central Server first." });
+
+            var details = await mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
+            if (details == null)
+                return NotFound(new { error = "Game not found." });
+
+            var sessionId = await _centralServerService.CreateSessionAsync(
+                centralToken,
+                new GameItemDTO
+                {
+                    Name = details.Name,
+                    ShortDescription = details.Summary,
+                    LongDescription = details.Description,
+                    PasswordRequired = details.PasswordRequired
+                });
+
+            if (sessionId == null)
+                return StatusCode(502, new { error = "Central Server did not return a session ID. Please try again later." });
+
+            await mediator.Send(new SetGameCentralSessionCommand
+            {
+                GameId = gameId,
+                CentralSessionId = sessionId
+            });
+
+            await _webRtcSessionService.StartSessionAsync(gameId, sessionId, centralToken);
+
+            return Ok(new { centralSessionId = sessionId });
         }
 
         /// <summary>
@@ -137,6 +237,23 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest();
 
             await AddDefaultCharacterSheet(cmd.GameID, result.Value);
+
+            if (cmd.GameID.HasValue && (currentUser?.IsAdmin ?? false))
+            {
+                var centralSessionId = await mediator.Send(new GetGameCentralSessionIdCommand { GameID = cmd.GameID.Value });
+                var centralToken = Request.Cookies["CentralToken"];
+                if (!string.IsNullOrEmpty(centralSessionId) && !string.IsNullOrEmpty(centralToken))
+                {
+                    try
+                    {
+                        await _webRtcSessionService.StartSessionAsync(cmd.GameID.Value, centralSessionId, centralToken);
+                    }
+                    catch
+                    {
+                        // Central server unreachable — session will not be started
+                    }
+                }
+            }
 
             return Ok(result);
         }
@@ -189,7 +306,7 @@ namespace DNDOnePlaceManager.Controllers
                         PlayerId = systemPlayer.Id,
                     };
 
-                    await webSocketManager.HandleCommandInLobby(gameId, WebSocketCommand, systemPlayer);
+                    await lobbyService.HandleCommandInLobbyAsync(gameId, WebSocketCommand, systemPlayer);
                 }
             }
         }

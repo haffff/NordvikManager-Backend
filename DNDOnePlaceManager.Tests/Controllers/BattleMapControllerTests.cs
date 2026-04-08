@@ -39,11 +39,11 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
         private static BattleMapController CreateController(
             Mock<IMediator> mediatorMock,
-            Mock<IWebSocketManager>? wsMock = null,
+            //Mock<IWebSocketManager>? wsMock = null,
             User? contextUser = null)
         {
-            wsMock ??= new Mock<IWebSocketManager>();
-            var controller = new BattleMapController(wsMock.Object, mediatorMock.Object);
+            //wsMock ??= new Mock<IWebSocketManager>();
+            var controller = new BattleMapController(mediatorMock.Object);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;

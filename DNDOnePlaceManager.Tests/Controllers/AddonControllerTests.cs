@@ -2,6 +2,7 @@ using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
+using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
 using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
@@ -12,7 +13,7 @@ using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
-using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.Services;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -43,13 +44,13 @@ namespace DNDOnePlaceManager.Tests.Controllers
         private static AddonController CreateController(
             Mock<IMediator> mediatorMock,
             IServiceProvider? serviceProvider = null,
-            Mock<IWebSocketManager>? wsMock = null,
+            Mock<ILobbyService>? lobbyMock = null,
             User? contextUser = null)
         {
-            wsMock ??= new Mock<IWebSocketManager>();
+            lobbyMock ??= new Mock<ILobbyService>();
             serviceProvider ??= new ServiceCollection().BuildServiceProvider();
 
-            var controller = new AddonController(mediatorMock.Object, wsMock.Object, serviceProvider);
+            var controller = new AddonController(mediatorMock.Object, lobbyMock.Object, serviceProvider);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -132,19 +133,19 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         // =========================================================================
-        // GetAddonsToDownload
+        // GetInstalledAddons
         // =========================================================================
 
         [Fact]
-        public async Task GetAddonsToDownload_ReturnsOk_WithAddonList()
+        public async Task GetInstalledAddons_ReturnsOk_WithAddonList()
         {
             // Arrange
-            var addons = new List<AddonDto> { new AddonDto { Key = "addon-1" } };
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+            var addons = new List<AddonDto>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(addons);
 
             // Act
-            var result = await _controller.GetAddonsToDownload();
+            var result = await _controller.GetInstalledAddons(Guid.NewGuid());
 
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
@@ -152,7 +153,27 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         // =========================================================================
-        // GetAddons
+        // GetRepository
+        // =========================================================================
+
+        [Fact]
+        public async Task GetRepository_ReturnsOk_WithAddonList()
+        {
+            // Arrange
+            var addons = new List<AddonDto>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(addons);
+
+            // Act
+            var result = await _controller.GetRepository(Guid.NewGuid());
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(addons, ok.Value);
+        }
+
+        // =========================================================================
+        // GetAddons (legacy)
         // =========================================================================
 
         [Fact]
@@ -176,21 +197,13 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task InstallAddon_ReturnsBadRequest_WhenNoSourceProvided()
+        public async Task InstallAddon_ReturnsBadRequest_WhenKeyMissing()
         {
-            // Arrange
-            var request = new AddonController.InstallAddonRequest
-            {
-                File = null,
-                Url = null,
-                Key = null
-            };
-
             // Act
-            var result = await _controller.InstallAddon(Guid.NewGuid(), request);
+            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null });
 
             // Assert
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<BadRequestObjectResult>(result);
         }
 
         [Fact]
@@ -199,18 +212,54 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
-            var request = new AddonController.InstallAddonRequest
-            {
-                File = null,
-                Url = null,
-                Key = "some-addon-key"
-            };
 
             // Act
-            var result = await _controller.InstallAddon(Guid.NewGuid(), request);
+            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
 
             // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task InstallAddon_ReturnsBadRequest_WhenCommandFails()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.WrongArguments, Guid.Empty));
+
+            // Act
+            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        // =========================================================================
+        // UpdateAddon
+        // =========================================================================
+
+        [Fact]
+        public async Task UpdateAddon_ReturnsOk_WhenKeyProvided()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.Is<InstallAddonCommand>(c => c.Reinstall), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+
+            // Act
+            var result = await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+
+            // Assert
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task UpdateAddon_ReturnsBadRequest_WhenKeyMissing()
+        {
+            // Act
+            var result = await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
         }
 
         // =========================================================================
@@ -218,18 +267,131 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task UninstallAddon_ReturnsOk_WithCommandResponse()
+        public async Task UninstallAddon_ReturnsOk_WhenAddonIdProvided()
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(CommandResponse.Ok);
 
             // Act
-            var result = await _controller.UninstallAddon(Guid.NewGuid(), Guid.NewGuid());
+            var result = await _controller.UninstallAddon(Guid.NewGuid(),
+                new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() });
 
             // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(CommandResponse.Ok, ok.Value);
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task UninstallAddon_ReturnsOk_WhenKeyProvided()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.UninstallAddon(Guid.NewGuid(),
+                new AddonController.UninstallAddonRequest { AddonId = "dnd5e" });
+
+            // Assert
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task UninstallAddon_ReturnsBadRequest_WhenAddonIdMissing()
+        {
+            // Act
+            var result = await _controller.UninstallAddon(Guid.NewGuid(),
+                new AddonController.UninstallAddonRequest { AddonId = null });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        // =========================================================================
+        // SetEnabled
+        // =========================================================================
+
+        [Fact]
+        public async Task SetEnabled_ReturnsOk_WhenAddonIdAndEnabledProvided()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<SetAddonEnabledCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.SetEnabled(Guid.NewGuid(),
+                new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = true });
+
+            // Assert
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task SetEnabled_ReturnsBadRequest_WhenAddonIdMissing()
+        {
+            // Act
+            var result = await _controller.SetEnabled(Guid.NewGuid(),
+                new AddonController.SetEnabledRequest { AddonId = null, Enabled = true });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task SetEnabled_ReturnsBadRequest_WhenCommandFails()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<SetAddonEnabledCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.NoResource);
+
+            // Act
+            var result = await _controller.SetEnabled(Guid.NewGuid(),
+                new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = false });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        // =========================================================================
+        // InstallFromFile
+        // =========================================================================
+
+        [Fact]
+        public async Task InstallFromFile_ReturnsBadRequest_WhenDataMissing()
+        {
+            // Act
+            var result = await _controller.InstallFromFile(Guid.NewGuid(),
+                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = null });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task InstallFromFile_ReturnsBadRequest_WhenDataIsNotBase64()
+        {
+            // Act
+            var result = await _controller.InstallFromFile(Guid.NewGuid(),
+                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = "not-base64!!!" });
+
+            // Assert
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task InstallFromFile_ReturnsOk_WhenValidBase64Provided()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+            var base64 = Convert.ToBase64String(new byte[] { 1, 2, 3 });
+
+            // Act
+            var result = await _controller.InstallFromFile(Guid.NewGuid(),
+                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = base64 });
+
+            // Assert
+            Assert.IsType<OkResult>(result);
         }
 
         // =========================================================================
@@ -307,3 +469,4 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
     }
 }
+

@@ -11,9 +11,11 @@ namespace DndOnePlaceManager.Application.DataTransferObjects
         public string? Description { get; set; }
         public string? Version { get; set; }
         public string? Author { get; set; }
+        public string? Website { get; set; }
         public string? ReleaseUrl { get; set; }
         public string? RepositoryUrl { get; set; }
         public string? License { get; set; }
+        public bool IsEnabled { get; set; } = true;
         public List<AddonDto>? Dependencies { get; set; }
         public List<CardDto>? Views { get; set; }
         public List<CardDto>? Templates { get; set; }

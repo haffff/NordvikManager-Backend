@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -38,6 +39,11 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
             if (game == null)
             {
                 throw new ResourceNotFoundException(nameof(game));
+            }
+
+            if (treeEntry.IsFolder)
+            {
+                game.ThrowIfNoPermission(playerId, Permission.Edit);
             }
 
             game.TreeEntries.Add(treeEntry);

@@ -34,7 +34,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 .Include(x => x.Resources)
                 .Include(x => x.Templates)
                 .Include(x => x.Actions)
-                .FirstOrDefault(x => x.Id == request.AddonId);
+                .FirstOrDefault(x => x.Id == request.AddonId || x.Key == request.AddonKey);
 
             if (addon == null)
             {

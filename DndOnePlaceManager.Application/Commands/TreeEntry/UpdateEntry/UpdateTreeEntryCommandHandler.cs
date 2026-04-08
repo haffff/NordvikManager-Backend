@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -37,6 +38,11 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
             if (treeEntry == null)
             {
                 throw new ResourceNotFoundException(nameof(TreeEntryModel));
+            }
+
+            if (treeEntry.IsFolder)
+            {
+                game.ThrowIfNoPermission(playerId, Permission.Edit);
             }
 
             treeEntry.Name = request.TreeEntryDto.Name ?? treeEntry.Name;

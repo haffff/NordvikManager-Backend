@@ -8,12 +8,10 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResource
 {
     internal class UpdateResourceCommandHandler : HandlerBase<UpdateResourceCommand, CommandResponse>
     {
-        private readonly IAuthDBContext authDBContext;
         private IMediator mediator;
 
-        public UpdateResourceCommandHandler(IDbContext context, IAuthDBContext authDBContext, IMapper mapper, IMediator mediator) : base(context, mapper)
+        public UpdateResourceCommandHandler(IDbContext context, IMapper mapper, IMediator mediator) : base(context, mapper)
         {
-            this.authDBContext = authDBContext;
             this.mediator = mediator;
         }
 

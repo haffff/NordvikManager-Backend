@@ -22,7 +22,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 return null;
             }
 
-            var player = game?.Players?.FirstOrDefault(x => x.User == request.User?.Id);
+            var player = game?.Players?.FirstOrDefault(x => x.CentralServerUserId == request.User?.Id);
 
             if (player == null)
             {
@@ -35,7 +35,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 var newPlayer = new PlayerModel()
                 {
                     Name = "Player",
-                    User = request.User?.Id,
+                    CentralServerUserId = request.User?.Id,
                     Color = $"rgba({red},{green},{blue},1)",
                     Image = string.Empty
                 };

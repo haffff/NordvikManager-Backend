@@ -5,89 +5,58 @@ using System.Net;
 
 namespace DndOnePlaceManager.Infrastructure.Services
 {
+    /// <summary>
+    /// Fetches addon metadata and files from the configured MainRepository only.
+    /// No external URL is ever accepted from callers — all resolution is internal.
+    /// </summary>
     internal class AddonRepositoryService : IAddonRepositoryService
     {
-        private static HttpClient httpClient { get; set; }
-
-        ////To be used later on
-        //private static Dictionary<string, string> repositoryResourcesCache { get; set; }
-
-        string[] trustedRepositories = new string[] { };
-
-        string mainRepository;
-
-        bool canAccessNotAllowedRepository = false;
+        private static readonly HttpClient httpClient = new HttpClient();
+        private readonly string _mainRepository;
 
         public AddonRepositoryService(IConfiguration configuration)
         {
-            if (httpClient == null)
-            {
-                httpClient = new HttpClient();
-            }
-
-            mainRepository = configuration["AddonsConfiguration:MainRepository"];
-            trustedRepositories = configuration.GetSection("AddonsConfiguration:TrustedRepositories").Get<string[]>();
-            canAccessNotAllowedRepository = configuration.GetValue<bool?>("AddonsConfiguration:CanAccessNotAllowedRepository") ?? false;
+            _mainRepository = configuration["AddonsConfiguration:MainRepository"]
+                ?? throw new InvalidOperationException("AddonsConfiguration:MainRepository is not configured.");
         }
 
-        public async Task<byte[]> GetAddonByKey(string key, string? version)
+        /// <inheritdoc/>
+        public async Task<string> GetRepository()
         {
-            var url = await GetAddonUrl(key);
+            return await httpClient.GetStringAsync(_mainRepository);
+        }
 
-            //Just download the file
-            var result = await httpClient.GetAsync(url);
+        /// <inheritdoc/>
+        public async Task<byte[]> GetAddonByKey(string key)
+        {
+            var releaseUrl = await ResolveReleaseUrl(key);
+
+            var request = new HttpRequestMessage(HttpMethod.Get, releaseUrl);
+            request.Headers.UserAgent.ParseAdd("NordvikManager");
+            var result = await httpClient.SendAsync(request);
+            
             if (result.StatusCode == HttpStatusCode.OK)
-            {
                 return await result.Content.ReadAsByteArrayAsync();
-            }
-            else
-            {
-                throw new Exception("Addon not found");
-            }
+
+            throw new Exception($"Failed to download addon '{key}'. Remote returned {result.StatusCode}.");
         }
 
-        public async Task<string> GetRepository(string? repository)
+        // ── Private helpers ──────────────────────────────────────────────────
+
+        private async Task<string> ResolveReleaseUrl(string key)
         {
-            if (repository == null)
-            {
-                if (mainRepository == null)
-                {
-                    throw new Exception("Main repository is not set");
-                }
+            var repoJson = await GetRepository();
+            var jObject = JObject.Parse(repoJson);
+            var repository = jObject["repository"]
+                ?? throw new Exception("Repository JSON is missing the 'repository' array.");
 
-                var result = await httpClient.GetStringAsync(mainRepository);
+            var addon = repository.FirstOrDefault(x => x["key"]?.ToString() == key)
+                ?? throw new Exception($"Addon with key '{key}' was not found in the repository.");
 
-                return result;
-            }
+            var releaseUrl = addon["releaseUrl"]?.ToString()
+                ?? throw new Exception($"Addon '{key}' has no releaseUrl defined.");
 
-            //check if provided repository is in trusted repositories
-            if (trustedRepositories.Contains(repository) || canAccessNotAllowedRepository)
-            {
-                return await httpClient.GetStringAsync(repository);
-            }
-
-            throw new Exception("Repository is not trusted");
-        }
-
-        private async Task<string> GetAddonUrl(string key)
-        {
-            foreach (var repo in trustedRepositories)
-            {
-                var repositoryResult = await httpClient.GetAsync(repo);
-                if (repositoryResult.StatusCode == HttpStatusCode.OK)
-                {
-                    var repositoryContent = await repositoryResult.Content.ReadAsStringAsync();
-                    var jobject = JObject.Parse(repositoryContent);
-                    var repository = jobject["repository"];
-                    var foundAddon = repository.FirstOrDefault(x => x["key"].ToString() == key);
-                    if (foundAddon != null)
-                    {
-                        return foundAddon["releaseUrl"].ToString();
-                    }
-                }
-            }
-
-            return null;
+            return releaseUrl;
         }
     }
 }

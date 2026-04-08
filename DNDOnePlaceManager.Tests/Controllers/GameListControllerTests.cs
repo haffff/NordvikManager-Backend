@@ -9,7 +9,9 @@ using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Domain.Entities.Auth;
-using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.Services.Interfaces;
+using DNDOnePlaceManager.WebRTC;
+using DNDOnePlaceManager.Services;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -30,7 +32,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
         private readonly Mock<IMediator> _mediator = new();
         private readonly Mock<IConfiguration> _config = new();
-        private readonly Mock<IWebSocketManager> _ws = new();
+        private readonly Mock<ILobbyService> _lobbyService = new();
         private readonly GameListController _controller;
 
         public GameListControllerTests()
@@ -38,27 +40,29 @@ namespace DNDOnePlaceManager.Tests.Controllers
             _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(PlayerResponse(SomePlayer()));
 
-            _controller = CreateController(_mediator, _config, _ws, RegularUser());
+            _controller = CreateController(_mediator, _config, _lobbyService, RegularUser());
         }
         private static GameListController CreateController(
             Mock<IMediator> mediatorMock,
             Mock<IConfiguration>? configMock = null,
-            Mock<IWebSocketManager>? wsMock = null,
+            Mock<ILobbyService>? lobbyMock = null,
             User? contextUser = null)
         {
             configMock ??= new Mock<IConfiguration>();
-            wsMock ??= new Mock<IWebSocketManager>();
-            return CreateController(mediatorMock, configMock.Object, wsMock.Object, contextUser);
+            lobbyMock ??= new Mock<ILobbyService>();
+            return CreateController(mediatorMock, configMock.Object, lobbyMock.Object, contextUser);
         }
 
         private static GameListController CreateController(
             Mock<IMediator> mediatorMock,
             IConfiguration config,
-            Mock<IWebSocketManager>? wsMock = null,
+            Mock<ILobbyService>? lobbyMock = null,
             User? contextUser = null)
         {
-            wsMock ??= new Mock<IWebSocketManager>();
-            var controller = new GameListController(mediatorMock.Object, config, wsMock.Object);
+            lobbyMock ??= new Mock<ILobbyService>();
+            var centralServerService = new Mock<ICentralServerService>().Object;
+            var webRtcSession = new Mock<IWebRTCSessionService>().Object;
+            var controller = new GameListController(mediatorMock.Object, config, lobbyMock.Object, centralServerService, webRtcSession);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -69,10 +73,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
         private static GameListController CreateController(
             Mock<IMediator> mediatorMock,
             IConfiguration config,
-            IWebSocketManager ws,
+            ILobbyService lobbyService,
             User? contextUser = null)
         {
-            var controller = new GameListController(mediatorMock.Object, config, ws);
+            var centralServerService = new Mock<ICentralServerService>().Object;
+            var webRtcSession = new Mock<IWebRTCSessionService>().Object;
+            var controller = new GameListController(mediatorMock.Object, config, lobbyService, centralServerService, webRtcSession);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -151,7 +157,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
                      .ReturnsAsync(allAddons);
 
             // Create a controller that uses the real config
-            var controller = CreateController(_mediator, realConfig, _ws, RegularUser());
+            var controller = CreateController(_mediator, realConfig, _lobbyService, RegularUser());
 
             // Act
             var result = await controller.GetFeaturedAddons();
@@ -178,12 +184,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsFalse()
+        public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsNull()
         {
             // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(false);
+                    .ReturnsAsync((Guid?)null);
             var controller = CreateController(mediator, contextUser: AdminUser());
             var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
 
@@ -195,12 +201,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task AddGame_ReturnsOk_WhenAdminAndMediatorReturnsTrue()
+        public async Task AddGame_ReturnsOk_WhenAdminAndMediatorReturnsGameId()
         {
             // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(true);
+                    .ReturnsAsync(Guid.NewGuid());
             var controller = CreateController(mediator, contextUser: AdminUser());
             var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
 
