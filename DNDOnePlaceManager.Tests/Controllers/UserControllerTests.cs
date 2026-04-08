@@ -2,6 +2,7 @@ using DndOnePlaceManager.Application.Commands.Player.GetLocalPlayers;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Interfaces;
 using MediatR;
 using Microsoft.AspNetCore.Http;
@@ -23,10 +24,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
         private static UserController CreateController(
             Mock<ICentralServerService>? centralMock = null,
             Mock<IMediator>? mediatorMock = null,
-            User? contextUser = null)
+            User? contextUser = null,
+            Mock<ILobbyService>? lobbyMock = null)
         {
             centralMock ??= new Mock<ICentralServerService>();
             mediatorMock ??= new Mock<IMediator>();
+            lobbyMock ??= new Mock<ILobbyService>();
 
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
@@ -36,7 +39,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
                 })
                 .Build();
 
-            var controller = new UserController(centralMock.Object, mediatorMock.Object, config);
+            var controller = new UserController(centralMock.Object, mediatorMock.Object, config, lobbyMock.Object);
 
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
