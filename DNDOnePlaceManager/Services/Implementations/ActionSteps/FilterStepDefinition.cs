@@ -5,12 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DndOnePlaceManager.Application.Exceptions;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class FilterStepDefinition : IActionStepDefinition
     {
-        private static System.Data.DataTable DT = new System.Data.DataTable();
+        [ThreadStatic]
+        private static System.Data.DataTable DT;
+        private static System.Data.DataTable GetDT() => DT ??= new System.Data.DataTable();
 
         public string Name => "Filter Collection";
         public string Value => "FilterCollection";
@@ -24,11 +27,25 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<FilterStepData>();
 
-            var collectionToFilter = variables[stepData.Collection] as IEnumerable<object>;
+            if (string.IsNullOrWhiteSpace(stepData.Collection))
+                throw new ActionProcessException("FilterCollection: 'Collection' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.ItemName))
+                throw new ActionProcessException("FilterCollection: 'ItemName' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.Condition))
+                throw new ActionProcessException("FilterCollection: 'Condition' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.OutputName))
+                throw new ActionProcessException("FilterCollection: 'OutputName' argument is required.");
+
+            if (!variables.ContainsKey(stepData.Collection))
+                throw new ActionProcessException($"FilterCollection: variable '{stepData.Collection}' not found.");
+
+            var collectionToFilter = variables[stepData.Collection] as IEnumerable<object>
+                ?? throw new ActionProcessException($"FilterCollection: variable '{stepData.Collection}' is not a collection.");
+
             var filteredCollection = collectionToFilter.Where(x =>
             {
                 variables[stepData.ItemName] = x;
-                var result = DT.Compute(stepData.Condition, "");
+                var result = GetDT().Compute(stepData.Condition, "");
                 return (bool)result == true;
             }).AsEnumerable();
             variables[stepData.OutputName] = filteredCollection;

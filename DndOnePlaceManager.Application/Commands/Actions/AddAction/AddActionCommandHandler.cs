@@ -17,7 +17,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions
         public async override Task<(CommandResponse, Guid)> Handle(AddActionCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var game = await dbContext.Games.Include(x=>x.Actions).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
+            var game = await dbContext.Games.Include(x => x.Actions).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
 
             if (request.GameId == Guid.Empty || request.Action == null)
             {

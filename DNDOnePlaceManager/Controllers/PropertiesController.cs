@@ -57,7 +57,7 @@ namespace DNDOnePlaceManager.Controllers
         [Authorize]
         [Route("QueryProperties")]
         [HttpGet]
-        public async Task<IActionResult> QueryProperties([FromQuery]Guid gameId, [Required]string parentIds, string? names, string? ids, string? prefix)
+        public async Task<IActionResult> QueryProperties([FromQuery] Guid gameId, [Required] string parentIds, string? names, string? ids, string? prefix)
         {
             var currentUser = HttpContext.Items["User"] as User;
 
@@ -82,7 +82,7 @@ namespace DNDOnePlaceManager.Controllers
                 cmd.Ids = ids.Split(',').Select(Guid.Parse).ToArray();
             }
 
-            if(!String.IsNullOrWhiteSpace(names))
+            if (!String.IsNullOrWhiteSpace(names))
             {
                 cmd.PropertyNames = names.Split(',');
             }
@@ -150,7 +150,7 @@ namespace DNDOnePlaceManager.Controllers
             var result = await mediator.Send(addPropertiesCmd);
             if (result != CommandResponse.Ok)
             {
-                return BadRequest(new { result = result } );
+                return BadRequest(new { result = result });
             }
             return Ok(new { result = result });
         }
@@ -159,7 +159,7 @@ namespace DNDOnePlaceManager.Controllers
         [Authorize]
         [Route("UpdateBulk")]
         [HttpPost]
-        public async Task<IActionResult> UpdateBulkProperties([FromQuery]Guid gameId, [FromBody]PropertyDTO[] properties)
+        public async Task<IActionResult> UpdateBulkProperties([FromQuery] Guid gameId, [FromBody] PropertyDTO[] properties)
         {
             var currentUser = HttpContext.Items["User"] as User;
 

@@ -21,7 +21,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperties
         {
             await base.Handle(request, cancellationToken);
 
-            if(!request.Properties.Any())
+            if (!request.Properties.Any())
             {
                 return CommandResponse.NoChange;
             }

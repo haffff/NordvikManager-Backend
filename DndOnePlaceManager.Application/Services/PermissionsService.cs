@@ -66,7 +66,7 @@ namespace DndOnePlaceManager.Application.Services
             var dbPermission = GetPermissionFromDB(playerId, model.Id);
             dbPermission = CreateIfNotExists(model, playerId, dbPermission);
 
-            if(permission == null)
+            if (permission == null)
             {
                 battleMapContext.Remove(dbPermission);
                 battleMapContext.SaveChanges();
@@ -94,7 +94,7 @@ namespace DndOnePlaceManager.Application.Services
         public bool CheckIfHasPermissions(Guid playerId, Guid model, Permission permission)
         {
             var dbPermission = GetPermissionFromDB(playerId, model, true);
-            if(dbPermission == null) 
+            if (dbPermission == null)
                 return false;
             return dbPermission.Permission.HasFlag(permission);
         }

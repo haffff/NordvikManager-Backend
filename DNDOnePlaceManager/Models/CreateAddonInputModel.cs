@@ -6,7 +6,7 @@ namespace DNDOnePlaceManager.Models
 {
     public class CreateAddonInputModel
     {
-        public Guid GameId { get; set;}
+        public Guid GameId { get; set; }
         public string Name { get; set; }
         public string? Description { get; set; }
         public string? Version { get; set; }

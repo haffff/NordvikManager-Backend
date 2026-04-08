@@ -19,7 +19,7 @@ namespace DndOnePlaceManager.Application.Extension
                 case "mapmodel":
                     return context.Games.Find(gameId)?.Maps?.Select(x => x as IEntity).ToList();
                 case "elementmodel":
-                    return context.Games.Include(x=>x.Maps).ThenInclude(x=>x.Elements).FirstOrDefault(x=> x.Id == gameId).Maps.SelectMany(x=>x.Elements).Cast<IEntity>().ToList();
+                    return context.Games.Include(x => x.Maps).ThenInclude(x => x.Elements).FirstOrDefault(x => x.Id == gameId).Maps.SelectMany(x => x.Elements).Cast<IEntity>().ToList();
                 case "propertymodel":
                     return context.Games.Find(gameId)?.Properties?.Select(x => x as IEntity).ToList();
                 case "layoutmodel":

@@ -17,7 +17,7 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
         {
             await base.Handle(request, cancellationToken);
 
-            var game = dbContext.Games.Include(x=>x.Resources).FirstOrDefault(x => x.Id == request.GameId);
+            var game = dbContext.Games.Include(x => x.Resources).FirstOrDefault(x => x.Id == request.GameId);
             var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
 
             var resources = dbContext.Resources

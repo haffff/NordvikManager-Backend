@@ -16,7 +16,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.AddMap
 
         public override GameModel GetGame(AddMapCommand request)
         {
-            return dbContext.Games.Include(x => x.Maps).Include(x=>x.Players).FirstOrDefault(x => x.Id == request.GameID);
+            return dbContext.Games.Include(x => x.Maps).Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameID);
         }
 
         public override MapDTO GetDefault()

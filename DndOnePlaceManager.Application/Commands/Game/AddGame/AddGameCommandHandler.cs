@@ -14,7 +14,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
 {
-    internal class AddGameCommandHandler : HandlerBase<AddGameCommand, bool>
+    internal class AddGameCommandHandler : HandlerBase<AddGameCommand, Guid?>
     {
         IMediator mediator;
         string? mainRepositoryUrl;
@@ -25,13 +25,14 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
-        public async override Task<bool> Handle(AddGameCommand request, CancellationToken cancellationToken)
+        public async override Task<Guid?> Handle(AddGameCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
             if (request.PasswordRequired && string.IsNullOrWhiteSpace(request.Password))
-            {
-                return false;
-            }
+                return null;
+
+            if (string.IsNullOrWhiteSpace(request.User?.Id) || !Guid.TryParse(request.User.Id, out _))
+                return null;
 
             var random = new Random();
 
@@ -39,7 +40,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             var green = random.Next(0, 255 / 10) * 10;
             var blue = random.Next(0, 255 / 10) * 10;
 
-            PlayerModel player = new PlayerModel() { Name = "Game Master", User = request.User?.Id, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
+            PlayerModel player = new PlayerModel() { Name = "Game Master", CentralServerUserId = request.User?.Id, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
             PlayerModel system = new PlayerModel() { Name = "System", System = true, User = null, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
 
             GameModel game = new GameModel()
@@ -47,7 +48,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 Name = request.Name,
                 Password = request.PasswordRequired ? request.Password : null,
                 Players = new List<PlayerModel>() { player, system },
-                Maps = new List<MapModel>()
+                Maps = new List<MapModel>(),
+                IsPublic = request.IsPublic,
             };
 
             dbContext.Add(game);
@@ -184,15 +186,15 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 {
                     Default = true,
                     Name = "Default",
-                    Value = "{\"id\":1,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":7,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":1000,\"h\":1200},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":6,\"floating\":false,\"rect\":{\"x\":-156,\"y\":642,\"w\":300,\"h\":800},\"contentList\":[7],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":800,\"ephemeral\":false,\"isHeaderHidden\":true,\"isLocked\":false},{\"id\":8,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[3],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"isHeaderHidden\":false,\"isLocked\":false}],\"splitMode\":0,\"splitSize\":0.05,\"preferredWidth\":1000,\"preferredHeight\":1200,\"ephemeral\":false},{\"id\":5,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[6],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false}],\"splitMode\":0,\"splitSize\":0.75,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"_contents\":[{\"contentId\":7,\"type\":\"ToolsPanel\",\"props\":{}},{\"contentId\":3,\"type\":\"Battlemap\",\"syncId\":\""+battlemapId+"\",\"mapId\":\""+mapId+ "\",\"props\":{\"syncId\":\""+battlemapId+"\",\"withID\":\""+battlemapId+"\"}},{\"contentId\":6,\"type\":\"ChatPanel\",\"props\":{}}]}"
+                    Value = "{\"id\":1,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":7,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":1000,\"h\":1200},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":6,\"floating\":false,\"rect\":{\"x\":-156,\"y\":642,\"w\":300,\"h\":800},\"contentList\":[7],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":800,\"ephemeral\":false,\"isHeaderHidden\":true,\"isLocked\":false},{\"id\":8,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[3],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"isHeaderHidden\":false,\"isLocked\":false}],\"splitMode\":0,\"splitSize\":0.05,\"preferredWidth\":1000,\"preferredHeight\":1200,\"ephemeral\":false},{\"id\":5,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[6],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false}],\"splitMode\":0,\"splitSize\":0.75,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"_contents\":[{\"contentId\":7,\"type\":\"ToolsPanel\",\"props\":{}},{\"contentId\":3,\"type\":\"Battlemap\",\"syncId\":\"" + battlemapId + "\",\"mapId\":\"" + mapId + "\",\"props\":{\"syncId\":\"" + battlemapId + "\",\"withID\":\"" + battlemapId + "\"}},{\"contentId\":6,\"type\":\"ChatPanel\",\"props\":{}}]}"
                 }
             };
 
             await mediator.Send(addLayoutCommand);
 
-            if(request.AddonsSelected == null || mainRepositoryUrl == null)
+            if (request.AddonsSelected == null || mainRepositoryUrl == null)
             {
-                return true;
+                return game.Id;
             }
 
             foreach (var addon in request.AddonsSelected)
@@ -208,7 +210,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 await mediator.Send(installAddonCommand);
             }
 
-            return true;
+            return game.Id;
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -10,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 {
-    internal class AddTreeEntryCommandHandler : HandlerBase<AddTreeEntryCommand, (CommandResponse,List<TreeEntryDto>)>
+    internal class AddTreeEntryCommandHandler : HandlerBase<AddTreeEntryCommand, (CommandResponse, List<TreeEntryDto>)>
     {
         public AddTreeEntryCommandHandler(IDbContext ctx, IMapper mapper) : base(ctx, mapper)
         {
@@ -22,7 +23,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             var playerId = request.Player.Id ?? Guid.Empty;
 
-            if(playerId == Guid.Empty)
+            if (playerId == Guid.Empty)
             {
                 throw new ResourceNotFoundException(nameof(PlayerModel));
             }
@@ -30,9 +31,9 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
             var treeEntry = mapper.Map<TreeEntryModel>(request.TreeEntryDto);
 
             var game = await dbContext.Games
-                .Include(x=>x.Players)
-                .Include(x=>x.TreeEntries).ThenInclude(y=>y.Parent)
-                .Include(x=>x.TreeEntries).ThenInclude(y=>y.Next)
+                .Include(x => x.Players)
+                .Include(x => x.TreeEntries).ThenInclude(y => y.Parent)
+                .Include(x => x.TreeEntries).ThenInclude(y => y.Next)
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
             if (game == null)
@@ -40,14 +41,19 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
                 throw new ResourceNotFoundException(nameof(game));
             }
 
+            if (treeEntry.IsFolder)
+            {
+                game.ThrowIfNoPermission(playerId, Permission.Edit);
+            }
+
             game.TreeEntries.Add(treeEntry);
 
-            if(request.TreeEntryDto.ParentId == null && request.TreeEntryDto.Next != null)
+            if (request.TreeEntryDto.ParentId == null && request.TreeEntryDto.Next != null)
             {
                 var next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
                 treeEntry.Parent = next.Parent;
             }
-                 
+
             //assign to folder
             if (request.TreeEntryDto.ParentId != null && treeEntry.Parent == null)
             {
@@ -66,7 +72,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             dbContext.SaveChanges();
 
-            if(request.TreeEntryDto.AutoConnect == true)
+            if (request.TreeEntryDto.AutoConnect == true)
             {
                 return await ConnectTreeEntry(request, treeEntry, game);
             }
@@ -81,9 +87,9 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             var treeEntries = game.TreeEntries.Where(x => x.NewItem == false && x.EntryType == request.TreeEntryDto.EntryType);
 
-            if(!treeEntries.Any(x=>x.Parent == treeEntry.Parent))
+            if (!treeEntries.Any(x => x.Parent == treeEntry.Parent))
             {
-                if(request.TreeEntryDto.Next != null)
+                if (request.TreeEntryDto.Next != null)
                 {
                     throw new WrongArgumentsException(nameof(request.TreeEntryDto.Next), nameof(request.TreeEntryDto.ParentId));
                 }

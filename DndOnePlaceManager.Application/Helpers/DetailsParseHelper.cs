@@ -5,13 +5,13 @@ namespace DndOnePlaceManager.Application.Helpers
 {
     internal class DetailsParseHelper
     {
-        public static Dictionary<string,ElementDetailModel> ParseFabricJSToElementDetals(Guid? elementId, string json)
+        public static Dictionary<string, ElementDetailModel> ParseFabricJSToElementDetals(Guid? elementId, string json)
         {
             var details = new Dictionary<string, ElementDetailModel>();
             var jObject = Newtonsoft.Json.Linq.JObject.Parse(json);
             foreach (var item in jObject)
             {
-                if(item.Value.Type == JTokenType.Null || item.Value.Type == JTokenType.Undefined)
+                if (item.Value.Type == JTokenType.Null || item.Value.Type == JTokenType.Undefined)
                 {
                     details.Add(item.Key, new ElementDetailModel()
                     {

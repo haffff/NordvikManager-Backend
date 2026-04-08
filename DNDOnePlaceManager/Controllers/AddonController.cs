@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
+using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
 using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
@@ -10,7 +11,9 @@ using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Models;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
+using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -19,6 +22,8 @@ using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.ComponentModel;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Controllers
@@ -29,14 +34,18 @@ namespace DNDOnePlaceManager.Controllers
     {
         private readonly IMediator mediator;
         private readonly IServiceProvider serviceProvider;
-        private readonly IWebSocketManager wbManager;
+        private readonly ILobbyService lobbyService;
 
-        public AddonController(IMediator mediator, IWebSocketManager wbManager, IServiceProvider serviceProvider)
+        public AddonController(IMediator mediator, ILobbyService lobbyService, IServiceProvider serviceProvider)
         {
             this.mediator = mediator;
             this.serviceProvider = serviceProvider;
-            this.wbManager = wbManager;
+            this.lobbyService = lobbyService;
         }
+
+        // =========================================================================
+        // Actions / Steps / Hooks
+        // =========================================================================
 
         [Route("actions")]
         [HttpGet]
@@ -76,14 +85,18 @@ namespace DNDOnePlaceManager.Controllers
                     Value = x.Value,
                     Category = x.Category,
                     Description = x.Description,
-                    Arguments = x.DataType?.GetProperties().Select(y => new ActionDefinitionArgument()
-                    {
-                        Name = y.Name,
-                        Type = y.PropertyType.Name
-                    }).ToArray()
+                    Arguments = x.DataType?
+                        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                        .Where(y => y.SetMethod?.IsPublic == true)
+                        .Select(y => new ActionDefinitionArgument()
+                        {
+                            Name = y.Name,
+                            Type = y.PropertyType.Name,
+                            Description = y.GetCustomAttribute<DescriptionAttribute>()?.Description
+                        }).ToArray()
                 }).ToArray()
             };
-            //figureout why
+
             return Ok(stepDefinitions);
         }
 
@@ -95,18 +108,282 @@ namespace DNDOnePlaceManager.Controllers
             return Ok(hooks);
         }
 
-        [Route("AddonsToDowload")]
+        [Route("RunningActions")]
         [HttpGet]
-        public async Task<IActionResult> GetAddonsToDownload()
+        public async Task<IActionResult> GetRunningActions([FromQuery] Guid gameId)
         {
-            GetAddonsFromRepositoryCommand getAddonsFromRepositoryCommand = new GetAddonsFromRepositoryCommand();
+            var player = await GetPlayer(gameId);
 
-            var result = await mediator.Send(getAddonsFromRepositoryCommand);
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
 
-            return Ok(result);
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return NotFound("Game lobby not found.");
+
+            var entries = lobby.ActionProcessingService.RunningActions.Values
+                .Select(x => new
+                {
+                    x.RunId,
+                    x.ActionName,
+                    x.StartedAt,
+                    x.FinishedAt,
+                    State = x.State.ToString(),
+                    x.CurrentStep,
+                    x.FaultMessage,
+                    x.WaitingOnToken
+                });
+
+            return Ok(entries);
         }
 
-        //To refactor
+        [Route("SupplyInput")]
+        [HttpPost]
+        public async Task<IActionResult> SupplyInput([FromQuery] Guid gameId, [FromQuery] Guid token, [FromBody] object data)
+        {
+            var player = await GetPlayer(gameId);
+
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
+
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return NotFound("Game lobby not found.");
+
+            if (!lobby.ActionProcessingService.InputHandler.TryRemove(token, out var tcs))
+                return NotFound(new { error = "No action is waiting on that token." });
+
+            var cmd = new WebSocketCommand
+            {
+                InputToken = token,
+                Data = data == null ? null : Newtonsoft.Json.Linq.JToken.FromObject(data),
+                Command = WebSocketCommandNames.CmdDebugAction
+            }; tcs.TrySetResult(cmd);
+            return Ok(new { resolved = token });
+        }
+
+        [Route("KillAction")]
+        [HttpPost]
+        public async Task<IActionResult> KillAction([FromQuery] Guid gameId, [FromQuery] Guid runId)
+        {
+            var player = await GetPlayer(gameId);
+
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
+
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return NotFound("Game lobby not found.");
+
+            if (!lobby.ActionProcessingService.RunningActions.TryGetValue(runId, out var entry))
+                return NotFound(new { error = "No running action found with that runId." });
+
+            if (entry.State is ActionRunState.Completed or ActionRunState.Faulted or ActionRunState.Killed)
+                return Conflict(new { error = $"Action already in terminal state: {entry.State}." });
+
+            entry.Kill();
+            return Ok(new { killed = runId, action = entry.ActionName });
+        }
+
+        // =========================================================================
+        // Addon management
+        // =========================================================================
+
+        /// <summary>GET addon/installed — list addons installed on this game.</summary>
+        [Route("installed")]
+        [HttpGet]
+        public async Task<IActionResult> GetInstalledAddons([FromQuery] Guid gameId)
+        {
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new GetAddonsCommand
+            {
+                GameId = gameId,
+                Player = player.Player,
+                Flat = true,
+            };
+
+            var dto = await mediator.Send(command);
+            return Ok(dto);
+        }
+
+        /// <summary>GET addon/repository — list addons available in the remote registry.</summary>
+        [Route("repository")]
+        [HttpGet]
+        public async Task<IActionResult> GetRepository([FromQuery] Guid gameId)
+        {
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new GetAddonsFromRepositoryCommand();
+            var dto = await mediator.Send(command);
+            return Ok(dto);
+        }
+
+        public class InstallAddonRequest { public string Key { get; set; } }
+
+        /// <summary>POST addon/install — install from repository by key.</summary>
+        [Route("install")]
+        [HttpPost]
+        public async Task<IActionResult> InstallAddon([FromQuery] Guid gameId, [FromBody] InstallAddonRequest body)
+        {
+            if (string.IsNullOrWhiteSpace(body?.Key))
+                return BadRequest(new { error = "key is required." });
+
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new InstallAddonCommand
+            {
+                GameID = gameId,
+                Player = player.Player,
+                AddonSourceKey = body.Key,
+            };
+
+            var (resp, _) = await mediator.Send(command);
+            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                return BadRequest(new { error = resp.ToString() });
+
+            return Ok();
+        }
+
+        /// <summary>POST addon/update — re-install latest version from repository.</summary>
+        [Route("update")]
+        [HttpPost]
+        public async Task<IActionResult> UpdateAddon([FromQuery] Guid gameId, [FromBody] InstallAddonRequest body)
+        {
+            if (string.IsNullOrWhiteSpace(body?.Key))
+                return BadRequest(new { error = "key is required." });
+
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new InstallAddonCommand
+            {
+                GameID = gameId,
+                Player = player.Player,
+                AddonSourceKey = body.Key,
+                Reinstall = true,
+            };
+
+            var (resp, _) = await mediator.Send(command);
+            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                return BadRequest(new { error = resp.ToString() });
+
+            return Ok();
+        }
+
+        public class UninstallAddonRequest { public string AddonId { get; set; } }
+
+        /// <summary>POST addon/uninstall — uninstall by id or key.</summary>
+        [Route("uninstall")]
+        [HttpPost]
+        public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromBody] UninstallAddonRequest body)
+        {
+            if (string.IsNullOrWhiteSpace(body?.AddonId))
+                return BadRequest(new { error = "addonId is required." });
+
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            Guid? addonGuid = Guid.TryParse(body.AddonId, out var g) ? g : null;
+
+            var command = new UninstallAddonCommand
+            {
+                GameID = gameId,
+                Player = player.Player,
+                AddonId = addonGuid,
+                AddonKey = addonGuid == null ? body.AddonId : null,
+            };
+
+            var response = await mediator.Send(command);
+            if (response != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                return BadRequest(new { error = response.ToString() });
+
+            return Ok();
+        }
+
+        public class SetEnabledRequest { public string AddonId { get; set; } public bool Enabled { get; set; } }
+
+        /// <summary>POST addon/setEnabled — enable or disable an installed addon.</summary>
+        [Route("setEnabled")]
+        [HttpPost]
+        public async Task<IActionResult> SetEnabled([FromQuery] Guid gameId, [FromBody] SetEnabledRequest body)
+        {
+            if (string.IsNullOrWhiteSpace(body?.AddonId))
+                return BadRequest(new { error = "addonId is required." });
+
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new SetAddonEnabledCommand
+            {
+                GameID = gameId,
+                Player = player.Player,
+                AddonId = body.AddonId,
+                Enabled = body.Enabled,
+            };
+
+            var response = await mediator.Send(command);
+            if (response != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                return BadRequest(new { error = response.ToString() });
+
+            return Ok();
+        }
+
+        public class InstallFromFileRequest
+        {
+            public string FileName { get; set; }
+            public string Data { get; set; }
+            public string MimeType { get; set; }
+        }
+
+        /// <summary>POST addon/installFromFile — install from base64-encoded file.</summary>
+        [Route("installFromFile")]
+        [HttpPost]
+        public async Task<IActionResult> InstallFromFile([FromQuery] Guid gameId, [FromBody] InstallFromFileRequest body)
+        {
+            if (string.IsNullOrWhiteSpace(body?.Data))
+                return BadRequest(new { error = "data is required." });
+
+            byte[] fileBytes;
+            try
+            {
+                fileBytes = Convert.FromBase64String(body.Data);
+            }
+            catch
+            {
+                return BadRequest(new { error = "data must be a valid base64 string." });
+            }
+
+            GetPlayerCommandResponse player = await GetPlayer(gameId);
+
+            var command = new InstallAddonCommand
+            {
+                GameID = gameId,
+                Player = player.Player,
+                AddonFile = fileBytes,
+                AddonFileName = body.FileName,
+            };
+
+            var (resp, _) = await mediator.Send(command);
+            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                return BadRequest(new { error = resp.ToString() });
+
+            return Ok();
+        }
+
+        // =========================================================================
+        // Legacy / kept for backwards compat
+        // =========================================================================
+
         [Route("addons")]
         [HttpGet]
         public async Task<IActionResult> GetAddons([FromQuery] Guid gameId)
@@ -121,86 +398,12 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             var dto = await mediator.Send(getAddonsCommand);
-
             return Ok(dto);
         }
 
-        public class InstallAddonRequest
-        {
-            [FromForm(Name= "file")]
-            public IFormFile File { get; set; }
-            [FromForm(Name = "url")]
-            public string Url { get; set; }
-            [FromForm(Name = "key")]
-            public string Key { get; set; }
-
-        }
-
-        //To refactor
-        [Route("install")]
-        [Consumes("multipart/form-data")]
-        [HttpPost]
-        public async Task<IActionResult> InstallAddon([FromQuery] Guid gameId, [FromForm] InstallAddonRequest addon)
-        {
-            GetPlayerCommandResponse player = await GetPlayer(gameId);
-
-            if (addon?.File == null && addon?.Url == null && addon?.Key == null)
-            {
-                return BadRequest();
-            }
-
-            byte[] addonFileBytes = null;
-            if (addon.File != null)
-            {
-                using (var memoryStream = new MemoryStream())
-                {
-                    await addon.File.CopyToAsync(memoryStream);
-                    addonFileBytes = memoryStream.ToArray();
-                }
-            }
-
-            InstallAddonCommand installAddonCommand = new InstallAddonCommand()
-            {
-                AddonFile = addonFileBytes,
-                GameID = gameId,
-                Player = player.Player,
-                AddonSourceKey = addon.Key
-            };
-
-            var addonId = await mediator.Send(installAddonCommand);
-
-            return Ok(new { });
-        }
-
-        [Route("uninstall")]
-        [HttpPost]
-        public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromQuery]  Guid addonId)
-        {
-            GetPlayerCommandResponse player = await GetPlayer(gameId);
-
-            UninstallAddonCommand uninstallAddonCommand = new UninstallAddonCommand()
-            {
-                GameID = gameId,
-                Player = player.Player,
-                AddonId = addonId
-            };
-
-            var response = await mediator.Send(uninstallAddonCommand);
-
-            return Ok(response);
-        }
-
-        private async Task<GetPlayerCommandResponse> GetPlayer(Guid gameId)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            return player;
-        }
+        // =========================================================================
+        // Cards / Custom panels
+        // =========================================================================
 
         [Route("action")]
         [HttpGet]
@@ -260,5 +463,22 @@ namespace DNDOnePlaceManager.Controllers
 
             return Ok(dtos);
         }
+
+        // =========================================================================
+        // Helpers
+        // =========================================================================
+
+        private async Task<GetPlayerCommandResponse> GetPlayer(Guid gameId)
+        {
+            var currentUser = HttpContext.Items["User"] as User;
+
+            GetPlayerCommand playerCmd = new GetPlayerCommand();
+            playerCmd.GameID = gameId;
+            playerCmd.User = currentUser;
+
+            var player = await mediator.Send(playerCmd);
+            return player;
+        }
     }
 }
+

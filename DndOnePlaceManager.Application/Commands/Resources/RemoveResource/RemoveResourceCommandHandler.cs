@@ -4,7 +4,6 @@ using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
-using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,12 +11,10 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 {
     public class RemoveResourceCommandHandler : HandlerBase<RemoveResourceCommand, CommandResponse>
     {
-        private readonly IAuthDBContext authDBContext;
         private readonly IMediator mediator;
 
-        public RemoveResourceCommandHandler(IDbContext battleMapContext, IAuthDBContext authDBContext, IMapper mapper, IMediator mediator) : base(battleMapContext, mapper)
+        public RemoveResourceCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator) : base(battleMapContext, mapper)
         {
-            this.authDBContext = authDBContext;
             this.mediator = mediator;
         }
 
@@ -31,7 +28,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 throw new PermissionException(Permission.Edit);
             }
 
-            if(image.GameId != request.GameId)
+            if (image.GameId != request.GameId)
             {
                 throw new WrongArgumentsException(nameof(request.GameId));
             }

@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -22,31 +23,38 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<SetDetailStepData>();
 
-            var name = stepData.DetailName;
+            if (string.IsNullOrWhiteSpace(stepData.Input))
+                throw new ActionProcessException("SetDetail: 'Input' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.DetailName))
+                throw new ActionProcessException("SetDetail: 'DetailName' argument is required.");
 
-            //confirm it works?
-            Type type = Type.GetType(stepData.Type) ?? typeof(System.String);
-            var varValue = step.Data["value"].ToObject(type);
+            if (!variables.ContainsKey(stepData.Input))
+                throw new ActionProcessException($"SetDetail: variable '{stepData.Input}' not found.");
+
+            var name = stepData.DetailName;
+            Type type = Type.GetType(stepData.Type) ?? typeof(string);
+            var varValue = step.Data["Value"].ToObject(type);
 
             if (stepData.isElement)
             {
-                var elementDto = variables[stepData.Input] as ElementDTO;
+                var elementDto = variables[stepData.Input] as ElementDTO
+                    ?? throw new ActionProcessException($"SetDetail: variable '{stepData.Input}' is not an ElementDTO.");
+
                 var jobject = JObject.Parse(elementDto.Object);
 
-                if (varValue != null) {
+                if (varValue != null)
                     jobject[name] = JToken.FromObject(varValue);
-                }
                 else
-                {
                     jobject.Remove(name);
-                }
 
                 elementDto.Object = jobject.ToString();
             }
             else
             {
                 var dto = variables[stepData.Input];
-                dto.GetType().GetType().GetProperty(name).SetValue(dto, varValue);
+                var prop = dto.GetType().GetProperty(name)
+                    ?? throw new ActionProcessException($"SetDetail: property '{name}' not found on '{dto.GetType().Name}'.");
+                prop.SetValue(dto, varValue);
             }
         }
     }

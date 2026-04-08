@@ -1,5 +1,6 @@
 ﻿using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Enums;
+using DNDOnePlaceManager.Models;
 using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DNDOnePlaceManager.WebSockets;
@@ -14,7 +15,8 @@ namespace DNDOnePlaceManager.Services.Interfaces
     public interface IActionProcessingService
     {
         GameLobby GameLobby { get; set; }
-        ConcurrentDictionary<Guid, WebSocketCommand> InputHandler { get; init; }
+        ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>> InputHandler { get; init; }
+        ConcurrentDictionary<Guid, ActionRunEntry> RunningActions { get; }
 
         Task CallHookAsync(Hook hook, HookArgs hookArg);
         Task CommandToHook(WebSocketCommand webSocketCommand);

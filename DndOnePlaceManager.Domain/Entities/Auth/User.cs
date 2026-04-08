@@ -1,15 +1,11 @@
-﻿using Microsoft.AspNetCore.Identity;
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
 namespace DNDOnePlaceManager.Domain.Entities.Auth
 {
-    public class User : IdentityUser
+    public class User
     {
+        public string Id { get; set; } = string.Empty;
+        public string? UserName { get; set; }
+        public string? Email { get; set; }
         public bool? IsAdmin { get; set; }
-        public string KeyBindings { get; set; }
-
-        [NotMapped]
         public bool Lock { get; set; }
     }
 }

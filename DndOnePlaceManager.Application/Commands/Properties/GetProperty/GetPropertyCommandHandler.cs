@@ -13,6 +13,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
     {
         public GetPropertyCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
+
         }
 
         public async override Task<(CommandResponse, PropertyDTO)> Handle(GetPropertyCommand request, CancellationToken cancellationToken)
@@ -22,7 +23,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
 
             PropertyModel property = null;
 
-            if(request.Id == null && request.ParentID != null && request.Name != null)
+            if (request.Id == null && request.ParentID != null && request.Name != null)
             {
                 property = dbContext.Properties.FirstOrDefault(p => p.ParentID == request.ParentID && p.Name == request.Name);
             }
@@ -37,6 +38,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
             }
 
             var entityType = property?.EntityName?.ToEntityType();
+
             if (entityType != null)
             {
                 var entity = dbContext.Find(entityType, property.ParentID);
@@ -50,11 +52,13 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
                 {
                     return (CommandResponse.NoPermission, null);
                 }
-
                 var propertyDto = mapper.Map<PropertyDTO>(property);
+                if (property.IsProtected)
+                    propertyDto.Value = null;
 
                 return (CommandResponse.Ok, propertyDto);
             }
+
             return (CommandResponse.WrongArguments, null);
         }
     }

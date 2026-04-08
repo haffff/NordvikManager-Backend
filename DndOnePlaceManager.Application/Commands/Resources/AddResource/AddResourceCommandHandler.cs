@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Resources
 {
-    public class AddImageCommandHandler : HandlerBase<AddResourceCommand,(CommandResponse, Guid?)>
+    public class AddImageCommandHandler : HandlerBase<AddResourceCommand, (CommandResponse, Guid?)>
     {
         private readonly IMediator mediator;
         public AddImageCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator) : base(battleMapContext, mapper)
@@ -29,7 +29,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             //TODO: mimeType enum should be passed in command
             MimeType? mimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();
 
-            var game = dbContext.Games.Include(x=>x.Resources).Include(x=>x.TreeEntries).FirstOrDefault(x => x.Id == request.GameID);
+            var game = dbContext.Games.Include(x => x.Resources).Include(x => x.TreeEntries).FirstOrDefault(x => x.Id == request.GameID);
 
             var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id) ?? throw new ArgumentNullException("Player not found");
 

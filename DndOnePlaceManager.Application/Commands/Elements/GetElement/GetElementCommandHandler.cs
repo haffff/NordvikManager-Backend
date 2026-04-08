@@ -7,7 +7,7 @@ using DNDOnePlaceManager.Domain.Entities.BattleMap;
 
 namespace DndOnePlaceManager.Application.Commands.Elements
 {
-    internal class GetElementCommandHandler : GenericGetHandler<GetElementCommand, ElementModel , ElementDTO>
+    internal class GetElementCommandHandler : GenericGetHandler<GetElementCommand, ElementModel, ElementDTO>
     {
         public GetElementCommandHandler(IDbContext battleMapContext, IMapper mapper) : base(battleMapContext, mapper)
         {

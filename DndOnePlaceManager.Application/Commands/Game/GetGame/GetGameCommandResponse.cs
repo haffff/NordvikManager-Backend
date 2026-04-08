@@ -21,5 +21,6 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap.GetGame
         public bool? UseSquaredSystem { get; set; }
         public int? BaseDistancePerSquare { get; set; }
         public string BaseDistanceUnit { get; set; }
+        public string? CentralSessionId { get; set; }
     }
 }

@@ -11,7 +11,7 @@ namespace DndOnePlaceManager.Domain.Enums
         /// <summary>
         /// Command has been handles succesfully
         /// </summary>
-        Ok, 
+        Ok,
         /// <summary>
         /// User lacks persmissions
         /// </summary>

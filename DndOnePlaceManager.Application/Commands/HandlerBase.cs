@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DndOnePlaceManager.Application.Commands
 {
-    public class HandlerBase<TCom, TResponse> : IRequestHandler<TCom,TResponse> where TCom : CommandBase<TResponse>
+    public class HandlerBase<TCom, TResponse> : IRequestHandler<TCom, TResponse> where TCom : CommandBase<TResponse>
     {
         protected IDbContext dbContext;
         protected IMapper mapper;
@@ -18,7 +18,7 @@ namespace DndOnePlaceManager.Application.Commands
 
         public virtual async Task<TResponse> Handle(TCom request, CancellationToken cancellationToken)
         {
-            if(request.Scope != null)
+            if (request.Scope != null)
             {
                 dbContext = request.Scope.ServiceProvider.GetRequiredService<IDbContext>();
             }

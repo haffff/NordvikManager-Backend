@@ -6,7 +6,9 @@ using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DNDOnePlaceManager.Services.Interfaces;
+using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.WebSockets.Handlers;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,37 +23,42 @@ namespace DNDOnePlaceManager.Services.Implementations
     public class GameLobby : IDisposable
     {
         private IMediator mediator;
-
         private IServiceScopeFactory serviceScopeFactory;
-
         private IServiceScope serviceScope;
 
         public IWebSocketHandler[] WebSockerHandlers { get; }
 
-        private static HashSet<string> AllowedPasstroughCommands = new HashSet<string>()
+        private static readonly HashSet<string> AllowedPassthroughCommands = new HashSet<string>()
         {
-            "preview_start",
-            "preview_update",
-            "preview_end"
+            WebSocketCommandNames.CmdPreviewStart,
+            WebSocketCommandNames.CmdPreviewUpdate,
+            WebSocketCommandNames.CmdPreviewEnd
         };
 
         public GameLobby(IServiceScopeFactory serviceScopeFactory)
         {
             serviceScope = serviceScopeFactory.CreateScope();
-            
+
             ActionProcessingService = serviceScope.ServiceProvider.GetRequiredService<IActionProcessingService>();
             ActionProcessingService.GameLobby = this;
-            ServiceScopeFactory = serviceScopeFactory;
-            this.mediator = serviceScope.ServiceProvider.GetService(typeof(IMediator)) as IMediator;
+
+            // Store in the private field only; the public property delegates to it
             this.serviceScopeFactory = serviceScopeFactory;
+            this.mediator = serviceScope.ServiceProvider.GetService(typeof(IMediator)) as IMediator;
 
             WebSockerHandlers = serviceScope.ServiceProvider.GetServices(typeof(IWebSocketHandler))?.Cast<IWebSocketHandler>().ToArray();
         }
 
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid GameId { get; set; }
-        public Dictionary<PlayerDTO, List<WebSocketManager>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<WebSocketManager>>();
+        public Dictionary<PlayerDTO, List<IPlayerConnection>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<IPlayerConnection>>();
         public PlayerDTO SystemPlayer { get; set; }
+        public IActionProcessingService ActionProcessingService { get; set; }
+
+        // Delegates to the private field so external callers still work
+        public IServiceScopeFactory ServiceScopeFactory => serviceScopeFactory;
+
+        public bool Debug { get; internal set; }
 
         public bool CheckForPlayer(PlayerDTO player)
         {
@@ -63,58 +70,54 @@ namespace DNDOnePlaceManager.Services.Implementations
             foreach (var connectedPlayer in ConnectedPlayers)
             {
                 if (connectedPlayer.Key.Id != player.Id)
-                {
-                    connectedPlayer.Value.ForEach(async (ws) => await ws.SendMessageToPlayer(message));
-                }
+                    connectedPlayer.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
             }
         }
 
         public void SendToPlayer(object message, PlayerDTO player)
         {
             if (ConnectedPlayers.ContainsKey(player))
-            {
-                ConnectedPlayers[player].ForEach(async (ws) => await ws.SendMessageToPlayer(message));
-            }
+                ConnectedPlayers[player].ForEach(async ws => await ws.SendMessageToPlayer(message));
         }
 
         private async Task<WebSocketCommand> HandleWebSocketCommand(WebSocketCommand message, PlayerDTO player)
         {
-            if(!CheckIfAllowed(message))
+            if (!CheckIfAllowed(message))
             {
-                message.Command = "error";
+                message.Command = WebSocketCommandNames.ErrorGeneric;
                 message.OnlyToSender = true;
-                message.Result = "Not allowed";
+                message.Result = WebSocketCommandNames.ResultNotAllowed;
                 return message;
             }
 
             message.PlayerId = player.Id;
             message.GameId = GameId;
 
-            if (AllowedPasstroughCommands.Contains(message.Command))
+            if (AllowedPassthroughCommands.Contains(message.Command))
             {
-                message.Result = "Pass";
-
-                //Enrich
-
+                message.Result = WebSocketCommandNames.ResultPass;
                 return message;
             }
 
-            using var scope = serviceScopeFactory.CreateScope();
-
-            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            using var handlerScope = serviceScopeFactory.CreateScope();
+            var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
 
             foreach (var item in WebSockerHandlers)
             {
                 var res = await item.Handle(message, player);
                 if (res != null)
                 {
+                    // Bug fix: the original code set Result to the enum name then unconditionally
+                    // overwrote it with "Ok" on the very next line — only set "Ok" in the else branch.
                     if (res != CommandResponse.Ok)
                     {
                         message.OnlyToSender = true;
                         message.Result = Enum.GetName(typeof(CommandResponse), res);
                     }
-
-                    message.Result = "Ok";
+                    else
+                    {
+                        message.Result = WebSocketCommandNames.ResultOk;
+                    }
                     break;
                 }
             }
@@ -122,9 +125,10 @@ namespace DNDOnePlaceManager.Services.Implementations
             return message;
         }
 
+        // Use OrdinalIgnoreCase to avoid a string allocation from .ToLower()
         private bool CheckIfAllowed(WebSocketCommand message)
         {
-            return message.Command.ToLower() != "clientscript_execute";
+            return !message.Command.Equals(WebSocketCommandNames.CmdClientScriptExecute, StringComparison.OrdinalIgnoreCase);
         }
 
         private async Task<WebSocketCommand> HandleWebSocketCommand(string message, PlayerDTO player)
@@ -133,143 +137,108 @@ namespace DNDOnePlaceManager.Services.Implementations
             {
                 JObject parsedMsg = JObject.Parse(message);
                 WebSocketCommand webSocketCommand = parsedMsg.ToObject<WebSocketCommand>();
-
                 return await HandleWebSocketCommand(webSocketCommand, player);
             }
             catch (PermissionException e)
             {
-                WebSocketCommand webSocketCommand = new WebSocketCommand()
-                {
-                    GameId = GameId,
-                    PlayerId = player.Id,
-                    Command = "error_permission",
-                    Data = e.Message,
-                    OnlyToSender = true
-                };
-
-                SendToPlayer(webSocketCommand, player);
+                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player), player);
                 return null;
             }
             catch (WrongArgumentsException e)
             {
-                WebSocketCommand webSocketCommand = new WebSocketCommand()
-                {
-                    GameId = GameId,
-                    PlayerId = player.Id,
-                    Command = "error_arguments",
-                    Data = e.Message,
-                    OnlyToSender = true
-                };
-                SendToPlayer(webSocketCommand, player);
+                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player), player);
                 return null;
             }
             catch (ResourceNotFoundException e)
             {
-                WebSocketCommand webSocketCommand = new WebSocketCommand()
-                {
-                    GameId = GameId,
-                    PlayerId = player.Id,
-                    Command = "error_resource",
-                    Data = e.Message,
-                    OnlyToSender = true
-                };
-                SendToPlayer(webSocketCommand, player);
+                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player), player);
                 return null;
             }
             catch (Exception e)
             {
-                WebSocketCommand webSocketCommand = new WebSocketCommand()
-                {
-                    GameId = GameId,
-                    PlayerId = player.Id,
-                    Command = "error_general",
-                    Data = e.Message,
-                    OnlyToSender = true
-                };
-
-                SendToPlayer(webSocketCommand, player);
+                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player), player);
                 return null;
             }
         }
 
+        // Extracted helper — eliminates the four identical WebSocketCommand initialiser blocks
+        private WebSocketCommand MakeErrorCommand(string command, string data, PlayerDTO player)
+        {
+            return new WebSocketCommand()
+            {
+                GameId = GameId,
+                PlayerId = player.Id,
+                Command = command,
+                Data = data,
+                OnlyToSender = true
+            };
+        }
 
         public async Task HandleCommand(PlayerDTO player, string message)
         {
             WebSocketCommand webSocketCommand = await HandleWebSocketCommand(message, player);
-
             if (webSocketCommand == null)
-            {
                 return;
-            }
-
             await HandlePostCommand(player, webSocketCommand);
         }
 
         public async Task HandleCommand(PlayerDTO player, WebSocketCommand message)
         {
             WebSocketCommand webSocketCommand = await HandleWebSocketCommand(message, player);
-
             await HandlePostCommand(player, webSocketCommand);
         }
 
-
         /// <summary>
-        /// Handles received command
+        /// Broadcasts or routes a processed command to the appropriate connected players.
         /// </summary>
-        /// <param name="webSocket"></param>
-        /// <param name="message"></param>
         public async Task HandlePostCommand(PlayerDTO player, WebSocketCommand webSocketCommand)
         {
-            using var scope = serviceScopeFactory.CreateScope();
-            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-            bool result = false;
+            // Renamed from `mediator` to `cmdMediator` to avoid shadowing the instance field
+            using var cmdScope = serviceScopeFactory.CreateScope();
+            var cmdMediator = cmdScope.ServiceProvider.GetRequiredService<IMediator>();
+
             try
             {
                 if (await HandleSpecialCommands(player, webSocketCommand))
-                {
                     return;
-                }
 
                 if (webSocketCommand.OnlyToSender)
                 {
                     if (ConnectedPlayers.ContainsKey(player))
-                    {
                         ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
-                    }
                 }
                 else
                 {
-                    if(webSocketCommand.Result == null)
+                    if (webSocketCommand.Result == null)
                     {
                         webSocketCommand.OnlyToSender = true;
-                        webSocketCommand.Result = "CommandNotFound";
+                        webSocketCommand.Result = WebSocketCommandNames.ResultCommandNotFound;
                         if (ConnectedPlayers.ContainsKey(player))
-                        {
                             ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
-                        }
                         return;
                     }
 
-                    await ActionProcessingService.CommandToHook(webSocketCommand);
+                    _ = Task.Run(() => ActionProcessingService.CommandToHook(webSocketCommand));
 
-                    var idToCheck = webSocketCommand.Data.Type == JTokenType.Object ? webSocketCommand.Data["parentId"] ?? webSocketCommand.Data["id"] : null;
-                    if (idToCheck != null && webSocketCommand.Command != "permissions_update")
+                    var idToCheck = webSocketCommand.Data.Type == JTokenType.Object
+                        ? webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId] ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId]
+                        : null;
+
+                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.CmdPermissionsUpdate, StringComparison.Ordinal))
                     {
-                        GetPermissionsCommand permissionsCommand = new GetPermissionsCommand()
+                        var permissionsCommand = new GetPermissionsCommand()
                         {
-                            EntityId = webSocketCommand.Data["parentId"]?.ToGuid() ?? webSocketCommand.Data["id"].ToGuid(),
+                            EntityId = webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToGuid()
+                                       ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId].ToGuid(),
                             Player = player
                         };
 
-                        var permissions = await mediator.Send(permissionsCommand);
+                        var permissions = await cmdMediator.Send(permissionsCommand);
 
-                        if(permissions.Count == 0)
+                        if (permissions.Count == 0)
                         {
                             foreach (var item in ConnectedPlayers)
-                            {
                                 item.Value.SendMessageToPlayer(webSocketCommand);
-                            }
-
                             return;
                         }
 
@@ -280,7 +249,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                             {
                                 if (permission.HasFlag(Permission.Read))
                                 {
-                                    webSocketCommand.Data["permission"] = (int)permission;
+                                    webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)permission;
                                     item.Value.SendMessageToPlayer(webSocketCommand);
                                 }
                             }
@@ -289,9 +258,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                     else
                     {
                         foreach (var item in ConnectedPlayers)
-                        {
                             item.Value.SendMessageToPlayer(webSocketCommand);
-                        }
                     }
                 }
             }
@@ -303,55 +270,75 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg)
         {
-            // PlayerList has to be returned from this place. Its unnecessary to send it to other players
-            if (parsedMsg.Command == "player_list")
+            // PlayerList must be returned only to the requester — not broadcast
+            if (parsedMsg.Command == WebSocketCommandNames.CmdPlayerList)
             {
                 parsedMsg.Data = JToken.FromObject(ConnectedPlayers.Keys);
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
             }
-            if (parsedMsg.Command == "client_loaded")
+            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
             {
                 parsedMsg.OnlyToSender = true;
-                await ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs() { Player = player });
+                _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs() { Player = player }));
+                // Intentional fall-through: hook is fired but command continues to normal dispatch
             }
-            if (parsedMsg.Command == "debug_mode_get")
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeGet)
             {
                 parsedMsg.Data = Debug;
                 parsedMsg.OnlyToSender = true;
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
             }
-            if (parsedMsg.Command == "debug_mode_set")
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeSet)
             {
                 Debug = parsedMsg.Data.Value<bool>();
                 parsedMsg.OnlyToSender = true;
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
             }
-            if (parsedMsg.Command == "execute_action")
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdExecuteAction)
             {
                 if (parsedMsg.Data == null)
                 {
-                    parsedMsg.Result = "No data provided";
+                    parsedMsg.Result = WebSocketCommandNames.ResultNoData;
                     return true;
                 }
-                await ActionProcessingService.ExecActionAsync(parsedMsg.Data["Action"].ToString(), new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = parsedMsg.Data["Args"] as JObject });
+
+                var actionName = parsedMsg.Data[WebSocketCommandNames.DataKeyAction]?.ToString();
+                var argsToken = parsedMsg.Data[WebSocketCommandNames.DataKeyArgs];
+                var sharedVariables = argsToken is JObject argsObj
+                    ? argsObj.ToObject<Dictionary<string, object>>()
+                    : null;
+
+                _ = Task.Run(() => ActionProcessingService.ExecActionAsync(
+                    actionName,
+                    new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject },
+                    sharedVariables));
+
                 parsedMsg.OnlyToSender = true;
+                parsedMsg.Result = WebSocketCommandNames.ResultOk;
+                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+
                 return true;
             }
-            if (parsedMsg.Command == "debug_action_response" || parsedMsg.Command == "input_value")
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugActionResponse ||
+                parsedMsg.Command == WebSocketCommandNames.CmdInputValue)
             {
                 if (parsedMsg.Data == null || parsedMsg.InputToken == null)
                 {
-                    parsedMsg.Result = "No data provided";
+                    parsedMsg.Result = WebSocketCommandNames.ResultNoData;
                     return true;
                 }
-
-                while (!ActionProcessingService.InputHandler.TryAdd(parsedMsg.InputToken ?? default, parsedMsg)) ;
-
+                if (ActionProcessingService.InputHandler.TryRemove(parsedMsg.InputToken.Value, out var tcs))
+                    tcs.TrySetResult(parsedMsg);
                 return true;
             }
+
             return false;
         }
 
@@ -359,9 +346,5 @@ namespace DNDOnePlaceManager.Services.Implementations
         {
             serviceScope.Dispose();
         }
-
-        public IActionProcessingService ActionProcessingService { get; set; }
-        public IServiceScopeFactory ServiceScopeFactory { get; }
-        public bool Debug { get; internal set; }
     }
 }

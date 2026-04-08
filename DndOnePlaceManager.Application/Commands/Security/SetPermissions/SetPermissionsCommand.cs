@@ -9,6 +9,6 @@ namespace DndOnePlaceManager.Application.Commands.Security.SetPermissions
         public Guid EntityId { get; set; }
         public PlayerDTO Player { get; set; }
         public Guid GameID { get; set; }
-        public Dictionary<Guid,Permission?> Permissions { get; set; }
+        public Dictionary<Guid, Permission?> Permissions { get; set; }
     }
 }

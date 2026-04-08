@@ -9,7 +9,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 {
     public class GetResourceDataCommandHandler : HandlerBase<GetResourceDataCommand, (byte[], MimeType)>
     {
-        public GetResourceDataCommandHandler(IMapper mapper , IDbContext ctx) : base(ctx, mapper)
+        public GetResourceDataCommandHandler(IMapper mapper, IDbContext ctx) : base(ctx, mapper)
         {
         }
 
@@ -22,12 +22,12 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             //Todo - when getting from game. check for player
 
             //if (image != null && (image.PlayerId == request.Player.Id || player.System) && image.Game?.Id == request.GameID)
-            if (image != null && image.Game?.Id == request.GameID)
+            if (image != null && image.GameId == request.GameID)
             {
                 return (image.Data, image.MimeType);
             }
 
-            return (null,MimeType.None);
+            return (null, MimeType.None);
         }
     }
 }

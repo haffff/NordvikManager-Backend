@@ -19,11 +19,11 @@ namespace DndOnePlaceManager.Application.Extension
             { typeof(ElementModel), typeof(ElementDTO) },
             { typeof(PropertyModel), typeof(PropertyDTO) },
             { typeof(LayoutModel), typeof(LayoutDTO) },
-            { typeof(CardModel), typeof(CardDto) } 
+            { typeof(CardModel), typeof(CardDto) }
         };
         public static Type GetDTOType(this Type type)
         {
-            if(ModelDtoType.ContainsKey(type))
+            if (ModelDtoType.ContainsKey(type))
             {
                 return ModelDtoType[type];
             }

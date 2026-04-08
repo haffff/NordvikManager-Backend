@@ -10,5 +10,6 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public string? EntityName { get; set; }
         public string? Value { get; set; }
         public Permission? Permission { get; set; }
+        public bool IsProtected { get; set; }
     }
 }

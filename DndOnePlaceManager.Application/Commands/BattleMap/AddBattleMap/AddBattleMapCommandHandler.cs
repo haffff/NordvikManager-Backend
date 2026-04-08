@@ -15,7 +15,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 {
     internal class AddBattleMapCommandHandler : GenericAddHandler<AddBattleMapCommand, BattleMapModel, BattleMapDto>
     {
-        public AddBattleMapCommandHandler(IDbContext context, IMapper mapper) :  base(context, mapper)
+        public AddBattleMapCommandHandler(IDbContext context, IMapper mapper) : base(context, mapper)
         {
         }
 

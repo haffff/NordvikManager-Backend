@@ -1,19 +1,16 @@
 using DndOnePlaceManager.Application;
 using DndOnePlaceManager.Infrastructure;
-using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Engine.Middlewares;
-using DNDOnePlaceManager.Implementations;
 using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using DNDOnePlaceManager.Services.Interfaces;
-using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets.Handlers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,7 +21,6 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using WebSocketManager = DNDOnePlaceManager.WebSockets.WebSocketManager;
 
 namespace DNDOnePlaceManager
 {
@@ -37,11 +33,16 @@ namespace DNDOnePlaceManager
             Configuration = configuration;
         }
 
-
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            var envSecret = Configuration["JWTSecret"];
+            var jwtSecret = Configuration["JWTSecret"];
+            if (string.IsNullOrEmpty(jwtSecret))
+            {
+                // if not configured generate random secret and log it
+                jwtSecret = Guid.NewGuid().ToString() + Guid.NewGuid().ToString();
+                Console.WriteLine($"JWTSecret not configured, generated random secret: {jwtSecret}");
+                Configuration["JWTSecret"] = jwtSecret;
+            }
 
             services.AddLogging(options => options.AddConsole());
             services.AddControllers().AddJsonOptions(options =>
@@ -52,7 +53,6 @@ namespace DNDOnePlaceManager
             });
 
             services.AddDistributedMemoryCache();
-
             services.AddSession(options =>
             {
                 options.IdleTimeout = TimeSpan.FromSeconds(10);
@@ -60,57 +60,31 @@ namespace DNDOnePlaceManager
                 options.Cookie.IsEssential = true;
             });
 
-            services.AddAuthorization(
-            );
-
-            //Todo, add plugins handler
-            //var pluginsFolder = Path.Combine(Directory.GetCurrentDirectory(), "plugins");
-            //if (Directory.Exists(pluginsFolder))
-            //{
-            //    foreach (var plugin in Directory.GetDirectories(pluginsFolder))
-            //    {
-            //        var pluginAssembly = Assembly.LoadFrom(Path.Combine(plugin, "DNDOnePlaceManager.Plugin.dll"));
-            //        var pluginType = pluginAssembly.GetType("DNDOnePlaceManager.Plugin.Plugin");
-            //        if (pluginType != null)
-            //        {
-            //            var pluginInstance = Activator.CreateInstance(pluginType);
-            //            if (pluginInstance is IPlugin pluginService)
-            //            {
-            //                pluginService.Register(services);
-            //            }
-            //        }
-            //    }
-            //}
-
-            services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
             services.AddSingleton<IMaterialsService, MaterialsService>();
-            services.AddTransient<IWebSocketManager, WebSocketManager>();
+            services.AddScoped<ILobbyService, LobbyService>();
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
+            services.AddSingleton<ICentralServerService, CentralServerService>();
+            services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
+            services.AddSingleton<ISignalingService, SignalingService>();
+            services.AddSingleton<IWebRTCApiDispatcher, WebRTCApiDispatcher>();
+            services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
 
-            //Add all websocket handlers using reflection
             var handlers = Assembly.GetExecutingAssembly().GetTypes();
             foreach (var handler in handlers)
             {
                 if (handler.GetInterface("IWebSocketHandler") != null)
-                {
                     services.AddScoped(typeof(IWebSocketHandler), handler);
-                }
             }
 
-
-            //Use reflection to get all IActionStepDefinition implementations
             var definitions = Assembly.GetExecutingAssembly().GetTypes();
             foreach (var definition in definitions)
             {
                 if (definition.GetInterface("IActionStepDefinition") != null)
-                {
                     services.AddSingleton(typeof(IActionStepDefinition), definition);
-                }
             }
-
 
             services.AddEndpointsApiExplorer();
             services.AddSwaggerGen(o =>
@@ -129,11 +103,9 @@ namespace DNDOnePlaceManager
                         new string[] { }
                     }
                 });
-
-                //Add jwt authentication where jwt is stored in cookie
                 o.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
-                    Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: {token}\"",
+                    Description = "JWT stored in Authorization cookie",
                     Name = "Authorization",
                     BearerFormat = "JWT",
                     In = Microsoft.OpenApi.Models.ParameterLocation.Cookie,
@@ -143,24 +115,20 @@ namespace DNDOnePlaceManager
 
             services.AddCors(options =>
             {
-                options.AddPolicy("SuperPolicy",
-                    policy =>
-                    {
-                        var clientUrl = Configuration["FrontUrls:Client"];
-                        if (!string.IsNullOrEmpty(clientUrl))
-                        {
-                            policy.WithOrigins(clientUrl).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
-                        }
-                    });
+                options.AddPolicy("SuperPolicy", policy =>
+                {
+                    // Allow a comma-separated list of origins from configuration (fallback to common localhost dev ports)
+                    var clientUrls = Configuration["FrontUrls:Client"];
+                    if (string.IsNullOrEmpty(clientUrls))
+                        clientUrls = "http://localhost:3000,http://localhost:3002";
+
+                    var origins = clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    policy.WithOrigins(origins).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
+                });
             });
 
-            var identityBuilder = services.AddIdentity<User, IdentityRole>();
-
-            InfrastructureLayerModule.Register(services, Configuration, identityBuilder);
+            InfrastructureLayerModule.Register(services, Configuration);
             ApplicationLayerModule.Register(services, Configuration);
-
-            identityBuilder.AddUserManager<UserManager<User>>().AddDefaultTokenProviders();
-
 
             services.AddAuthorization(options =>
             {
@@ -169,94 +137,86 @@ namespace DNDOnePlaceManager
                     policy.AuthenticationSchemes.Add(JwtBearerDefaults.AuthenticationScheme);
                     policy.RequireAuthenticatedUser();
                 });
-
                 options.DefaultPolicy = options.GetPolicy("ApiPolicy");
             })
-                .AddAuthentication(options =>
-                {
-                    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-                })
-                .AddJwtBearer(options =>
+            .AddAuthentication(options =>
             {
-                options.Events = new JwtBearerEvents();
-                options.Events.OnMessageReceived = context =>
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(options =>
+            {
+                options.MapInboundClaims = false;
+                options.Events = new JwtBearerEvents
                 {
-                    context.Token = context.Request.Cookies["Authorization"];
-                    return Task.CompletedTask;
+                    OnMessageReceived = context =>
+                    {
+                        context.Token = context.Request.Cookies["Authorization"];
+                        return Task.CompletedTask;
+                    }
                 };
-
                 options.SaveToken = true;
                 options.RequireHttpsMetadata = false;
-                options.TokenValidationParameters = new TokenValidationParameters()
+                options.TokenValidationParameters = new TokenValidationParameters
                 {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
                     ValidateLifetime = true,
                     ValidateIssuerSigningKey = true,
-                    ValidAudience = Configuration["JWT:ValidAudience"],
-                    ValidIssuer = Configuration["JWT:ValidIssuer"],
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(envSecret))
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+                    NameClaimType = "username",
+                    ClockSkew = TimeSpan.Zero
                 };
             });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
-            {
                 app.UseDeveloperExceptionPage();
-            }
             else
             {
                 app.UseExceptionHandler("/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
 
             var sessionOptions = new SessionOptions();
-            sessionOptions.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.None;
-            sessionOptions.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
-            app.UseSession(sessionOptions);
-
-            app.UseWebSockets(new WebSocketOptions() { KeepAliveInterval = TimeSpan.Zero });
-
             app.UseStaticFiles();
-
             app.UseRouting();
+
+            // CORS must be applied after routing and before authentication/authorization so the CORS headers are set
+            app.UseCors("SuperPolicy");
+
+            app.UseAuthentication();
             app.UseAuthorization();
 
-            app.UseCors("SuperPolicy");
             app.UseMiddleware<HandleExceptionMiddleWare>();
             app.UseMiddleware<GetUserIntoItemsMiddleWare>();
-            app.UseHttpsRedirection();
+
+            app.UseMiddleware<HandleExceptionMiddleWare>();
+            app.UseMiddleware<GetUserIntoItemsMiddleWare>();
+
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGet("/", async context =>
                 {
                     context.Response.ContentType = "text/html";
                     if (File.Exists(Path.Combine(env.WebRootPath, "index.html")))
-                    {
                         await context.Response.SendFileAsync(Path.Combine(env.WebRootPath, "index.html"));
-                    }
                 });
-
                 endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "api/{controller}/{action}/{id?}");
             });
 
-
             if (env.IsDevelopment())
             {
                 app.UseSwagger();
-                app.UseSwaggerUI(
-                    o => {
-                        o.RoutePrefix = "swagger";
-                        o.SwaggerEndpoint("/swagger/v1/swagger.json", "V1 Docs");
-                    }
-                );
+                app.UseSwaggerUI(o =>
+                {
+                    o.RoutePrefix = "swagger";
+                    o.SwaggerEndpoint("/swagger/v1/swagger.json", "V1 Docs");
+                });
             }
 
             ApplicationLayerModule.AfterBuild(app.ApplicationServices);

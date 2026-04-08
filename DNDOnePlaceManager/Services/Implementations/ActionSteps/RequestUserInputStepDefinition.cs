@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
@@ -17,33 +18,41 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Description => "Request user input";
         public string Category => "Control Flow";
         public Type DataType => typeof(RequestUserInputStepData);
+
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             RequestUserInputStepData stepData = step.Data.ToObject<RequestUserInputStepData>();
 
             var player = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(x =>
-            x.Name.ToLower().Equals(stepData.UserName.Trim().ToLower()) ||
-            x.Id.ToString().ToLower().Equals(stepData.UserID.Trim().ToLower())
+                (!string.IsNullOrWhiteSpace(stepData.UserName) && x.Name.ToLower().Equals(stepData.UserName.Trim().ToLower())) ||
+                (!string.IsNullOrWhiteSpace(stepData.UserID) && x.Id.ToString().ToLower().Equals(stepData.UserID.Trim().ToLower()))
             );
 
             if (player == null)
-            {
                 return;
-            }
+
             var token = Guid.NewGuid();
-            var data = new JObject();
+            var tcs = new TaskCompletionSource<WebSocketCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
+            gameLobby.ActionProcessingService.InputHandler[token] = tcs;
 
             gameLobby.SendToPlayer(new WebSocketCommand { Command = "request_input", Data = stepData.Message, InputToken = token }, player);
 
-            DateTime timeout = DateTime.Now.Add(stepData.Timeout ?? new TimeSpan(0, 1, 0));
-            while (DateTime.Now < timeout)
+            var timeout = stepData.Timeout ?? TimeSpan.FromMinutes(1);
+            using var cts = new CancellationTokenSource(timeout);
+            cts.Token.Register(() =>
             {
-                if (gameLobby.ActionProcessingService.InputHandler.TryGetValue(token, out var command))
-                {
-                    variables[stepData.Output] = command.Data;
-                    return;
-                }
-                await Task.Delay(500);
+                if (gameLobby.ActionProcessingService.InputHandler.TryRemove(token, out var pendingTcs))
+                    pendingTcs.TrySetCanceled();
+            });
+
+            try
+            {
+                var command = await tcs.Task;
+                variables[stepData.Output] = command.Data;
+            }
+            catch (TaskCanceledException)
+            {
+                // Timeout elapsed — output remains unset
             }
         }
     }

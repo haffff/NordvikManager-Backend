@@ -20,7 +20,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 return CommandResponse.WrongArguments;
             }
 
-            var model = dbContext.BattleMaps.FirstOrDefault(x=>x.Id == request.Dto.Id);
+            var model = dbContext.BattleMaps.FirstOrDefault(x => x.Id == request.Dto.Id);
 
             model.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 

@@ -66,7 +66,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree
                     logger.LogWarning($"Inconsistency detected in {group.Key?.Name} ({group.Key?.Id}) children!");
                 }
 
-                if(request.Fix)
+                if (request.Fix)
                 {
                     FixSubTree(group);
                     dbContext.SaveChanges();

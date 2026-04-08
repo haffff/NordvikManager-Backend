@@ -21,7 +21,7 @@ namespace DndOnePlaceManager.Application.Commands.Security.SetPermissions
             await base.Handle(request, cancellationToken);
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
 
-            if(game == null)
+            if (game == null)
             {
                 throw new ResourceNotFoundException(nameof(game));
             }

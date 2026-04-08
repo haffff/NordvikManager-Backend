@@ -16,10 +16,12 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
 
         [JsonProperty("id")]
         public Guid? Id { get; set; }
-        public bool? IsOwner { get; internal set; }
+        public bool? IsOwner { get; set; }
         public string? Color { get; set; }
         public string? Image { get; set; }
         public Permission? Permission { get; set; }
-        public Dictionary<Guid,Permission>? Permissions { get; set; }
+        public Dictionary<Guid, Permission>? Permissions { get; set; }
+        /// <summary>Central Server user UUID (JWT sub). Used to match WebRTC peers to lobby players.</summary>
+        public string? CentralServerUserId { get; set; }
     }
 }

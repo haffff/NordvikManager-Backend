@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
@@ -21,11 +22,27 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<GetDetailStepData>();
 
+            if (string.IsNullOrWhiteSpace(stepData.Input))
+                throw new ActionProcessException("GetDetail: 'Input' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.DetailName))
+                throw new ActionProcessException("GetDetail: 'DetailName' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.Output))
+                throw new ActionProcessException("GetDetail: 'Output' argument is required.");
+
+            if (!variables.ContainsKey(stepData.Input))
+                throw new ActionProcessException($"GetDetail: variable '{stepData.Input}' not found.");
+
             var dto = variables[stepData.Input];
-            var isElement = stepData.IsElement;
-            if(isElement == true)
+
+            // ensure dto exists
+            if (dto == null)
+                throw new ActionProcessException($"GetDetail: variable with name '{stepData.Input}' doesn't exists.");
+
+            if (stepData.IsElement)
             {
-                var elementModel = dto as ElementDTO;
+                var elementModel = dto as ElementDTO
+                    ?? throw new ActionProcessException($"GetDetail: variable '{stepData.Input}' is not an ElementDTO.");
+
                 var jobject = JObject.Parse(elementModel.Object);
 
                 if (jobject.TryGetValue(stepData.DetailName, out JToken detailValue))
@@ -40,8 +57,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             }
             else
             {
-                var detailName = stepData.DetailName;
-                var dtoDetail = dto.GetType().GetProperty(detailName)?.GetValue(dto);
+                var dtoDetail = dto.GetType().GetProperty(stepData.DetailName)?.GetValue(dto);
                 variables[stepData.Output] = dtoDetail;
             }
         }

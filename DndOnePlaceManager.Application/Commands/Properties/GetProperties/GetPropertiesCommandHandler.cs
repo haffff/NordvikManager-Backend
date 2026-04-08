@@ -19,13 +19,13 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperties
         {
             await base.Handle(request, cancellationToken);
 
-            if(!permissionService.CheckIfHasPermissions(request.Player, request.ParentID ,Domain.Enums.Permission.Read))
+            if (!permissionService.CheckIfHasPermissions(request.Player, request.ParentID, Domain.Enums.Permission.Read))
             {
                 return new List<PropertyDTO>();
             }
             IQueryable<PropertyModel> properties = null;
 
-            if(request.Ids != null && request.Ids.Length > 0)
+            if (request.Ids != null && request.Ids.Length > 0)
             {
                 properties = dbContext.Properties.Where(x => request.Ids.Contains(x.Id));
             }
@@ -33,13 +33,17 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperties
             {
                 properties = dbContext.Properties.Where(x => x.ParentID == request.ParentID);
             }
-
             if (request.PropertyName != null)
             {
                 properties = properties.Where(x => x.Name == request.PropertyName);
             }
-
-            return properties.Select(x => mapper.Map<PropertyDTO>(x)).ToList();
+            return properties.AsEnumerable().Select(x =>
+            {
+                var dto = mapper.Map<PropertyDTO>(x);
+                if (x.IsProtected)
+                    dto.Value = null;
+                return dto;
+            }).ToList();
         }
     }
 }

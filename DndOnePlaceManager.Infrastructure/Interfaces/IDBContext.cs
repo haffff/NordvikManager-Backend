@@ -7,6 +7,7 @@ using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using Microsoft.EntityFrameworkCore;
 
+
 namespace DndOnePlaceManager.Infrastructure.Interfaces
 {
     public interface IDbContext : IDbContextBase
@@ -26,5 +27,6 @@ namespace DndOnePlaceManager.Infrastructure.Interfaces
         DbSet<AddonModel>? Addons { get; set; }
         DbSet<TreeEntryModel> TreeEntries { get; }
         DbSet<ElementDetailModel> ElementsDetail { get; set; }
+        DbSet<BannedUserModel> BannedUsers { get; }
     }
 }

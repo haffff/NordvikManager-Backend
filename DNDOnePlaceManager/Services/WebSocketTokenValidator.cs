@@ -1,55 +1,59 @@
-﻿using Microsoft.IdentityModel.Tokens;
+using DNDOnePlaceManager.Domain.Entities.Auth;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
-using System;
-using Microsoft.Extensions.Configuration;
-using Microsoft.AspNetCore.Identity;
-using DNDOnePlaceManager.Domain.Entities.Auth;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services
 {
     public class WebSocketTokenValidator : IWebSocketTokenValidator
     {
-        public IConfiguration configuration;
-        private readonly UserManager<User> userManager;
+        private readonly IConfiguration _configuration;
 
-        public WebSocketTokenValidator(IConfiguration configuration, UserManager<User> userManager)
+        public WebSocketTokenValidator(IConfiguration configuration)
         {
-            this.configuration = configuration;
-            this.userManager = userManager;
+            _configuration = configuration;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="token"></param>
-        /// <returns></returns>
-        public async Task<User> ValidateTokenAsync(string token)
+        public Task<User?> ValidateTokenAsync(string token)
         {
-            JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
-            JwtSecurityToken jwtToken = tokenHandler.ReadJwtToken(token);
+            var jwtSecret = _configuration["JWTSecret"];
+            if (string.IsNullOrEmpty(jwtSecret))
+                return Task.FromResult<User?>(null);
+
+            var tokenHandler = new JwtSecurityTokenHandler();
             var parameters = new TokenValidationParameters
             {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidAudience = configuration["JWT:ValidAudience"],
-                ValidIssuer = configuration["JWT:ValidIssuer"],
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["JWT:Secret"])),
+                ValidateIssuer = false,
+                ValidateAudience = false,
                 ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+                NameClaimType = "username",
                 ClockSkew = TimeSpan.Zero
             };
 
             try
             {
-                var principal = tokenHandler.ValidateToken(token, parameters, out var validatedToken);
-                var user = await userManager.FindByNameAsync(principal.Identity.Name);
-                return user;
+                var principal = tokenHandler.ValidateToken(token, parameters, out _);
+
+                var user = new User
+                {
+                    Id = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                         ?? principal.FindFirst("sub")?.Value
+                         ?? string.Empty,
+                    UserName = principal.Identity?.Name,
+                    Email = principal.FindFirst("email")?.Value,
+                    IsAdmin = principal.FindFirst("isAdmin")?.Value?.ToLowerInvariant() == "true"
+                };
+
+                return Task.FromResult<User?>(user);
             }
-            catch (SecurityTokenException exception)
+            catch (SecurityTokenException)
             {
-                return null;
+                return Task.FromResult<User?>(null);
             }
         }
     }

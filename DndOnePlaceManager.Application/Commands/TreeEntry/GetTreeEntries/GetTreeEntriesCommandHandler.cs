@@ -8,7 +8,7 @@ using System.Linq;
 
 namespace DndOnePlaceManager.Application.Commands.TreeEntry.GetTreeEntries
 {
-    internal class GetTreeEntriesCommandHandler : HandlerBase<GetTreeEntriesCommand,List<TreeEntryDto>>
+    internal class GetTreeEntriesCommandHandler : HandlerBase<GetTreeEntriesCommand, List<TreeEntryDto>>
     {
         private readonly IMediator mediator;
 
@@ -30,7 +30,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.GetTreeEntries
             await mediator.Send(connectTreeEntriesCommand, cancellationToken);
 
             var treeEntries = dbContext.Games
-                .Include(x=>x.TreeEntries).ThenInclude(x => x.Parent)
+                .Include(x => x.TreeEntries).ThenInclude(x => x.Parent)
                 .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
                 .FirstOrDefault(x => request.GameId == x.Id)
                 .TreeEntries

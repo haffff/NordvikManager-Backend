@@ -32,7 +32,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
                 throw new ResourceNotFoundException(nameof(model));
             }
 
-            if(!CheckPermissions(request, model))
+            if (!CheckPermissions(request, model))
             {
                 throw new PermissionException(Permission.Remove);
             }

@@ -7,6 +7,6 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
     public class UpdateCardCommand : CommandBase<CommandResponse>
     {
         public PlayerDTO Player { get; set; }
-		public CardDto Dto { get; set; }
+        public CardDto Dto { get; set; }
     }
 }

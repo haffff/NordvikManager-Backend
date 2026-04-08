@@ -34,20 +34,16 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             if (result != null)
             {
-                if(stepData.SingleElement == true)
+                if (stepData.SingleElement == true)
                 {
                     variables[stepData.Output] = result.FirstOrDefault();
                 }
                 else
                 {
                     variables[stepData.Output] = result;
+
                 }
             }
-        }
-
-        public string GetName()
-        {
-            return "GetData";
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -24,7 +25,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
             var game = await dbContext.Games
                 .Include(x => x.Players)
-                .Include(x => x.TreeEntries.Where(x=>x.NewItem != true)).ThenInclude(x => x.Parent)
+                .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Parent)
                 .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Next)
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
@@ -39,19 +40,24 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
                 throw new ResourceNotFoundException(nameof(TreeEntryModel));
             }
 
+            if (treeEntry.IsFolder)
+            {
+                game.ThrowIfNoPermission(playerId, Permission.Edit);
+            }
+
             treeEntry.Name = request.TreeEntryDto.Name ?? treeEntry.Name;
             treeEntry.Color = request.TreeEntryDto.Color ?? treeEntry.Color;
             treeEntry.Icon = request.TreeEntryDto.Icon ?? treeEntry.Icon;
 
             List<TreeEntryDto> affectedTreeEntries = new List<TreeEntryDto>();
 
-            if(request.TreeEntryDto.Next == treeEntry.Next?.Id && treeEntry.Parent?.Id == request.TreeEntryDto.ParentId)
+            if (request.TreeEntryDto.Next == treeEntry.Next?.Id && treeEntry.Parent?.Id == request.TreeEntryDto.ParentId)
             {
                 dbContext.SaveChanges();
                 return (CommandResponse.Ok, new List<TreeEntryDto>() { mapper.Map<TreeEntryDto>(treeEntry) });
             }
 
-            if(request.TreeEntryDto.ParentId == request.TreeEntryDto.Id || request.TreeEntryDto.Next == request.TreeEntryDto.Id)
+            if (request.TreeEntryDto.ParentId == request.TreeEntryDto.Id || request.TreeEntryDto.Next == request.TreeEntryDto.Id)
             {
                 throw new WrongArgumentsException(nameof(request.TreeEntryDto.ParentId), nameof(request.TreeEntryDto.Next));
             }
@@ -119,7 +125,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
         private (CommandResponse, List<TreeEntryDto>) ConnectAsItem(TreeEntryModel? treeEntry, List<TreeEntryDto> affectedTreeEntries, TreeEntryModel? nextModel, TreeEntryModel? oldNext)
         {
-            
+
             oldNext.Next = treeEntry;
             treeEntry.Next = nextModel;
 
@@ -161,7 +167,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
             if (oldBefore == null)
             {
-                if(oldNext != null)
+                if (oldNext != null)
                     oldNext.Head = true;
                 treeEntry.Head = false;
             }

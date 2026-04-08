@@ -8,9 +8,9 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 
 namespace DndOnePlaceManager.Application.Generic.Handlers
 {
-    internal class GenericGetHandler<TCommand, TModel, TResponse> : HandlerBase<TCommand,TResponse> 
-        where TCommand : GenericGetCommand<TResponse> 
-        where TResponse : IGameDataTransferObject 
+    internal class GenericGetHandler<TCommand, TModel, TResponse> : HandlerBase<TCommand, TResponse>
+        where TCommand : GenericGetCommand<TResponse>
+        where TResponse : IGameDataTransferObject
         where TModel : class, IEntity
     {
         public GenericGetHandler(IDbContext context, IMapper mapper) : base(context, mapper)
@@ -22,7 +22,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
             return dbContext.Find(typeof(TModel), request.Id) as TModel;
         }
 
-        public virtual void GetPermissions(TResponse dto ,TModel entity, Guid playerId)
+        public virtual void GetPermissions(TResponse dto, TModel entity, Guid playerId)
         {
             dto.Permission = entity.GetPermission(playerId);
         }
@@ -38,12 +38,12 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
 
             var entity = GetEntity(request);
 
-            if(entity == null)
+            if (entity == null)
             {
                 return default(TResponse);
             }
 
-            if(entity.HasPermission(request.Player.Id ?? Guid.Empty))
+            if (entity.HasPermission(request.Player.Id ?? Guid.Empty))
             {
                 var mappedDTO = mapper.Map<TResponse>(entity);
 

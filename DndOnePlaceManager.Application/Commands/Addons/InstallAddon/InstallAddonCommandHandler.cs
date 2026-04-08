@@ -36,7 +36,6 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         public override async Task<(CommandResponse, Guid)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
-            //Check if player can install addon
             var game = dbContext.Games
                 .Include(x => x.Addons)
                 .Include(x => x.Resources)
@@ -46,46 +45,33 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 .Include(x => x.Properties)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
+            // Bug fix: was crashing with NullReferenceException when game not found
+            if (game == null)
+                return (CommandResponse.NoResource, Guid.Empty);
+
             if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-            {
                 return (CommandResponse.NoPermission, Guid.Empty);
-            }
 
-            if (request.AddonFile == null && request.AddonSourceKey != null)
-            {
-                request.AddonFile = await addonFromUriProvider.GetAddonByKey(request.AddonSourceKey);
-                if (request.AddonFile == null)
-                {
-                    throw new Exception("No addon found in provided repositories. are you sure you provided proper key?");
-                }
-            }
+            // Bug fix: both null would silently fall through to ZipArchive(null) crash
+            if (request.AddonFile == null && request.AddonSourceKey == null)
+                throw new ArgumentException("Either AddonFile or AddonSourceKey must be provided.");
 
-            //if( request.AddonFile != null && game.Properties?.FirstOrDefault(x=>x.Name == "")?.Value?.ToLower() != "true") //We might want some helper methods to convert from str
-            //{
-            //    //await addonFromUriProvider.CheckFileSHA(request.AddonFile);
-            //}
+            if (request.AddonFile == null)
+                request.AddonFile = await addonFromUriProvider.GetAddonByKey(request.AddonSourceKey!);
 
-            using ZipArchive archive = new ZipArchive(new MemoryStream(request.AddonFile));
-            var infoEntry = archive.GetEntry("info.json");
-            var info = ReadToBytes(infoEntry);
+            using var archive = new ZipArchive(new MemoryStream(request.AddonFile));
 
-            AddonModel? addon = JsonSerializer.Deserialize<AddonModel>(info, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            // Bug fix: GetEntry can return null — was crashing in ReadToBytes
+            var infoEntry = archive.Entries.FirstOrDefault(x=>x.Name.ToLower().Trim() == "info.json")
+                ?? throw new InvalidOperationException("Addon archive is missing 'info.json'. Is this a valid addon file?");
 
-            if (addon == null)
-            {
-                throw new Exception("Cannot load addon. Are you sure this is addon file?");
-            }
+            var addon = JsonSerializer.Deserialize<AddonModel>(ReadToBytes(infoEntry), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidOperationException("Cannot deserialize 'info.json'. Are you sure this is a valid addon file?");
 
             if (addon.Key == null)
-            {
-                throw new Exception("Missing key value. key value is required");
-            }
+                throw new InvalidOperationException("Addon 'info.json' is missing the required 'key' field.");
 
-            //if(game.Addons.Any(x=>x.Key == addon.Key) && !request.Reinstall)
-            //{
-
-            //}
-
+            // Reset navigation collections so EF doesn't try to re-attach stale entries
             addon.Id = default;
             addon.Actions = new List<ActionModel>();
             addon.Resources = new List<ResourceModel>();
@@ -94,31 +80,22 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
             await FindAndInstallDependencies(request, game, addon);
 
-            //clear deps
+            // Clear deps — dependencies are installed separately, not stored on the addon entity
             addon.Dependencies = null;
-
-            //begin installation
-
-            //Create folder in tree directory for the addon
 
             var addonsFolderId = await CreateFolder(request, game, "Addons");
             var addonFolderId = await CreateFolder(request, game, addon.Name, addonsFolderId);
 
             await AddScripts(request, archive, addon, addonFolderId, game);
-
             await AddResources(request, archive, addon, addonFolderId, game);
-
             await AddActions(request, archive, addon, game);
-
-            //Add all templates
             await AddTemplates(request, archive, addon, game);
-
-            //Add all views
             await AddViews(request, archive, addon, game);
 
-            //Add addon
             game.Addons.Add(addon);
-            dbContext.SaveChanges();
+
+            // Bug fix: was using synchronous SaveChanges in an async handler
+            await dbContext.SaveChangesAsync();
 
             addon.SetGlobalPermission();
             addon.SetPermissions(game.MasterId, Permission.All);
@@ -128,254 +105,225 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
         {
-            var views = GetByFolder(archive, "views/");
-            foreach (var view in views)
+            foreach (var view in GetByFolder(archive, "views/"))
             {
-                var viewBytes = ReadToBytes(view);
-                var deserializedDto = JsonSerializer.Deserialize<CardDto>(viewBytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                AddCardCommand addCardCommand = new AddCardCommand
+                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(view), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException($"Failed to deserialize view '{view.FullName}'.");
+
+                var (_, res) = await mediator.Send(new AddCardCommand
                 {
                     GameID = request.GameID,
                     Player = request.Player,
-                    Dto = deserializedDto,
+                    Dto = dto,
                     IsCustomUi = true,
                     IsTemplate = false
-                };
+                });
 
-                var (resp, res) = await mediator.Send(addCardCommand);
-
-                addon.Templates?.Add(game.Cards.First(x => x.Id == res));
+                // Bug fix: was incorrectly adding to addon.Templates instead of addon.Views
+                var card = game.Cards.FirstOrDefault(x => x.Id == res)
+                    ?? throw new InvalidOperationException($"Card '{res}' not found after adding view '{dto.Name}'.");
+                addon.Views!.Add(card);
             }
         }
 
         private async Task AddTemplates(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
         {
-            var templates = GetByFolder(archive, "templates/");
-            foreach (var template in templates)
+            foreach (var template in GetByFolder(archive, "templates/"))
             {
-                var templateBytes = ReadToBytes(template);
-                var deserializedDto = JsonSerializer.Deserialize<CardDto>(templateBytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                AddCardCommand addCardCommand = new AddCardCommand
+                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(template), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException($"Failed to deserialize template '{template.FullName}'.");
+
+                var (_, res) = await mediator.Send(new AddCardCommand
                 {
                     GameID = request.GameID,
                     Player = request.Player,
-                    Dto = deserializedDto,
+                    Dto = dto,
                     IsCustomUi = false,
                     IsTemplate = true
-                };
+                });
 
-                var (resp, res) = await mediator.Send(addCardCommand);
-
-                addon.Templates?.Add(game.Cards.First(x=>x.Id == res));
+                var card = game.Cards.FirstOrDefault(x => x.Id == res)
+                    ?? throw new InvalidOperationException($"Card '{res}' not found after adding template '{dto.Name}'.");
+                addon.Templates!.Add(card);
             }
         }
 
-        private async Task AddActions(InstallAddonCommand request, ZipArchive archive, AddonModel? addon, GameModel game)
+        private async Task AddActions(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
         {
-            var actions = GetByFolder(archive, "actions/");
-
-            foreach (var action in actions)
+            foreach (var action in GetByFolder(archive, "actions/"))
             {
-                var actionBytes = ReadToBytes(action);
-                var deserializedDto = JsonSerializer.Deserialize<ActionDto>(actionBytes, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                deserializedDto.Prefix = addon.Key;
+                var dto = JsonSerializer.Deserialize<ActionDto>(ReadToBytes(action), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? throw new InvalidOperationException($"Failed to deserialize action '{action.FullName}'.");
 
-                AddActionCommand addActionCommand = new AddActionCommand
+                dto.Prefix = addon.Key;
+
+                var (_, result) = await mediator.Send(new AddActionCommand
                 {
                     GameId = request.GameID,
                     Player = request.Player,
-                    Action = deserializedDto
-                };
+                    Action = dto
+                });
 
-                var (resp ,result) = await mediator.Send(addActionCommand);
-                addon.Actions?.Add(game.Actions.First(x=>x.Id == result));
+                var actionModel = game.Actions.FirstOrDefault(x => x.Id == result)
+                    ?? throw new InvalidOperationException($"Action '{result}' not found after adding '{dto.Name}'.");
+                addon.Actions!.Add(actionModel);
             }
         }
 
-        private async Task AddResources(InstallAddonCommand request, ZipArchive archive, AddonModel? addon, Guid? addonFolderId, GameModel game)
+        private async Task AddResources(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game)
         {
-            var resources = GetByFolder(archive, "resources/");
-
             var resourcesFolder = await CreateFolder(request, game, "Resources", addonFolderId);
 
-            foreach (var resource in resources)
+            foreach (var resource in GetByFolder(archive, "resources/"))
             {
                 if (!CheckIfAlreadyExists(request, addon, game, resource))
-                {
                     continue;
-                }
 
-                var resourceBytes = ReadToBytes(resource);
-
-                //Get mime type based on file extension
-                var mimeType = resource.FullName.ToMimeType();
-                AddResourceCommand addResourceCommand = new AddResourceCommand
+                var (_, resourceID) = await mediator.Send(new AddResourceCommand
                 {
                     GameID = request.GameID,
                     Player = request.Player,
-                    MimeType = mimeType.GetDescriptionValue(),//? to fix
+                    MimeType = resource.FullName.ToMimeType()?.GetDescriptionValue(),
                     Name = resource.Name,
                     Key = addon.Key + "_" + resource.Name,
-                    ParentFolder = resourcesFolder
-                };
-                addResourceCommand.DataRaw = resourceBytes;
+                    ParentFolder = resourcesFolder,
+                    DataRaw = ReadToBytes(resource)
+                });
 
-                var (response, resourceID) = await mediator.Send(addResourceCommand);
+                if (resourceID == null || resourceID == Guid.Empty)
+                    throw new InvalidOperationException($"Failed to add resource '{resource.Name}'.");
 
-                if (resourceID == Guid.Empty)
-                {
-                    throw new Exception("Cannot add resource" + resourceID);
-                }
-
-                addon.Resources.Add(dbContext.Find<ResourceModel>(resourceID.Value));
+                // Bug fix: was not null-checking dbContext.Find result
+                var model = dbContext.Find<ResourceModel>(resourceID.Value)
+                    ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
+                addon.Resources!.Add(model);
             }
         }
 
-        private async Task AddScripts(InstallAddonCommand request, ZipArchive archive, AddonModel? addon, Guid? addonFolderId, GameModel game)
+        private async Task AddScripts(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game)
         {
-            var clientScripts = GetByFolder(archive, "scripts/");
-
             var scriptsFolder = await CreateFolder(request, game, "Scripts", addonFolderId);
 
-            //Add all scripts
-            foreach (var script in clientScripts)
+            foreach (var script in GetByFolder(archive, "scripts/"))
             {
                 if (!CheckIfAlreadyExists(request, addon, game, script))
-                {
                     continue;
-                }
 
-                var scriptBytes = ReadToBytes(script);
-
-                //Get mime type based on file extension
-                var mimeType = script.FullName.ToMimeType();
-                AddResourceCommand addResourceCommand = new AddResourceCommand
+                var (_, resourceID) = await mediator.Send(new AddResourceCommand
                 {
                     GameID = request.GameID,
                     Player = request.Player,
-                    MimeType = mimeType.GetDescriptionValue(),//? to fix
+                    MimeType = script.FullName.ToMimeType()?.GetDescriptionValue(),
                     Name = script.Name,
                     Key = addon.Key + "_" + script.Name,
-                    ParentFolder = scriptsFolder
-                };
-                addResourceCommand.DataRaw = scriptBytes;
+                    ParentFolder = scriptsFolder,
+                    DataRaw = ReadToBytes(script)
+                });
 
-                var (response, resourceID) = await mediator.Send(addResourceCommand);
-                if (resourceID == Guid.Empty)
-                {
-                    throw new Exception("Cannot add script" + resourceID);
-                }
+                if (resourceID == null || resourceID == Guid.Empty)
+                    throw new InvalidOperationException($"Failed to add script '{script.Name}'.");
 
-                addon.Resources ??= new List<ResourceModel>();
-
-                addon.Resources.Add(dbContext.Find<ResourceModel>(resourceID.Value));
+                // Bug fix: was not null-checking dbContext.Find result
+                var model = dbContext.Find<ResourceModel>(resourceID.Value)
+                    ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
+                addon.Resources!.Add(model);
             }
         }
 
-        private bool CheckIfAlreadyExists(InstallAddonCommand request, AddonModel? addon, GameModel game, ZipArchiveEntry script)
+        // Bug fix: was calling dbContext.SaveChanges() per-resource — removed, top-level SaveChangesAsync handles it
+        private bool CheckIfAlreadyExists(InstallAddonCommand request, AddonModel addon, GameModel game, ZipArchiveEntry entry)
         {
-            var resource = game.Resources.FirstOrDefault(x => x.Key == addon.Key + "_" + script.Name);
-            if (resource != null)
-            {
-                if (request.Reinstall)
-                {
-                    game.Resources.Remove(resource);
-                    dbContext.SaveChanges();
+            var existing = game.Resources.FirstOrDefault(x => x.Key == addon.Key + "_" + entry.Name);
+            if (existing == null)
+                return true;
 
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
+            if (request.Reinstall)
+            {
+                game.Resources.Remove(existing);
+                dbContext.Remove(existing);
+                return true;
             }
-            return true;
+
+            return false;
         }
 
         private static IEnumerable<ZipArchiveEntry> GetByFolder(ZipArchive archive, string folder)
         {
+            var folderLower = folder.ToLowerInvariant().Trim();
             return archive.Entries.Where(x =>
-            x.FullName.ToLower().Trim().StartsWith(folder.ToLower().Trim())
-            && x.FullName.ToLower().Trim() != folder.ToLower().Trim());
+            {
+                var name = x.FullName.ToLowerInvariant().Trim();
+                return name.StartsWith(folderLower) && name != folderLower;
+            });
         }
 
-        private async Task<Guid?> CreateFolder(InstallAddonCommand request, GameModel game, string name, Guid? folder = null)
+        private async Task<Guid?> CreateFolder(InstallAddonCommand request, GameModel game, string name, Guid? parentFolderId = null)
         {
-            var existingAddon = game.TreeEntries.FirstOrDefault(x => x.Name == name && ((x.Parent != null && x.Parent?.Id == folder) || (x.Parent == null && folder == null)) && x.EntryType == typeof(ResourceModel).Name);
+            var existing = game.TreeEntries.FirstOrDefault(x =>
+                x.Name == name
+                && x.EntryType == typeof(ResourceModel).Name
+                && (parentFolderId == null ? x.Parent == null : x.Parent != null && x.Parent.Id == parentFolderId));
 
-            if (existingAddon != null)
-            {
-                return existingAddon.Id;
-            }
+            if (existing != null)
+                return existing.Id;
 
-            var addonFolder = new TreeEntryDto
-            {
-                Name = name,
-                EntryType = typeof(ResourceModel).Name,
-                ParentId = folder,
-                IsFolder = true,
-                AutoConnect = true,
-            };
-
-            AddTreeEntryCommand addTreeEntryCommand = new AddTreeEntryCommand
+            var result = await mediator.Send(new AddTreeEntryCommand
             {
                 GameId = request.GameID,
                 Player = request.Player,
-                TreeEntryDto = addonFolder,
-            };
+                TreeEntryDto = new TreeEntryDto
+                {
+                    Name = name,
+                    EntryType = typeof(ResourceModel).Name,
+                    ParentId = parentFolderId,
+                    IsFolder = true,
+                    AutoConnect = true,
+                }
+            });
 
-            var result = await mediator.Send(addTreeEntryCommand);
             return result.Item2.FirstOrDefault(x => x.Name == name)?.Id;
         }
 
-        private async Task FindAndInstallDependencies(InstallAddonCommand request, GameModel? game, AddonModel? addon)
+        private async Task FindAndInstallDependencies(InstallAddonCommand request, GameModel game, AddonModel addon)
         {
-            if (addon.Dependencies == null)
-            {
+            if (addon.Dependencies == null || addon.Dependencies.Count == 0)
                 return;
-            }
 
             foreach (var dependency in addon.Dependencies)
             {
-                var existingAddon = game.Addons.FirstOrDefault(x => x.Name == dependency.Name && CompareVersions(x, dependency));
-                if (existingAddon == null)
+                // Bug fix: was matching by name which can differ — now matches by key
+                var alreadyInstalled = game.Addons.Any(x => x.Key == dependency.Key && CompareVersions(x, dependency));
+                if (alreadyInstalled)
+                    continue;
+
+                if (request.AutoInstallDeps == false)
+                    throw new InvalidOperationException($"Dependency '{dependency.Key}' (v{dependency.Version}) is not installed and auto-install is disabled.");
+
+                // Bug fix: was passing version arg that no longer exists on the interface
+                var depFile = await addonFromUriProvider.GetAddonByKey(dependency.Key);
+
+                var (response, _) = await mediator.Send(new InstallAddonCommand
                 {
-                    if (request.AutoInstallDeps == false)
-                    {
-                        throw new Exception("Dependency not found");
-                    }
+                    AddonFile = depFile,
+                    AutoInstallDeps = true,
+                    GameID = request.GameID,
+                    Player = request.Player
+                });
 
-                    var nmAddon = await addonFromUriProvider.GetAddonByKey(dependency.Key, dependency.Version);
-
-                    var (response, _) = await mediator.Send(new InstallAddonCommand
-                    {
-                        AddonFile = nmAddon,
-                        AddonSourceKey = default,
-                        AutoInstallDeps = true,
-                        GameID = request.GameID,
-                        Player = request.Player
-                    });
-
-                    if (response != CommandResponse.Ok)
-                    {
-                        throw new Exception("Cannot install dependency: " + dependency.Key);
-                    }
-                }
+                if (response != CommandResponse.Ok)
+                    throw new InvalidOperationException($"Failed to install dependency '{dependency.Key}'. Response: {response}");
             }
         }
 
-        private static bool CompareVersions(AddonModel x, AddonModel dependency)
-        {
-            return x.Version == dependency.Version;
-        }
+        // Bug fix: null version on requirement now means "any version is acceptable"
+        private static bool CompareVersions(AddonModel installed, AddonModel required)
+            => required.Version == null || installed.Version == required.Version;
 
-        private static byte[] ReadToBytes(ZipArchiveEntry? infoEntry)
+        private static byte[] ReadToBytes(ZipArchiveEntry entry)
         {
-            using MemoryStream memoryStream = new MemoryStream();
-
-            var stream = infoEntry.Open();
+            using var memoryStream = new MemoryStream();
+            using var stream = entry.Open();
             stream.CopyTo(memoryStream);
-
             return memoryStream.ToArray();
         }
     }

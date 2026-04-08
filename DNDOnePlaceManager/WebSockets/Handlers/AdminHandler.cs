@@ -12,7 +12,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
     public class AdminHandler : IWebSocketHandler
     {
         private IMediator mediator;
-        
+
         public AdminHandler(IMediator mediator)
         {
             this.mediator = mediator;

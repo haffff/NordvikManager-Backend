@@ -14,8 +14,9 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
     {
         private IMediator mediator;
 
-        public LayoutHandler()
+        public LayoutHandler(IMediator mediator)
         {
+            this.mediator = mediator;
         }
 
         public async Task<CommandResponse?> Handle(WebSocketCommand parsedMsg, PlayerDTO player)

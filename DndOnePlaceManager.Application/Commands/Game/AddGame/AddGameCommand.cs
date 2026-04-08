@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
 {
-    public class AddGameCommand : CommandBase<bool>
+    public class AddGameCommand : CommandBase<Guid?>
     {
         [JsonIgnore]
         public User? User { get; set; }
@@ -13,7 +13,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         public string Name { get; set; }
         [Required]
         public bool PasswordRequired { get; set; }
-        
+
         public string? Password { get; set; }
 
         public string? Image { get; set; }
@@ -27,8 +27,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         public string? Description { get; set; }
 
         public bool? AllowPlayersToUseLocalLayouts { get; set; }
-
-
+        public bool IsPublic { get; set; }
     }
 }
 

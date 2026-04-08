@@ -20,10 +20,5 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var players = gameLobby.ConnectedPlayers.Keys;
             variables[stepData] = players;
         }
-
-        public string GetName()
-        {
-            return "GetConnectedPlayers";
-        }
     }
 }

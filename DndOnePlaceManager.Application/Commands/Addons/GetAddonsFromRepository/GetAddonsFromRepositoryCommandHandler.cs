@@ -16,9 +16,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
         {
             this.mapper = mapper;
             this.addonRepository = addonRepository;
-        }
-
-        public async Task<List<AddonDto>> Handle(GetAddonsFromRepositoryCommand request, CancellationToken cancellationToken)
+        }        public async Task<List<AddonDto>> Handle(GetAddonsFromRepositoryCommand request, CancellationToken cancellationToken)
         {
             var repoString = await addonRepository.GetRepository();
 
@@ -26,11 +24,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
             if (repo == null || repo["repository"] == null)
             {
                 throw new Exception("Repository is not valid");
-            }
-
-            var repoToken = repo["repository"];
-            var repoItems = repoToken.ToObject<List<AddonDto>>();
-            return repoItems;
+            }            var repoToken = repo["repository"]
+                ?? throw new Exception("Repository JSON is missing the 'repository' array.");
+            return repoToken.ToObject<List<AddonDto>>() ?? new List<AddonDto>();
         }
     }
 }

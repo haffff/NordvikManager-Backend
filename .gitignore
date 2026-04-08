@@ -380,3 +380,10 @@ appsettings.Production.json
 /DNDOnePlaceManager/wwwroot/static/js/*
 /DNDOnePlaceManager/wwwroot/static/media/*
 !wwwroot/Add_Front_Build_Here
+
+.local
+.local/*
+
+.vscode/*
+!.vscode/launch.json
+
