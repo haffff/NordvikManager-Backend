@@ -113,11 +113,11 @@ namespace DNDOnePlaceManager
                 });
             });
 
+            // CORS configuration
             services.AddCors(options =>
             {
                 options.AddPolicy("SuperPolicy", policy =>
                 {
-                    // Allow a comma-separated list of origins from configuration (fallback to common localhost dev ports)
                     var clientUrls = Configuration["FrontUrls:Client"];
                     if (string.IsNullOrEmpty(clientUrls))
                         clientUrls = "http://localhost:3000,http://localhost:3002";
