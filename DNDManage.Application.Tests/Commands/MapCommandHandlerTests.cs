@@ -43,9 +43,6 @@ namespace DNDManage.Application.Tests.Commands
                 .Options;
             Db = new DndOneContext(options);
 
-            // Real AutoMapper with production profile
-            Mapper = new MapperConfiguration(cfg => cfg.AddProfile<AutoMapperProfile>()).CreateMapper();
-
             // IPermissionService that always grants everything
             PermissionMock = new Mock<IPermissionService>();
             PermissionMock.Setup(p => p.CheckIfHasPermissions(
@@ -69,12 +66,17 @@ namespace DNDManage.Application.Tests.Commands
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(true);
 
-            // Wire the static service provider that PermissionsExtension uses
+            // Wire up AutoMapper and PermissionService in a single service collection - BEFORE seeding data
             var services = new ServiceCollection();
+            services.AddLogging();  // Required by AutoMapper
+            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
             services.AddSingleton(PermissionMock.Object);
-            PermissionsExtension.ServiceProvider = services.BuildServiceProvider();
+            var serviceProvider = services.BuildServiceProvider();
 
-            // Seed a game that all tests can use
+            Mapper = serviceProvider.GetRequiredService<IMapper>();
+            PermissionsExtension.ServiceProvider = serviceProvider;
+
+            // Seed a game that all tests can use - AFTER AutoMapper is initialized
             AnyPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "Player" };
             SeedGame = new GameModel
             {
