@@ -87,29 +87,14 @@ namespace DNDOnePlaceManager
             }
 
             services.AddEndpointsApiExplorer();
-            services.AddSwaggerGen(o =>
+
+            services.AddSwaggerGen(options =>
             {
-                o.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+                options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
                 {
-                    {
-                        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-                        {
-                            Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                            {
-                                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                                Id = "Bearer"
-                            }
-                        },
-                        new string[] { }
-                    }
-                });
-                o.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-                {
-                    Description = "JWT stored in Authorization cookie",
-                    Name = "Authorization",
-                    BearerFormat = "JWT",
-                    In = Microsoft.OpenApi.Models.ParameterLocation.Cookie,
-                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+                    Version = "v1",
+                    Title = "Nordvik Manager API",
+                    Description = "API documentation for DND One Place Manager"
                 });
             });
 

@@ -43,8 +43,12 @@ namespace DNDManage.Application.Tests.Commands
                 .Options;
             Db = new DndOneContext(options);
 
-            // Real AutoMapper with production profile
-            Mapper = new MapperConfiguration(cfg => cfg.AddProfile<AutoMapperProfile>()).CreateMapper();
+            // Real AutoMapper with production profile - using explicit configuration
+            var mapperConfig = new MapperConfiguration(cfg => 
+            {
+                cfg.AddProfile<AutoMapperProfile>();
+            }, null);
+            Mapper = mapperConfig.CreateMapper();
 
             // IPermissionService that always grants everything
             PermissionMock = new Mock<IPermissionService>();

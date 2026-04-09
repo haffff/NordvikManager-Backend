@@ -64,7 +64,7 @@ namespace DNDOnePlaceManager.WebRTC
 
             _sessionIds[gameId] = centralSessionId;
 
-            var client = new SioClient(_centralServerUrl, new SioOptions
+            var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions
             {
                 ExtraHeaders = new Dictionary<string, string>
                 {
@@ -76,11 +76,14 @@ namespace DNDOnePlaceManager.WebRTC
             client.OnConnected += async (sender, e) =>
             {
                 _logger.LogInformation("Signaling connected to Central Server for game {GameId}", gameId);
-                await client.EmitAsync("authenticate", new
+                await client.EmitAsync("authenticate", new object[]
                 {
-                    token = centralToken,
-                    sessionId = centralSessionId,
-                    role = "gm"
+                    new
+                    {
+                        token = centralToken,
+                        sessionId = centralSessionId,
+                        role = "gm"
+                    }
                 });
             };
 
@@ -91,18 +94,18 @@ namespace DNDOnePlaceManager.WebRTC
             };
 
             // authenticated: Central Server confirms GM registration — mark as truly connected
-            client.On("authenticated", _ =>
+            client.On("authenticated", async _ =>
             {
                 _logger.LogInformation("Signaling authenticated with Central Server for game {GameId}", gameId);
                 _authenticated[gameId] = true;
             });
 
             // auth-error: Central Server rejected the authenticate event
-            client.On("auth-error", response =>
+            client.On("auth-error", async response =>
             {
                 try
                 {
-                    var msg = response.GetValue<AuthErrorPayload>().error;
+                    var msg = response.GetValue<AuthErrorPayload>(0).error;
                     _logger.LogError("Signaling auth-error for game {GameId}: {Error}", gameId, msg);
                 }
                 catch
@@ -113,12 +116,12 @@ namespace DNDOnePlaceManager.WebRTC
             });
 
             // peer-joined: { peerId, userId, username, role }
-            client.On("peer-joined", response =>
+            client.On("peer-joined", async response =>
             {
                 _logger.LogInformation("peer-joined received for game {GameId}: {Raw}", gameId, response);
                 try
                 {
-                    var payload = response.GetValue<PeerJoinedPayload>();
+                    var payload = response.GetValue<PeerJoinedPayload>(0);
                     _ = PeerJoined?.Invoke(new PeerJoinedArgs(gameId, payload.userId, payload.username, payload.peerId));
                 }
                 catch (Exception ex)
@@ -128,11 +131,11 @@ namespace DNDOnePlaceManager.WebRTC
             });
 
             // peer-left: { peerId, username }
-            client.On("peer-left", response =>
+            client.On("peer-left", async response =>
             {
                 try
                 {
-                    var peerId = response.GetValue<PeerLeftPayload>().peerId;
+                    var peerId = response.GetValue<PeerLeftPayload>(0).peerId;
                     _ = PeerLeft?.Invoke(new PeerLeftArgs(gameId, peerId));
                 }
                 catch (Exception ex)
@@ -142,12 +145,12 @@ namespace DNDOnePlaceManager.WebRTC
             });
 
             // webrtc-offer: { fromPeerId, offer: { type, sdp }, userId?, username? }
-            client.On("webrtc-offer", response =>
+            client.On("webrtc-offer", async response =>
             {
                 _logger.LogInformation("webrtc-offer received for game {GameId}: {Raw}", gameId, response);
                 try
                 {
-                    var payload = response.GetValue<WebRTCOfferPayload>();
+                    var payload = response.GetValue<WebRTCOfferPayload>(0);
                     _ = OfferReceived?.Invoke(new WebRTCSignalArgs(gameId, payload.fromPeerId, payload.offer.sdp, payload.userId, payload.username));
                 }
                 catch (Exception ex)
@@ -157,19 +160,19 @@ namespace DNDOnePlaceManager.WebRTC
             });
 
             // ping-gm uses Socket.IO ACK — Central Server calls socket.timeout().emit(PING_GM, ackCallback).
-            // Must call response.CallbackAsync() to trigger the ack; emitting a separate event does nothing.
+            // Must call SendAckDataAsync to trigger the ack; emitting a separate event does nothing.
             client.On("ping-gm", async response =>
             {
                 _logger.LogDebug("ping-gm received for game {GameId} — sending ack", gameId);
-                await response.CallbackAsync();
+                await response.SendAckDataAsync(Array.Empty<object>());
             });
 
             // ice-candidate: { fromPeerId, candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment }, userId? }
-            client.On("ice-candidate", response =>
+            client.On("ice-candidate", async response =>
             {
                 try
                 {
-                    var payload = response.GetValue<IceCandidatePayload>();
+                    var payload = response.GetValue<IceCandidatePayload>(0);
                     _ = IceCandidateReceived?.Invoke(new IceCandidateArgs(
                         gameId,
                         payload.fromPeerId,
@@ -200,10 +203,13 @@ namespace DNDOnePlaceManager.WebRTC
         public async Task SendAnswerAsync(string gameId, string targetPeerId, string sdp)
         {
             if (_clients.TryGetValue(gameId, out var client))
-                await client.EmitAsync("webrtc-answer", new
+                await client.EmitAsync("webrtc-answer", new object[]
                 {
-                    targetPeerId,
-                    answer = new { type = "answer", sdp }
+                    new
+                    {
+                        targetPeerId,
+                        answer = new { type = "answer", sdp }
+                    }
                 });
         }
 
@@ -211,10 +217,13 @@ namespace DNDOnePlaceManager.WebRTC
         public async Task SendIceCandidateAsync(string gameId, string targetPeerId, string candidate, string? sdpMid, int? sdpMLineIndex)
         {
             if (_clients.TryGetValue(gameId, out var client))
-                await client.EmitAsync("ice-candidate", new
+                await client.EmitAsync("ice-candidate", new object[]
                 {
-                    targetPeerId,
-                    candidate = new { candidate, sdpMid, sdpMLineIndex }
+                    new
+                    {
+                        targetPeerId,
+                        candidate = new { candidate, sdpMid, sdpMLineIndex }
+                    }
                 });
         }
 
