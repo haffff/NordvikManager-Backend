@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace DNDOnePlaceManager.Controllers
 {
     /// <summary>
-    /// Proxies requests to the Central Server's /meta endpoint.
+    /// Proxies requests to the Central Server's /api/meta endpoint.
     /// Exists purely to avoid CORS issues from browser clients — the backend
     /// calls the Central Server server-side and returns the result directly.
     /// </summary>
@@ -29,7 +29,7 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
-        /// Proxies GET /api/meta → Central Server GET /meta.
+        /// Proxies GET /api/meta → Central Server GET /api/meta.
         /// Forwards the caller's CentralToken cookie as a Bearer token so the
         /// Central Server can authenticate the request.
         /// </summary>
