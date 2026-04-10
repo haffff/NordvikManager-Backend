@@ -19,7 +19,9 @@ namespace DNDOnePlaceManager.Controllers
     public class MetaController : ControllerBase
     {
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly string _centralServerUrl;        /// <summary>Initializes a new instance of <see cref="MetaController"/>.</summary>
+        private readonly string _centralServerUrl;
+
+        /// <summary>Initializes a new instance of <see cref="MetaController"/>.</summary>
         public MetaController(IConfiguration configuration, IHttpClientFactory httpClientFactory)
         {
             _httpClientFactory = httpClientFactory;
@@ -40,8 +42,11 @@ namespace DNDOnePlaceManager.Controllers
 
             // Forward the CentralToken cookie as Authorization header
             var centralToken = Request.Cookies["CentralToken"];
+            HttpResponseMessage response;
             if (!string.IsNullOrEmpty(centralToken))
-                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", centralToken); HttpResponseMessage response;
+            {
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", centralToken);
+            }
             try
             {
                 var client = _httpClientFactory.CreateClient();
@@ -54,7 +59,12 @@ namespace DNDOnePlaceManager.Controllers
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            return StatusCode((int)response.StatusCode, body);
+            return new ContentResult
+            {
+                StatusCode = (int)response.StatusCode,
+                Content = body,
+                ContentType = response.Content.Headers.ContentType?.ToString()
+            };
         }
     }
 }

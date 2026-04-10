@@ -25,6 +25,9 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<bool> IsLocalAdminAsync(string userId, string? email)
         {
+            if (string.IsNullOrEmpty(userId))
+                return false;
+
             var configuredAdmins = GetConfiguredAdmins();
 
             if (configuredAdmins.userIds.Any() || configuredAdmins.emails.Any())

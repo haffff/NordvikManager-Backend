@@ -37,7 +37,8 @@ namespace DNDOnePlaceManager.Controllers
     {
         private readonly IMediator mediator;
         private readonly IConfiguration configuration;
-        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>(); private readonly ILobbyService lobbyService;
+        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();
+        private readonly ILobbyService lobbyService;
         private readonly ICentralServerService _centralServerService;
         private readonly IWebRTCSessionService _webRtcSessionService;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -53,9 +54,6 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
-        /// Gets list of games where user is present
-        /// </summary>
-        /// <returns></returns>        /// <summary>
         /// Proxies GET /api/gamelist/publicgames → Central Server GET /api/gamelist/publicgames.
         /// Exists to avoid CORS issues from browser clients.
         /// Does not require authentication — public games are visible to anyone.
@@ -65,7 +63,8 @@ namespace DNDOnePlaceManager.Controllers
         [Route("publicgames")]
         public async Task<IActionResult> GetPublicGames([FromQuery] int page = 1, [FromQuery] int count = 10, CancellationToken cancellationToken = default)
         {
-            var url = $"{configuration["CentralServerUrl"]?.TrimEnd('/')}/api/gamelist/publicgames?page={page}&count={count}";
+            var centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
+            var url = $"{centralServerUrl}/api/gamelist/publicgames?page={page}&count={count}";
 
             using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
 
@@ -79,7 +78,12 @@ namespace DNDOnePlaceManager.Controllers
                 var client = _httpClientFactory.CreateClient();
                 var response = await client.SendAsync(requestMessage, cancellationToken);
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                return StatusCode((int)response.StatusCode, body);
+                return new ContentResult
+                {
+                    StatusCode = (int)response.StatusCode,
+                    Content = body,
+                    ContentType = response.Content.Headers.ContentType?.ToString()
+                };
             }
             catch (HttpRequestException)
             {
@@ -87,6 +91,9 @@ namespace DNDOnePlaceManager.Controllers
             }
         }
 
+        /// <summary>
+        /// Gets list of games where user is present
+        /// </summary>
         [HttpGet]
         [Authorize]
         [Route("GetGames")]
@@ -211,6 +218,8 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> AssignSession([FromQuery] Guid gameId)
         {
             var user = HttpContext.Items["User"] as User;
+            if (user?.IsLocalAdmin != true)
+                return Forbid();
 
             var centralToken = Request.Cookies["CentralToken"];
             if (string.IsNullOrEmpty(centralToken))
