@@ -30,7 +30,8 @@ namespace DNDOnePlaceManager.Engine.Middlewares
                          ?? string.Empty;
             var email = context.User.FindFirst("email")?.Value;
 
-            var isLocalAdmin = await _localAdminService.IsLocalAdminAsync(userId, email);
+            var isLocalAdmin = !string.IsNullOrEmpty(userId)
+                && await _localAdminService.IsLocalAdminAsync(userId, email);
 
             var user = new User
             {

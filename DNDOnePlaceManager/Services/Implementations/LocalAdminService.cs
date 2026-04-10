@@ -115,8 +115,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Warning: Failed to persist local admin promotion: {ex.Message}");
-                _autoPromotedAdminId = userId;
+                Console.Error.WriteLine($"Warning: Failed to persist local admin promotion for user '{userId}'. Auto-promotion was not applied: {ex.Message}");
             }
         }
 
