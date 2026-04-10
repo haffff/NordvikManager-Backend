@@ -6,6 +6,7 @@ namespace DNDOnePlaceManager.Domain.Entities.Auth
         public string? UserName { get; set; }
         public string? Email { get; set; }
         public bool? IsAdmin { get; set; }
+        public bool IsLocalAdmin { get; set; }
         public bool Lock { get; set; }
     }
 }

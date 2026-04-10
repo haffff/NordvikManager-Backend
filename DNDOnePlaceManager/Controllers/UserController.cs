@@ -98,6 +98,7 @@ namespace DNDOnePlaceManager.Controllers
             return Ok(new
             {
                 Admin = user?.IsAdmin,
+                LocalAdmin = user?.IsLocalAdmin,
                 UserName = user?.UserName,
                 Email = user?.Email
             });
@@ -114,31 +115,6 @@ namespace DNDOnePlaceManager.Controllers
             return Ok(new { userName });
         }
 
-        [Authorize]
-        [HttpGet]
-        [Route("Invites")]
-        public async Task<IActionResult> Invites(int page = 1)
-        {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
-
-            var result = await _centralServer.GetInvitesAsync(CentralToken(), page);
-            if (result == null) return StatusCode(502, "Central server unavailable");
-            return Ok(result);
-        }
-
-        [Authorize]
-        [HttpGet]
-        [Route("GenerateInvite")]
-        public async Task<IActionResult> GenerateInvite(int hours = 24)
-        {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
-
-            var key = await _centralServer.GenerateInviteAsync(CentralToken(), hours);
-            if (key == null) return StatusCode(502, "Central server unavailable");
-            return Ok(new { InviteCode = key });
-        }
 
         [HttpPost]
         [Route("Register")]
@@ -169,7 +145,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> Users(int page = 1, int count = 10)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             if (page < 1 || count < 1) return BadRequest();
 
@@ -183,7 +159,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> DeleteInvite([FromQuery] string key)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             var success = await _centralServer.DeleteInviteAsync(CentralToken(), key);
             if (success) return Ok(new { result = "ok" });
@@ -225,7 +201,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> GetPlayers(int page = 1, int count = 10)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             if (page < 1 || count < 1) return BadRequest();
 
@@ -239,7 +215,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> KickPlayer([FromBody] Models.KickPlayerRequest request)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             var result = await _mediator.Send(new KickPlayerCommand { PlayerId = request.PlayerId });
             if (result != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return BadRequest();
@@ -254,7 +230,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> RemoveUser([FromBody] Models.CentralUserRequest request)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             var result = await _mediator.Send(new RemoveUserPlayersCommand { CentralUserId = request.CentralUserId });
             if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();
@@ -267,7 +243,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> BanUser([FromBody] Models.CentralUserRequest request)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             var result = await _mediator.Send(new BanUserCommand { CentralUserId = request.CentralUserId });
             if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();
@@ -280,7 +256,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> UnbanUser([FromBody] Models.CentralUserRequest request)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) return Unauthorized();
+            if (!user.IsLocalAdmin) return Unauthorized();
 
             var result = await _mediator.Send(new UnbanUserCommand { CentralUserId = request.CentralUserId });
             if (result == DndOnePlaceManager.Domain.Enums.CommandResponse.Ok) return Ok();

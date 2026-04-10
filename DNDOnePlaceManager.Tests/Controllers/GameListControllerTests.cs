@@ -171,19 +171,6 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task AddGame_ReturnsBadRequest_WhenUserIsNotAdmin()
-        {
-            // Arrange — controller already has RegularUser context from constructor
-            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
-
-            // Act
-            var result = await _controller.AddGame(command);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
         public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsNull()
         {
             // Arrange
@@ -201,13 +188,13 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task AddGame_ReturnsOk_WhenAdminAndMediatorReturnsGameId()
+        public async Task AddGame_ReturnsOk_WhenMediatorReturnsGameId()
         {
             // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(Guid.NewGuid());
-            var controller = CreateController(mediator, contextUser: AdminUser());
+            var controller = CreateController(mediator, contextUser: RegularUser());
             var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
 
             // Act
@@ -272,15 +259,19 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetVersionInfo_ReturnsUnauthorized_WhenUserIsNotAdmin()
+        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser()
         {
-            // Arrange — controller already has RegularUser context from constructor
+            // Arrange
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
+            var controller = CreateController(mediator, contextUser: RegularUser());
 
             // Act
-            var result = await _controller.GetVersionInfo();
+            var result = await controller.GetVersionInfo();
 
             // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.IsType<OkObjectResult>(result);
         }
 
         [Fact]

@@ -49,8 +49,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
             return controller;
         }
 
-        private static User AdminUser() => new User { Id = "admin-id", UserName = "admin", IsAdmin = true };
-        private static User RegularUser() => new User { Id = "user-id", UserName = "regular", IsAdmin = false };
+        private static User AdminUser() => new User { Id = "admin-id", UserName = "admin", IsAdmin = false, IsLocalAdmin = true };
+        private static User RegularUser() => new User { Id = "user-id", UserName = "regular", IsAdmin = false, IsLocalAdmin = false };
 
         // =========================================================================
         // Login
@@ -160,57 +160,6 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         // =========================================================================
-        // Invites
-        // =========================================================================
-
-        [Fact]
-        public async Task Invites_ReturnsUnauthorized_WhenNotAdmin()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.Invites();
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task Invites_ReturnsOk_WhenAdmin()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.GetInvitesAsync(It.IsAny<string>(), 1))
-                .ReturnsAsync(new { data = new object[] { } });
-            var controller = CreateController(central, contextUser: AdminUser());
-
-            var result = await controller.Invites(1);
-
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GenerateInvite
-        // =========================================================================
-
-        [Fact]
-        public async Task GenerateInvite_ReturnsUnauthorized_WhenNotAdmin()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.GenerateInvite();
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task GenerateInvite_ReturnsOk_WhenAdmin()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.GenerateInviteAsync(It.IsAny<string>(), It.IsAny<int>()))
-                .ReturnsAsync("invite-key-123");
-            var controller = CreateController(central, contextUser: AdminUser());
-
-            var result = await controller.GenerateInvite(24);
-
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        // =========================================================================
         // Register
         // =========================================================================
 
@@ -303,42 +252,6 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
             var result = await controller.Users(1, 10);
-
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // DeleteInvite
-        // =========================================================================
-
-        [Fact]
-        public async Task DeleteInvite_ReturnsUnauthorized_WhenNotAdmin()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.DeleteInvite("any-key");
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteInvite_ReturnsNotFound_WhenKeyMissing()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.DeleteInviteAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
-            var controller = CreateController(central, contextUser: AdminUser());
-
-            var result = await controller.DeleteInvite("missing-key");
-
-            Assert.IsType<NotFoundResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteInvite_ReturnsOk_WhenKeyDeleted()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.DeleteInviteAsync(It.IsAny<string>(), "delete-me")).ReturnsAsync(true);
-            var controller = CreateController(central, contextUser: AdminUser());
-
-            var result = await controller.DeleteInvite("delete-me");
 
             Assert.IsType<OkObjectResult>(result);
         }

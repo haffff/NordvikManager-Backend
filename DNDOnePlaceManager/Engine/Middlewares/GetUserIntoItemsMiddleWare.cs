@@ -1,4 +1,5 @@
 using DNDOnePlaceManager.Domain.Entities.Auth;
+using DNDOnePlaceManager.Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using System.IdentityModel.Tokens.Jwt;
 using System.Threading.Tasks;
@@ -7,6 +8,13 @@ namespace DNDOnePlaceManager.Engine.Middlewares
 {
     public class GetUserIntoItemsMiddleWare : IMiddleware
     {
+        private readonly ILocalAdminService _localAdminService;
+
+        public GetUserIntoItemsMiddleWare(ILocalAdminService localAdminService)
+        {
+            _localAdminService = localAdminService;
+        }
+
         public async Task InvokeAsync(HttpContext context, RequestDelegate next)
         {
             var userName = context.User?.Identity?.Name;
@@ -17,14 +25,20 @@ namespace DNDOnePlaceManager.Engine.Middlewares
             }
 
             var claims = context.User.Claims;
+            var userId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+                         ?? context.User.FindFirst("sub")?.Value
+                         ?? string.Empty;
+            var email = context.User.FindFirst("email")?.Value;
+
+            var isLocalAdmin = await _localAdminService.IsLocalAdminAsync(userId, email);
+
             var user = new User
             {
-                Id = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-                     ?? context.User.FindFirst("sub")?.Value
-                     ?? string.Empty,
+                Id = userId,
                 UserName = userName,
-                Email = context.User.FindFirst("email")?.Value,
-                IsAdmin = context.User.FindFirst("isAdmin")?.Value?.ToLowerInvariant() == "true"
+                Email = email,
+                IsAdmin = context.User.FindFirst("isAdmin")?.Value?.ToLowerInvariant() == "true",
+                IsLocalAdmin = isLocalAdmin
             };
 
             context.Items["User"] = user;
