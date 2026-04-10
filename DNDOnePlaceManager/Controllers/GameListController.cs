@@ -10,14 +10,11 @@ using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Domain.Entities.Auth;
-using DNDOnePlaceManager.Engine.Attribs;
 using DNDOnePlaceManager.Services;
-using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.Services.Interfaces;
 using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
 using DNDOnePlaceManager.WebSockets.Core;
-using DNDOnePlaceManager.WebSockets.Handlers;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -27,7 +24,9 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Controllers
@@ -39,24 +38,62 @@ namespace DNDOnePlaceManager.Controllers
         private readonly IMediator mediator;
         private readonly IConfiguration configuration;
         private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();
-
         private readonly ILobbyService lobbyService;
         private readonly ICentralServerService _centralServerService;
         private readonly IWebRTCSessionService _webRtcSessionService;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService)
+        public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService, IHttpClientFactory httpClientFactory)
         {
             this.mediator = mediator;
             this.configuration = configuration;
             this.lobbyService = lobbyService;
             _centralServerService = centralServerService;
             _webRtcSessionService = webRtcSessionService;
+            _httpClientFactory = httpClientFactory;
+        }
+
+        /// <summary>
+        /// Proxies GET /api/gamelist/publicgames → Central Server GET /api/gamelist/publicgames.
+        /// Exists to avoid CORS issues from browser clients.
+        /// Does not require authentication — public games are visible to anyone.
+        /// </summary>
+        [HttpGet]
+        [AllowAnonymous]
+        [Route("publicgames")]
+        public async Task<IActionResult> GetPublicGames([FromQuery] int page = 1, [FromQuery] int count = 10, CancellationToken cancellationToken = default)
+        {
+            var centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
+            var url = $"{centralServerUrl}/api/gamelist/publicgames?page={page}&count={count}";
+
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
+
+            // Forward CentralToken if present — allows the Central Server to apply user-specific filtering
+            var centralToken = Request.Cookies["CentralToken"];
+            if (!string.IsNullOrEmpty(centralToken))
+                requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", centralToken);
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.SendAsync(requestMessage, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                return new ContentResult
+                {
+                    StatusCode = (int)response.StatusCode,
+                    Content = body,
+                    ContentType = response.Content.Headers.ContentType?.ToString()
+                };
+            }
+            catch (HttpRequestException)
+            {
+                return StatusCode(502, new { error = "Central Server is unreachable." });
+            }
         }
 
         /// <summary>
         /// Gets list of games where user is present
         /// </summary>
-        /// <returns></returns>
         [HttpGet]
         [Authorize]
         [Route("GetGames")]
@@ -88,7 +125,8 @@ namespace DNDOnePlaceManager.Controllers
             var res = await mediator.Send(removeGameCommand);
 
             return Ok(res);
-        }        [HttpGet]
+        }
+        [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
         public async Task<IActionResult> GetFeaturedAddons()
@@ -125,9 +163,6 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> AddGame([FromBody] AddGameCommand addGameCommand)
         {
             var user = HttpContext.Items["User"] as User;
-
-            if (user?.IsAdmin != true)
-                return BadRequest();
 
             addGameCommand.User = user;
 
@@ -183,8 +218,8 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> AssignSession([FromQuery] Guid gameId)
         {
             var user = HttpContext.Items["User"] as User;
-            if (user?.IsAdmin != true) 
-                return Unauthorized();
+            if (user?.IsLocalAdmin != true)
+                return Forbid();
 
             var centralToken = Request.Cookies["CentralToken"];
             if (string.IsNullOrEmpty(centralToken))
@@ -237,7 +272,7 @@ namespace DNDOnePlaceManager.Controllers
 
             await AddDefaultCharacterSheet(cmd.GameID, result.Value);
 
-            if (cmd.GameID.HasValue && (currentUser?.IsAdmin ?? false))
+            if (cmd.GameID.HasValue)
             {
                 var centralSessionId = await mediator.Send(new GetGameCentralSessionIdCommand { GameID = cmd.GameID.Value });
                 var centralToken = Request.Cookies["CentralToken"];
@@ -316,11 +351,6 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> GetVersionInfo()
         {
             var user = HttpContext.Items["User"] as User;
-
-            if (!(user.IsAdmin ?? false))
-            {
-                return Unauthorized(new { error = "You are not admin" });
-            }
 
             GetVersionInfoCommand cmd = new GetVersionInfoCommand();
             var result = await mediator.Send(cmd);

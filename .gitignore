@@ -387,3 +387,6 @@ appsettings.Production.json
 .vscode/*
 !.vscode/launch.json
 
+# Local admin auto-promotion file
+.localadmin
+

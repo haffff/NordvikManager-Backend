@@ -12,7 +12,7 @@ namespace DndOnePlaceManager.Application
     {
         public static void Register(IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
-            services.AddAutoMapper(x=>x.AddProfile(typeof(AutoMapperProfile)));
+            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
             services.AddScoped<IPermissionService, PermissionsService>();
             services.AddScoped<IChatService, ChatService>();
 

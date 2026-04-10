@@ -71,6 +71,7 @@ namespace DNDOnePlaceManager
             services.AddSingleton<ISignalingService, SignalingService>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCApiDispatcher>();
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
+            services.AddSingleton<ILocalAdminService, LocalAdminService>();
 
             var handlers = Assembly.GetExecutingAssembly().GetTypes();
             foreach (var handler in handlers)

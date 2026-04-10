@@ -1,5 +1,6 @@
 ﻿namespace DndOnePlaceManager.Infrastructure.Interfaces
-{    /// <summary>
+{
+    /// <summary>
     /// Provides access to the configured addon repository.
     /// All URLs are resolved internally — no external URL is ever accepted from callers.
     /// </summary>

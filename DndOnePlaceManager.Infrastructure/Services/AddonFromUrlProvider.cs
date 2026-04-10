@@ -34,7 +34,7 @@ namespace DndOnePlaceManager.Infrastructure.Services
             var request = new HttpRequestMessage(HttpMethod.Get, releaseUrl);
             request.Headers.UserAgent.ParseAdd("NordvikManager");
             var result = await httpClient.SendAsync(request);
-            
+
             if (result.StatusCode == HttpStatusCode.OK)
                 return await result.Content.ReadAsByteArrayAsync();
 
