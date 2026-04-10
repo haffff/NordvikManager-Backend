@@ -34,19 +34,19 @@ namespace DNDOnePlaceManager.WebRTC
             }
 
             var chunkId = Guid.NewGuid().ToString();
-            var total   = (int)Math.Ceiling((double)json.Length / ChunkSize);
+            var total = (int)Math.Ceiling((double)json.Length / ChunkSize);
 
             for (var i = 0; i < total; i++)
             {
                 var offset = i * ChunkSize;
-                var slice  = json.Substring(offset, Math.Min(ChunkSize, json.Length - offset));
+                var slice = json.Substring(offset, Math.Min(ChunkSize, json.Length - offset));
                 _dataChannel.send(JsonConvert.SerializeObject(new
                 {
-                    type    = "chunk",
+                    type = "chunk",
                     chunkId,
-                    index   = i,
+                    index = i,
                     total,
-                    data    = slice
+                    data = slice
                 }));
             }
 

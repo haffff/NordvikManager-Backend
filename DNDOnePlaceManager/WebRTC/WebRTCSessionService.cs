@@ -525,9 +525,9 @@ namespace DNDOnePlaceManager.WebRTC
                 if (obj["type"]?.Value<string>() != "chunk")
                     return false;
                 var chunkId = obj["chunkId"]?.Value<string>();
-                var index   = obj["index"]?.Value<int>();
-                var total   = obj["total"]?.Value<int>();
-                var data    = obj["data"]?.Value<string>();
+                var index = obj["index"]?.Value<int>();
+                var total = obj["total"]?.Value<int>();
+                var data = obj["data"]?.Value<string>();
                 if (string.IsNullOrEmpty(chunkId) || index == null || total is null or <= 0 || data == null)
                     return false;
                 chunk = new ChunkEnvelope(chunkId, index.Value, total.Value, data);

@@ -37,7 +37,7 @@ namespace DNDOnePlaceManager.Controllers
     {
         private readonly IMediator mediator;
         private readonly IConfiguration configuration;
-        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();        private readonly ILobbyService lobbyService;
+        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>(); private readonly ILobbyService lobbyService;
         private readonly ICentralServerService _centralServerService;
         private readonly IWebRTCSessionService _webRtcSessionService;
         private readonly IHttpClientFactory _httpClientFactory;
@@ -118,7 +118,8 @@ namespace DNDOnePlaceManager.Controllers
             var res = await mediator.Send(removeGameCommand);
 
             return Ok(res);
-        }        [HttpGet]
+        }
+        [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
         public async Task<IActionResult> GetFeaturedAddons()

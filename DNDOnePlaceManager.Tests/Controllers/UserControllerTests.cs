@@ -173,7 +173,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             var result = await controller.Register(new RegisterRequest
             {
-                Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code"
+                Username = "user",
+                Password = "pass",
+                Email = "a@b.com",
+                InviteCode = "code"
             });
 
             Assert.IsType<OkObjectResult>(result);
@@ -189,7 +192,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             var result = await controller.Register(new RegisterRequest
             {
-                Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code"
+                Username = "user",
+                Password = "pass",
+                Email = "a@b.com",
+                InviteCode = "code"
             });
 
             Assert.IsType<BadRequestObjectResult>(result);

@@ -62,7 +62,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             using var archive = new ZipArchive(new MemoryStream(request.AddonFile));
 
             // Bug fix: GetEntry can return null — was crashing in ReadToBytes
-            var infoEntry = archive.Entries.FirstOrDefault(x=>x.Name.ToLower().Trim() == "info.json")
+            var infoEntry = archive.Entries.FirstOrDefault(x => x.Name.ToLower().Trim() == "info.json")
                 ?? throw new InvalidOperationException("Addon archive is missing 'info.json'. Is this a valid addon file?");
 
             var addon = JsonSerializer.Deserialize<AddonModel>(ReadToBytes(infoEntry), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })

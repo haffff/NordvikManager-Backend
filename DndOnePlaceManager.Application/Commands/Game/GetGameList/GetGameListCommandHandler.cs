@@ -26,7 +26,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 string? shortDescription = x.Properties.FirstOrDefault(y => y.Name == "shortDescription")?.Value;
                 string? color = x.Properties.FirstOrDefault(y => y.Name == "color")?.Value;
                 string? image = x.Properties.FirstOrDefault(y => y.Name == "image")?.Value;
-                
+
 
                 GameItemDTO gameItem = new GameItemDTO()
                 {

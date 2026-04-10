@@ -15,7 +15,8 @@ namespace DNDOnePlaceManager.Controllers
     /// </summary>
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]    public class MetaController : ControllerBase
+    [Authorize]
+    public class MetaController : ControllerBase
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly string _centralServerUrl;        /// <summary>Initializes a new instance of <see cref="MetaController"/>.</summary>
@@ -40,7 +41,7 @@ namespace DNDOnePlaceManager.Controllers
             // Forward the CentralToken cookie as Authorization header
             var centralToken = Request.Cookies["CentralToken"];
             if (!string.IsNullOrEmpty(centralToken))
-                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", centralToken);            HttpResponseMessage response;
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", centralToken); HttpResponseMessage response;
             try
             {
                 var client = _httpClientFactory.CreateClient();
