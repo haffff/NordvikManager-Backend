@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.WebRTC
@@ -49,6 +50,8 @@ namespace DNDOnePlaceManager.WebRTC
         private readonly ConcurrentDictionary<string, RTCPeerConnection> _peerConnections = new();
         // socketId → (gameId, userId)
         private readonly ConcurrentDictionary<string, (string GameId, string UserId)> _peerMeta = new();
+        // socketId → Unix milliseconds when peer-joined was received, used for connection timing logs
+        private readonly ConcurrentDictionary<string, long> _peerConnectStartMs = new();
         // ICE candidates gathered before the answer is sent are buffered here so the frontend
         // always receives the answer before any of our ICE candidates.
         // null value = answer already sent, send candidates directly.
@@ -113,6 +116,8 @@ namespace DNDOnePlaceManager.WebRTC
 
         private Task OnPeerJoined(PeerJoinedArgs args)
         {
+            _peerConnectStartMs[args.SocketId] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
             RTCPeerConnection pc;
             try
             {
@@ -126,6 +131,9 @@ namespace DNDOnePlaceManager.WebRTC
                 GetOrCreateReadySignal(args.SocketId).TrySetResult(null);
                 return Task.CompletedTask;
             }
+
+            _logger.LogInformation("Peer connection created for socketId={SocketId} user={User} game={GameId}",
+                args.SocketId, args.Username, args.GameId);
 
             _peerConnections[args.SocketId] = pc;
             _peerMeta[args.SocketId] = (args.GameId, args.UserId);
@@ -153,8 +161,13 @@ namespace DNDOnePlaceManager.WebRTC
 
                 // SIPSorcery fires onopen as a plain Action exactly once.
                 // We fire-and-forget an async method so we can hit the DB if needed.
+                // The Interlocked guard defends against the rare race where the channel transitions
+                // to 'open' between assigning onopen and the readyState check below, which would
+                // otherwise call HandleOpenAsync twice and create a duplicate lobby connection.
+                var openHandled = 0;
                 async Task HandleOpenAsync()
                 {
+                    if (Interlocked.Exchange(ref openHandled, 1) != 0) return;
                     if (!Guid.TryParse(args.GameId, out var gameId))
                     {
                         SendChannelError(dataChannel, "err: invalid game id");
@@ -208,9 +221,11 @@ namespace DNDOnePlaceManager.WebRTC
                         lobby.ConnectedPlayers[playerEntry].Add(connection);
                     }
 
+                    var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                        - (_peerConnectStartMs.TryGetValue(args.SocketId, out var t) ? t : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                     _logger.LogInformation(
-                        "WebRTC data channel opened for player {Name} in game {GameId}",
-                        playerEntry.Name, gameId);
+                        "Data channel open player={Name} game={GameId} socketId={SocketId} elapsed={Elapsed}ms",
+                        playerEntry.Name, gameId, args.SocketId, elapsed);
                 }
 
                 dataChannel.onopen += () => _ = HandleOpenAsync();
@@ -283,6 +298,8 @@ namespace DNDOnePlaceManager.WebRTC
 
         private async Task OnOfferReceived(WebRTCSignalArgs args)
         {
+            _logger.LogDebug("Processing WebRTC offer from socketId={SocketId} game={GameId}", args.FromSocketId, args.GameId);
+
             // peer-joined and webrtc-offer are dispatched concurrently on the thread pool by SocketIOClient.
             // Wait up to 2 s for the peer connection that OnPeerJoined is creating in parallel.
             var pc = await WaitForPeerConnectionAsync(args.FromSocketId);
@@ -311,6 +328,8 @@ namespace DNDOnePlaceManager.WebRTC
                 // during setLocalDescription. This guarantees the frontend always receives the answer
                 // before our ICE candidates, so addIceCandidate never fails with "remote description was null".
                 await _signaling.SendAnswerAsync(args.GameId, args.FromSocketId, answer.sdp);
+                _logger.LogInformation("WebRTC answer sent to socketId={SocketId} game={GameId}",
+                    args.FromSocketId, args.GameId);
 
                 await FlushPendingLocalCandidatesAsync(args.GameId, args.FromSocketId);
             }
@@ -398,10 +417,12 @@ namespace DNDOnePlaceManager.WebRTC
 
         private void CleanupPeer(string socketId)
         {
+            _logger.LogInformation("Cleaning up peer socketId={SocketId}", socketId);
             if (_peerConnections.TryRemove(socketId, out var pc))
                 pc.close();
             _peerMeta.TryRemove(socketId, out _);
             _pendingLocalCandidates.TryRemove(socketId, out _);
+            _peerConnectStartMs.TryRemove(socketId, out _);
             if (_peerReadySignals.TryRemove(socketId, out var tcs))
                 tcs.TrySetResult(null); // unblock any waiter that hasn't timed out yet
         }
@@ -444,7 +465,7 @@ namespace DNDOnePlaceManager.WebRTC
                 .FirstOrDefault();
 
             if (toRemove != null)
-                lobby.ConnectedPlayers[playerEntry].Remove(toRemove);
+                _ = LobbyConnectionHelper.DisconnectPlayerAsync(lobby, playerEntry, toRemove);
         }
 
         private static List<RTCIceServer> BuildFallbackIceServers(IConfiguration configuration)

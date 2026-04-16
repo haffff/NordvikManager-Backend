@@ -23,6 +23,7 @@ using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -43,10 +44,12 @@ namespace DNDOnePlaceManager.WebRTC
 
         private readonly Dictionary<string, Func<DispatchContext, Task<(int status, object? body)>>> _routes = new(
             StringComparer.OrdinalIgnoreCase);
+        private readonly ILogger<WebRTCApiDispatcher> _logger;
 
-        public WebRTCApiDispatcher(IServiceScopeFactory scopeFactory)
+        public WebRTCApiDispatcher(IServiceScopeFactory scopeFactory, ILogger<WebRTCApiDispatcher> logger)
         {
             _scopeFactory = scopeFactory;
+            _logger = logger;
             RegisterRoutes();
         }
 
@@ -60,6 +63,9 @@ namespace DNDOnePlaceManager.WebRTC
         {
             var key = BuildKey(request.Method, request.Path);
             (int status, object? body) result;
+
+            _logger.LogDebug("WebRTC API {Method} {Path} requestId={Id} player={Player} game={Game}",
+                request.Method, request.Path, request.Id, player.Name, gameId);
 
             if (_routes.TryGetValue(key, out var handler))
             {
@@ -81,13 +87,21 @@ namespace DNDOnePlaceManager.WebRTC
                 }
                 catch (Exception ex)
                 {
+                    _logger.LogError(ex,
+                        "WebRTC API exception {Method} {Path} requestId={Id} player={Player} game={Game}",
+                        request.Method, request.Path, request.Id, player.Name, gameId);
                     result = (500, new { error = ex.Message });
                 }
             }
             else
             {
+                _logger.LogWarning("No WebRTC route for {Method} {Path} requestId={Id} player={Player}",
+                    request.Method, request.Path, request.Id, player.Name);
                 result = (404, new { error = $"No WebRTC route for {request.Method} {request.Path}" });
             }
+
+            _logger.LogDebug("WebRTC API {Method} {Path} → {Status} requestId={Id}",
+                request.Method, request.Path, result.status, request.Id);
 
             await connection.SendMessageToPlayer(new
             {

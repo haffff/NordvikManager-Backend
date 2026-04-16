@@ -70,6 +70,24 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
+        public async Task<string?> RefreshTokenAsync(string refreshToken)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var body = JsonConvert.SerializeObject(new { refreshToken });
+            var content = new StringContent(body, Encoding.UTF8, "application/json");
+            try
+            {
+                var response = await client.PostAsync($"{_centralServerUrl}/api/user/refresh", content);
+                if (!response.IsSuccessStatusCode) return null;
+
+                return ExtractCookieValue(response, "Authorization");
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public async Task<CentralLoginResult?> LoginAsync(string username, string password)
         {
             var client = _httpClientFactory.CreateClient();

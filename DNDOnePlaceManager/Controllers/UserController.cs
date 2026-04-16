@@ -67,9 +67,14 @@ namespace DNDOnePlaceManager.Controllers
             // Local JWT — used by the GM Admin Frontend for all GM Backend requests.
             HttpContext.Response.Cookies.Append("Authorization", localToken, cookieOptions);
 
-            // Central Server token — stored server-side via a separate HttpOnly cookie so
-            // proxied calls (invites, keyboard bindings, etc.) can forward it to the Central Server.
+            // Central Server access token (15 min JWT) — forwarded server-side to Central Server
+            // for proxied calls (invites, keyboard bindings, session creation, etc.).
             HttpContext.Response.Cookies.Append("CentralToken", centralResult.CentralToken, cookieOptions);
+
+            // Central Server refresh token — used to silently obtain a new CentralToken
+            // when the 15-min access token expires, without requiring re-login.
+            if (!string.IsNullOrEmpty(centralResult.RefreshToken))
+                HttpContext.Response.Cookies.Append("CentralRefreshToken", centralResult.RefreshToken, cookieOptions);
 
             return Ok(new { token = localToken });
         }
@@ -86,7 +91,38 @@ namespace DNDOnePlaceManager.Controllers
         {
             HttpContext.Response.Cookies.Delete("Authorization");
             HttpContext.Response.Cookies.Delete("CentralToken");
+            HttpContext.Response.Cookies.Delete("CentralRefreshToken");
             return Ok();
+        }
+
+        /// <summary>
+        /// Silently refreshes the CentralToken using the stored CentralRefreshToken.
+        /// Called by the frontend or other endpoints when the 15-min access token has expired.
+        /// Returns 200 with the new token on success, 401 if the refresh token is missing/expired.
+        /// </summary>
+        [Authorize]
+        [HttpPost]
+        [Route("refresh-central")]
+        public async Task<IActionResult> RefreshCentralToken()
+        {
+            var refreshToken = HttpContext.Request.Cookies["CentralRefreshToken"];
+            if (string.IsNullOrEmpty(refreshToken))
+                return Unauthorized(new { error = "No Central Server refresh token. Please log in again." });
+
+            var newAccessToken = await _centralServer.RefreshTokenAsync(refreshToken);
+            if (newAccessToken == null)
+                return Unauthorized(new { error = "Central Server refresh failed. Please log in again." });
+
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                SameSite = SameSiteMode.None,
+                Secure = true
+            };
+            HttpContext.Response.Cookies.Append("CentralToken", newAccessToken, cookieOptions);
+
+            return Ok(new { refreshed = true });
         }
 
         [Authorize]

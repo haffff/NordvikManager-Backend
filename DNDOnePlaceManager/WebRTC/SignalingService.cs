@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 // Alias avoids collision with the SocketIO namespace brought in by some transitive dependencies.
@@ -64,6 +65,10 @@ namespace DNDOnePlaceManager.WebRTC
 
             _sessionIds[gameId] = centralSessionId;
 
+            // Completed when "authenticated" is received; failed on auth-error or disconnect-before-auth.
+            // This lets StartSession wait until the GM is actually registered before responding to the client.
+            var authTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
             var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions
             {
                 ExtraHeaders = new Dictionary<string, string>
@@ -76,6 +81,7 @@ namespace DNDOnePlaceManager.WebRTC
             client.OnConnected += async (sender, e) =>
             {
                 _logger.LogInformation("Signaling connected to Central Server for game {GameId}", gameId);
+                _logger.LogInformation("Signaling authenticating as GM for game {GameId} session {SessionId}", gameId, centralSessionId);
                 await client.EmitAsync("authenticate", new object[]
                 {
                     new
@@ -91,6 +97,9 @@ namespace DNDOnePlaceManager.WebRTC
             {
                 _logger.LogWarning("Signaling disconnected from Central Server for game {GameId}: {Reason}", gameId, reason);
                 _authenticated.TryRemove(gameId, out _);
+                // If we disconnect before getting "authenticated", unblock ConnectAsync so the
+                // caller doesn't wait forever on a connection that already died.
+                authTcs.TrySetException(new Exception($"Signaling disconnected before authentication for game {gameId}: {reason}"));
             };
 
             // authenticated: Central Server confirms GM registration — mark as truly connected
@@ -98,30 +107,36 @@ namespace DNDOnePlaceManager.WebRTC
             {
                 _logger.LogInformation("Signaling authenticated with Central Server for game {GameId}", gameId);
                 _authenticated[gameId] = true;
+                authTcs.TrySetResult(true);
             });
 
             // auth-error: Central Server rejected the authenticate event
             client.On("auth-error", async response =>
             {
+                string msg;
                 try
                 {
-                    var msg = response.GetValue<AuthErrorPayload>(0).error;
+                    msg = response.GetValue<AuthErrorPayload>(0).error;
                     _logger.LogError("Signaling auth-error for game {GameId}: {Error}", gameId, msg);
                 }
                 catch
                 {
+                    msg = "unknown";
                     _logger.LogError("Signaling auth-error for game {GameId}", gameId);
                 }
                 _authenticated.TryRemove(gameId, out _);
+                authTcs.TrySetException(new Exception($"Signaling auth-error for game {gameId}: {msg}"));
             });
 
             // peer-joined: { peerId, userId, username, role }
             client.On("peer-joined", async response =>
             {
-                _logger.LogInformation("peer-joined received for game {GameId}: {Raw}", gameId, response);
+                _logger.LogDebug("peer-joined raw for game {GameId}: {Raw}", gameId, response);
                 try
                 {
                     var payload = response.GetValue<PeerJoinedPayload>(0);
+                    _logger.LogInformation("Peer joined session for game {GameId}: peerId={PeerId} user={Username} role={Role}",
+                        gameId, payload.peerId, payload.username, payload.role);
                     _ = PeerJoined?.Invoke(new PeerJoinedArgs(gameId, payload.userId, payload.username, payload.peerId));
                 }
                 catch (Exception ex)
@@ -135,8 +150,10 @@ namespace DNDOnePlaceManager.WebRTC
             {
                 try
                 {
-                    var peerId = response.GetValue<PeerLeftPayload>(0).peerId;
-                    _ = PeerLeft?.Invoke(new PeerLeftArgs(gameId, peerId));
+                    var payload = response.GetValue<PeerLeftPayload>(0);
+                    _logger.LogInformation("Peer left session for game {GameId}: peerId={PeerId} username={Username}",
+                        gameId, payload.peerId, payload.username);
+                    _ = PeerLeft?.Invoke(new PeerLeftArgs(gameId, payload.peerId));
                 }
                 catch (Exception ex)
                 {
@@ -144,13 +161,16 @@ namespace DNDOnePlaceManager.WebRTC
                 }
             });
 
-            // webrtc-offer: { fromPeerId, offer: { type, sdp }, userId?, username? }
+            // webrtc-offer: { fromPeerId, offer: { type, sdp } }
+            // Note: userId and username are NOT relayed by the Central Server; use _peerMeta for lookup.
             client.On("webrtc-offer", async response =>
             {
-                _logger.LogInformation("webrtc-offer received for game {GameId}: {Raw}", gameId, response);
+                _logger.LogDebug("webrtc-offer raw for game {GameId}: {Raw}", gameId, response);
                 try
                 {
                     var payload = response.GetValue<WebRTCOfferPayload>(0);
+                    _logger.LogInformation("WebRTC offer received for game {GameId} from peerId={PeerId}",
+                        gameId, payload.fromPeerId);
                     _ = OfferReceived?.Invoke(new WebRTCSignalArgs(gameId, payload.fromPeerId, payload.offer.sdp, payload.userId, payload.username));
                 }
                 catch (Exception ex)
@@ -163,8 +183,15 @@ namespace DNDOnePlaceManager.WebRTC
             // Must call SendAckDataAsync to trigger the ack; emitting a separate event does nothing.
             client.On("ping-gm", async response =>
             {
-                _logger.LogDebug("ping-gm received for game {GameId} — sending ack", gameId);
-                await response.SendAckDataAsync(Array.Empty<object>());
+                try
+                {
+                    _logger.LogDebug("ping-gm received for game {GameId} — sending ack", gameId);
+                    await response.SendAckDataAsync(new object[] { true });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ping-gm ack failed for game {GameId}", gameId);
+                }
             });
 
             // ice-candidate: { fromPeerId, candidate: { candidate, sdpMid, sdpMLineIndex, usernameFragment }, userId? }
@@ -173,6 +200,8 @@ namespace DNDOnePlaceManager.WebRTC
                 try
                 {
                     var payload = response.GetValue<IceCandidatePayload>(0);
+                    _logger.LogDebug("ice-candidate received for game {GameId} from peerId={PeerId}",
+                        gameId, payload.fromPeerId);
                     _ = IceCandidateReceived?.Invoke(new IceCandidateArgs(
                         gameId,
                         payload.fromPeerId,
@@ -189,6 +218,24 @@ namespace DNDOnePlaceManager.WebRTC
 
             await client.ConnectAsync();
             _clients[gameId] = client;
+
+            // Block until the Central Server sends "authenticated" so that StartSession doesn't
+            // return centralSessionId to the frontend before the GM peer is registered.
+            // Without this wait the frontend gets the session ID immediately, tries to connect,
+            // finds no GM peer, and retries hundreds of times over many minutes.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            try
+            {
+                await authTcs.Task.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    "Signaling authentication timed out after 15 s for game {GameId} — " +
+                    "StartSession will return but the GM peer may not be ready yet", gameId);
+                // Don't throw — the connection may still authenticate shortly after.
+                // The frontend will need to retry a few times rather than hundreds.
+            }
         }
 
         public async Task DisconnectAsync(string gameId)

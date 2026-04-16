@@ -261,6 +261,19 @@ namespace DNDOnePlaceManager.Services.Implementations
                             item.Value.SendMessageToPlayer(webSocketCommand);
                     }
                 }
+
+                // When a player is kicked, remove their in-memory ConnectedPlayers entry so that
+                // a stale entry can't shadow the new player record they create when they rejoin.
+                // Must happen AFTER the broadcast above so the kicked player still receives
+                // the player_kick notification before being removed.
+                if (webSocketCommand.Command == WebSocketCommandNames.PlayerKick
+                    && webSocketCommand.Result == WebSocketCommandNames.ResultOk)
+                {
+                    var kickedId = webSocketCommand.Data.ToGuid();
+                    var kickedEntry = ConnectedPlayers.Keys.FirstOrDefault(p => p.Id == kickedId);
+                    if (kickedEntry != null)
+                        ConnectedPlayers.Remove(kickedEntry);
+                }
             }
             catch (Exception e)
             {

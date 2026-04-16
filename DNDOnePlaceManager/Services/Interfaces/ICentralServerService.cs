@@ -41,6 +41,11 @@ namespace DNDOnePlaceManager.Services.Interfaces
         Task<CentralServerMeta?> GetMetaAsync();
         Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session);
         Task<CentralLoginResult?> LoginAsync(string username, string password);
+        /// <summary>
+        /// Exchanges a Central Server refresh token for a new access token.
+        /// Returns the new access token, or null if the refresh token is invalid/expired.
+        /// </summary>
+        Task<string?> RefreshTokenAsync(string refreshToken);
         Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode);
         Task<bool> CheckRegistrationKeyAsync(string key);
         Task<string?> GetUserNameAsync(string centralToken, string userId);
