@@ -63,7 +63,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var centralServerService = new Mock<ICentralServerService>().Object;
             var webRtcSession = new Mock<IWebRTCSessionService>().Object;
             var httpClientFactory = new Mock<System.Net.Http.IHttpClientFactory>().Object;
-            var controller = new GameListController(mediatorMock.Object, config, lobbyMock.Object, centralServerService, webRtcSession, httpClientFactory);
+            var controller = new GameListController(mediatorMock.Object, config, lobbyMock.Object, centralServerService, webRtcSession, httpClientFactory, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameListController>.Instance);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -80,7 +80,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var centralServerService = new Mock<ICentralServerService>().Object;
             var webRtcSession = new Mock<IWebRTCSessionService>().Object;
             var httpClientFactory = new Mock<System.Net.Http.IHttpClientFactory>().Object;
-            var controller = new GameListController(mediatorMock.Object, config, lobbyService, centralServerService, webRtcSession, httpClientFactory);
+            var controller = new GameListController(mediatorMock.Object, config, lobbyService, centralServerService, webRtcSession, httpClientFactory, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameListController>.Instance);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;

@@ -6,6 +6,7 @@ using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails;
 using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
 using DndOnePlaceManager.Application.Commands.Game.SetGameCentralSession;
+using DndOnePlaceManager.Application.Commands.Player.CheckUserBanned;
 using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -20,9 +21,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -42,8 +45,9 @@ namespace DNDOnePlaceManager.Controllers
         private readonly ICentralServerService _centralServerService;
         private readonly IWebRTCSessionService _webRtcSessionService;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly ILogger<GameListController> _logger;
 
-        public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService, IHttpClientFactory httpClientFactory)
+        public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService, IHttpClientFactory httpClientFactory, ILogger<GameListController> logger)
         {
             this.mediator = mediator;
             this.configuration = configuration;
@@ -51,6 +55,7 @@ namespace DNDOnePlaceManager.Controllers
             _centralServerService = centralServerService;
             _webRtcSessionService = webRtcSessionService;
             _httpClientFactory = httpClientFactory;
+            _logger = logger;
         }
 
         /// <summary>
@@ -68,10 +73,10 @@ namespace DNDOnePlaceManager.Controllers
 
             using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
 
-            // Forward CentralToken if present — allows the Central Server to apply user-specific filtering
+            // Forward CentralToken if present as a cookie — Central Server auth middleware reads req.cookies['Authorization']
             var centralToken = Request.Cookies["CentralToken"];
             if (!string.IsNullOrEmpty(centralToken))
-                requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", centralToken);
+                requestMessage.Headers.Add("Cookie", $"Authorization={centralToken}");
 
             try
             {
@@ -172,7 +177,7 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest();
 
             string? centralSessionId = null;
-            var centralToken = Request.Cookies["CentralToken"];
+            var centralToken = await GetOrRefreshCentralTokenAsync();
             if (!string.IsNullOrEmpty(centralToken))
             {
                 centralSessionId = await _centralServerService.CreateSessionAsync(
@@ -196,7 +201,20 @@ namespace DNDOnePlaceManager.Controllers
                         CentralSessionId = centralSessionId
                     });
 
-                    await _webRtcSessionService.StartSessionAsync(gameId.Value, centralSessionId, centralToken);
+                    try
+                    {
+                        await _webRtcSessionService.StartSessionAsync(gameId.Value, centralSessionId, centralToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Game and Central Server session were created successfully; only signaling failed.
+                        // Return sessionCreated=false so the client knows to retry via POST /assignSession.
+                        _logger.LogWarning(ex,
+                            "Signaling session could not be started for game {GameId} (centralSessionId={CentralSessionId}). " +
+                            "Game was saved — retry via POST /api/gamelist/assignSession.",
+                            gameId.Value, centralSessionId);
+                        centralSessionId = null;
+                    }
                 }
             }
 
@@ -264,6 +282,11 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> JoinGame([FromBody] AddPlayerCommand cmd)
         {
             var currentUser = HttpContext.Items["User"] as User;
+
+            var isBanned = await mediator.Send(new CheckUserBannedCommand { CentralUserId = currentUser!.Id });
+            if (isBanned)
+                return StatusCode(403, new { error = "You are banned from this server." });
+
             cmd.User = currentUser;
 
             var result = await mediator.Send(cmd);
@@ -356,6 +379,48 @@ namespace DNDOnePlaceManager.Controllers
             var result = await mediator.Send(cmd);
 
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Returns the current CentralToken if still valid (> 1 min remaining).
+        /// If expired, silently refreshes using the stored CentralRefreshToken cookie
+        /// and updates the cookie before returning the new value.
+        /// Returns null only if no token and no refresh token are available.
+        /// </summary>
+        private async Task<string?> GetOrRefreshCentralTokenAsync()
+        {
+            var token = Request.Cookies["CentralToken"];
+
+            if (!string.IsNullOrEmpty(token))
+            {
+                var handler = new JwtSecurityTokenHandler();
+                if (handler.CanReadToken(token))
+                {
+                    var jwt = handler.ReadJwtToken(token);
+                    if (jwt.ValidTo > DateTime.UtcNow.AddMinutes(1))
+                        return token;
+                }
+            }
+
+            // Token missing or expired — attempt silent refresh.
+            var refreshToken = Request.Cookies["CentralRefreshToken"];
+            if (string.IsNullOrEmpty(refreshToken))
+                return null;
+
+            var newToken = await _centralServerService.RefreshTokenAsync(refreshToken);
+            if (newToken == null)
+                return null;
+
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                SameSite = SameSiteMode.None,
+                Secure = true
+            };
+            Response.Cookies.Append("CentralToken", newToken, cookieOptions);
+
+            return newToken;
         }
     }
 }
