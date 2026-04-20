@@ -13,6 +13,8 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? MainResource { get; set; }
         public List<Guid>? AdditionalResources { get; set; }
         public Permission? Permission { get; set; }
+        public Permission? GenericPermission { get; set; }
+        public Permission? GmPermission { get; set; }
         public IEnumerable<PropertyDTO> Properties { get; set; }
     }
 }

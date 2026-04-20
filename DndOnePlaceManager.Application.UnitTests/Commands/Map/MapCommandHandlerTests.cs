@@ -32,18 +32,16 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
         protected readonly IMapper Mapper;
         protected readonly Mock<IPermissionService> PermissionsMock;
         protected readonly Guid PlayerId = Guid.NewGuid();
+        private readonly string _dbName = Guid.NewGuid().ToString();
+        protected IServiceProvider TestServiceProvider { get; private set; }
 
         protected MapHandlerTestBase()
         {
             // Fresh InMemory database per test-class instance
             var options = new DbContextOptionsBuilder<DndOneContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .UseInMemoryDatabase(_dbName)
                 .Options;
             Db = new DndOneContext(options);
-
-            // Real AutoMapper using the application profile
-            Mapper = new MapperConfiguration(cfg => cfg.AddProfile<AutoMapperProfile>())
-                .CreateMapper();
 
             // IPermissionService that always grants every permission
             PermissionsMock = new Mock<IPermissionService>();
@@ -63,10 +61,15 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(true);
 
-            // Wire the static service-locator used by PermissionsExtension
+            // Wire AutoMapper (v16 requires DI) and PermissionsExtension service locator
             var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
             services.AddSingleton(PermissionsMock.Object);
-            PermissionsExtension.ServiceProvider = services.BuildServiceProvider();
+            var sp = services.BuildServiceProvider();
+            TestServiceProvider = sp;
+            Mapper = sp.GetRequiredService<IMapper>();
+            PermissionsExtension.ServiceProvider = sp;
         }
 
         // Build a game that already has the player in its Players list so that
@@ -78,19 +81,12 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
             {
                 Id = id,
                 Name = "Test Game",
+                SystemPlayerId = Guid.NewGuid(),
                 Maps = new List<MapModel>(),
                 Players = new List<PlayerModel>
                 {
                     new PlayerModel { Id = PlayerId, Name = "Tester" }
                 },
-                Layouts = new List<LayoutModel>(),
-                BattleMaps = new List<BattleMapModel>(),
-                Properties = new List<DndOnePlaceManager.Domain.Entities.PropertyModel>(),
-                Cards = new List<DndOnePlaceManager.Domain.Entities.CardModel>(),
-                Actions = new List<DndOnePlaceManager.Domain.Entities.ActionModel>(),
-                Addons = new List<DndOnePlaceManager.Domain.Entities.AddonModel>(),
-                Resources = new List<DndOnePlaceManager.Domain.Entities.Resources.ResourceModel>(),
-                TreeEntries = new List<DndOnePlaceManager.Domain.Entities.BattleMap.TreeEntryModel>()
             };
             Db.Games.Add(game);
             Db.SaveChanges();
@@ -98,6 +94,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
         }
 
         protected PlayerDTO Player() => new PlayerDTO { Id = PlayerId, Name = "Tester" };
+
+        protected DndOneContext SeedContext() => new DndOneContext(
+            new DbContextOptionsBuilder<DndOneContext>()
+                .UseInMemoryDatabase(_dbName)
+                .Options);
 
         public void Dispose() => Db.Dispose();
     }
@@ -113,7 +114,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
         {
             // Tree-entry side-effect always succeeds
             _mediator.Setup(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new List<TreeEntryDto>()));
+                     .Returns(Task.FromResult<(CommandResponse, List<DndOnePlaceManager.Application.DataTransferObjects.TreeEntryDto>)>((CommandResponse.Ok, new List<DndOnePlaceManager.Application.DataTransferObjects.TreeEntryDto>())));
         }
 
         private AddMapCommandHandler Handler() =>
@@ -246,20 +247,20 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 
         private MapModel SeedMap(GameModel game, string name = "Test Map")
         {
+            var mapId = Guid.NewGuid();
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
             var map = new MapModel
             {
-                Id = Guid.NewGuid(),
-                Name = name,
-                GridSize = 50,
-                GridVisible = true,
-                Width = 1200,
-                Height = 700,
+                Id = mapId, Name = name, GridSize = 50, GridVisible = true,
+                Width = 1200, Height = 700, Game = g,
                 Elements = new List<ElementModel>(),
-                Properties = new List<DndOnePlaceManager.Domain.Entities.PropertyModel>()
+                Properties = new List<DNDOnePlaceManager.Domain.Entities.BattleMap.PropertyModel>()
             };
-            game.Maps.Add(map);
+            Db.Maps.Add(map);
             Db.SaveChanges();
-            return map;
+            Db.ChangeTracker.Clear();
+            return Db.Maps.Find(mapId)!;
         }
 
         [Fact]
@@ -300,10 +301,12 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
             var game = BuildGame();
             var map = SeedMap(game);
 
-            // Override: deny all permissions for this test
+            // Override: deny all permissions for this test; re-anchor static SP so the
+            // handler resolves THIS test's mock (not one set by a concurrently-constructed class)
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(false);
+            PermissionsExtension.ServiceProvider = TestServiceProvider;
 
             var cmd = new GetMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
 
@@ -344,18 +347,19 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 
         private void SeedMaps(GameModel game, int count)
         {
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
             for (int i = 0; i < count; i++)
             {
-                game.Maps.Add(new MapModel
+                Db.Maps.Add(new MapModel
                 {
-                    Id = Guid.NewGuid(),
-                    Name = $"Map {i}",
-                    GridSize = 50,
+                    Id = Guid.NewGuid(), Name = $"Map {i}", GridSize = 50, Game = g,
                     Elements = new List<ElementModel>(),
-                    Properties = new List<DndOnePlaceManager.Domain.Entities.PropertyModel>()
+                    Properties = new List<DNDOnePlaceManager.Domain.Entities.BattleMap.PropertyModel>()
                 });
             }
             Db.SaveChanges();
+            Db.ChangeTracker.Clear();
         }
 
         [Fact]
@@ -436,20 +440,20 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 
         private MapModel SeedMap(GameModel game)
         {
+            var mapId = Guid.NewGuid();
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
             var map = new MapModel
             {
-                Id = Guid.NewGuid(),
-                Name = "Original",
-                GridSize = 50,
-                GridVisible = true,
-                Width = 800,
-                Height = 600,
+                Id = mapId, Name = "Original", GridSize = 50, GridVisible = true,
+                Width = 800, Height = 600, Game = g,
                 Elements = new List<ElementModel>(),
-                Properties = new List<DndOnePlaceManager.Domain.Entities.PropertyModel>()
+                Properties = new List<DNDOnePlaceManager.Domain.Entities.BattleMap.PropertyModel>()
             };
-            game.Maps.Add(map);
+            Db.Maps.Add(map);
             Db.SaveChanges();
-            return map;
+            Db.ChangeTracker.Clear();
+            return Db.Maps.Find(mapId)!;
         }
 
         [Fact]
@@ -569,17 +573,19 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 
         private MapModel SeedMap(GameModel game)
         {
+            var mapId = Guid.NewGuid();
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
             var map = new MapModel
             {
-                Id = Guid.NewGuid(),
-                Name = "To Delete",
-                GridSize = 50,
+                Id = mapId, Name = "To Delete", GridSize = 50, Game = g,
                 Elements = new List<ElementModel>(),
-                Properties = new List<DndOnePlaceManager.Domain.Entities.PropertyModel>()
+                Properties = new List<DNDOnePlaceManager.Domain.Entities.BattleMap.PropertyModel>()
             };
-            game.Maps.Add(map);
+            Db.Maps.Add(map);
             Db.SaveChanges();
-            return map;
+            Db.ChangeTracker.Clear();
+            return Db.Maps.Find(mapId)!;
         }
 
         [Fact]

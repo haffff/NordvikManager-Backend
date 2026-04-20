@@ -25,7 +25,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.UpdateProperties
                 return CommandResponse.WrongArguments;
             }
 
-            var type = firstProperty?.EntityName?.ToEntityType(); ;
+            var type = firstProperty?.EntityName?.ToEntityType();
             if (type != null)
             {
                 var entity = dbContext.Find(type, firstProperty.ParentID);

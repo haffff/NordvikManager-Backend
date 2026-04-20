@@ -35,7 +35,20 @@ namespace DndOnePlaceManager.Application.Commands.Actions.GetActions
 
             var action = game.Actions.FirstOrDefault(a => a.Id == request.Id);
 
-            return (CommandResponse.Ok, mapper.Map<ActionDto>(action));
+            if (action == null)
+                return (CommandResponse.Ok, null);
+
+            var dto = mapper.Map<ActionDto>(action);
+
+            var permissions = dbContext.Permissions
+                .Where(p => p.ModelID == action.Id)
+                .ToList();
+
+            dto.GenericPermission = permissions.FirstOrDefault(p => p.All)?.Permission;
+            dto.GmPermission = permissions
+                .FirstOrDefault(p => !p.All && p.PlayerID == game.MasterId)?.Permission;
+
+            return (CommandResponse.Ok, dto);
         }
     }
 }

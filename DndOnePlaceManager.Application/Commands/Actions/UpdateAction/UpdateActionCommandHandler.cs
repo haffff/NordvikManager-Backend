@@ -38,6 +38,17 @@ namespace DndOnePlaceManager.Application.Commands.Actions
             action.Description = request.Action.Description;
             action.Content = request.Action.Content;
 
+            if (request.Action.GenericPermission.HasValue)
+            {
+                action.ClearPermissions(Guid.Empty);
+                action.SetGlobalPermission(request.Action.GenericPermission.Value);
+            }
+            if (request.Action.GmPermission.HasValue)
+            {
+                action.ClearPermissions(game.MasterId);
+                action.SetPermissions(game.MasterId, request.Action.GmPermission.Value);
+            }
+
             // Save the changes to the database
             await dbContext.SaveChangesAsync();
 

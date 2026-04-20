@@ -46,11 +46,19 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
                 game.ThrowIfNoPermission(playerId, Permission.Edit);
             }
 
+            if (treeEntry.TargetId.HasValue &&
+                game.TreeEntries.Any(x => x.TargetId == treeEntry.TargetId && x.EntryType == treeEntry.EntryType))
+            {
+                throw new WrongArgumentsException(nameof(treeEntry.TargetId), "Duplicate tree entry for this target.");
+            }
+
             game.TreeEntries.Add(treeEntry);
 
             if (request.TreeEntryDto.ParentId == null && request.TreeEntryDto.Next != null)
             {
                 var next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
+                if (next == null)
+                    throw new ResourceNotFoundException(nameof(request.TreeEntryDto.Next));
                 treeEntry.Parent = next.Parent;
             }
 

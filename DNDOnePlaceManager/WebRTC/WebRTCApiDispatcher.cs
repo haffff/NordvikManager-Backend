@@ -20,7 +20,12 @@ using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
+using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DNDOnePlaceManager.Enums;
+using DNDOnePlaceManager.Services;
+using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,6 +34,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.WebRTC
@@ -77,6 +83,7 @@ namespace DNDOnePlaceManager.WebRTC
                     Player = player,
                     GameId = gameId,
                     Mediator = mediator,
+                    Scope = scope.ServiceProvider,
                     Query = request.Query ?? new Dictionary<string, string>(),
                     Body = request.Body
                 };
@@ -290,6 +297,18 @@ namespace DNDOnePlaceManager.WebRTC
                     GameId = ctx.GameId,
                     Player = ctx.Player,
                     Templates = false,
+                    CustomUis = false
+                });
+                return (200, result);
+            });
+
+            Route("GET", "api/materials/getcustomwiews", async ctx =>
+            {
+                var (_, result) = await ctx.Mediator.Send(new GetAllCardsCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Templates = false,
                     CustomUis = true
                 });
                 return (200, result);
@@ -395,7 +414,8 @@ namespace DNDOnePlaceManager.WebRTC
                     Id = p.Id,
                     Name = p.Name,
                     Value = p.Value,
-                    ParentID = p.ParentId
+                    ParentID = p.ParentId,
+                    EntityName = p.EntityName
                 }).ToArray();
 
                 var result = await ctx.Mediator.Send(new AddPropertiesCommand
@@ -418,7 +438,8 @@ namespace DNDOnePlaceManager.WebRTC
                     Id = p.Id,
                     Name = p.Name,
                     Value = p.Value,
-                    ParentID = p.ParentId
+                    ParentID = p.ParentId,
+                    EntityName = p.EntityName
                 }).ToArray();
 
                 var result = await ctx.Mediator.Send(new UpdatePropertiesCommand
@@ -566,6 +587,91 @@ namespace DNDOnePlaceManager.WebRTC
                     return (400, new { error = resp.ToString() });
                 return (200, null);
             });
+
+            // ── Actions ──────────────────────────────────────────────────────────
+
+            Route("GET", "api/addon/actions", async ctx =>
+            {
+                var (resp, dto) = await ctx.Mediator.Send(new GetActionsCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    flatList = true
+                });
+                if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                    return (400, new { error = resp.ToString() });
+                return (200, dto);
+            });
+
+            Route("GET", "api/addon/action", async ctx =>
+            {
+                var (resp, dto) = await ctx.Mediator.Send(new GetActionByIdCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Id = ctx.Q("id")
+                });
+                if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                    return (400, new { error = resp.ToString() });
+                if (dto == null)
+                    return (404, new { error = "Action not found." });
+                return (200, dto);
+            });
+
+            Route("GET", "api/addon/stepdefinitions", ctx =>
+            {
+                var services = ctx.Scope.GetServices<IActionStepDefinition>();
+                var result = new GetActionsDefinitionaResponse
+                {
+                    StepDefinitions = services.Select(x => new ActionDefinitionResponse
+                    {
+                        Name = x.Name,
+                        Value = x.Value,
+                        Category = x.Category,
+                        Description = x.Description,
+                        Arguments = x.DataType?
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Where(y => y.SetMethod?.IsPublic == true)
+                            .Select(y => new ActionDefinitionArgument
+                            {
+                                Name = y.Name,
+                                Type = y.PropertyType.Name,
+                                Description = y.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description
+                            }).ToArray()
+                    }).ToArray()
+                };
+                return Task.FromResult<(int, object?)>((200, result));
+            });
+
+            Route("GET", "api/addon/hooks", ctx =>
+            {
+                var hooks = Enum.GetValues(typeof(Hook))
+                    .Cast<Hook>()
+                    .Select(x => new { Name = x.ToString(), Value = (int)x })
+                    .ToArray();
+                return Task.FromResult<(int, object?)>((200, hooks));
+            });
+
+            Route("GET", "api/addon/runningactions", ctx =>
+            {
+                var lobbyService = ctx.Scope.GetRequiredService<ILobbyService>();
+                var lobby = lobbyService.GetLobby(ctx.GameId);
+                if (lobby == null)
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "Game lobby not found." }));
+
+                var entries = lobby.ActionProcessingService.RunningActions.Values.Select(x => new
+                {
+                    x.RunId,
+                    x.ActionName,
+                    x.StartedAt,
+                    x.FinishedAt,
+                    State = x.State.ToString(),
+                    x.CurrentStep,
+                    x.FaultMessage,
+                    x.WaitingOnToken
+                }).ToArray();
+                return Task.FromResult<(int, object?)>((200, (object?)entries));
+            });
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────────
@@ -590,6 +696,7 @@ namespace DNDOnePlaceManager.WebRTC
             public PlayerDTO Player { get; init; } = null!;
             public Guid GameId { get; init; }
             public IMediator Mediator { get; init; } = null!;
+            public IServiceProvider Scope { get; init; } = null!;
             public IReadOnlyDictionary<string, string> Query { get; init; } = new Dictionary<string, string>();
             public JToken? Body { get; init; }
 
@@ -632,6 +739,7 @@ namespace DNDOnePlaceManager.WebRTC
             public string? Name { get; set; }
             public string? Value { get; set; }
             public Guid ParentId { get; set; }
+            public string? EntityName { get; set; }
         }
 
         private class AddonKeyBody { public string? Key { get; set; } }

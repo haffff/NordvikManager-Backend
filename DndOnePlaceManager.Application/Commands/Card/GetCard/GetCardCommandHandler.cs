@@ -30,6 +30,26 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetCard
             return cardEntity;
         }
 
+        public override void GetPermissions(CardDto dto, CardModel entity, Guid playerId)
+        {
+            base.GetPermissions(dto, entity, playerId);
+
+            var permissions = dbContext.Permissions
+                .Where(p => p.ModelID == entity.Id)
+                .ToList();
+
+            dto.GenericPermission = permissions.FirstOrDefault(p => p.All)?.Permission;
+
+            // Resolve GM permission: find the game that owns this card to get MasterId
+            var game = dbContext.Games.Include(g => g.Cards)
+                .FirstOrDefault(g => g.Cards.Any(c => c.Id == entity.Id));
+            if (game != null)
+            {
+                dto.GmPermission = permissions
+                    .FirstOrDefault(p => !p.All && p.PlayerID == game.MasterId)?.Permission;
+            }
+        }
+
         public GetCardCommandHandler(IDbContext ctx, IMapper mapper) : base(ctx, mapper)
         {
         }

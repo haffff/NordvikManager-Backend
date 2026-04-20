@@ -1,0 +1,160 @@
+using DndOnePlaceManager.Infrastructure.Interfaces;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+
+namespace DNDOnePlaceManager.Services.Implementations
+{
+    /// <summary>
+    /// Resolves %q:{varOrGuid}.propName% and %qn:type-"name".propName% patterns
+    /// before the standard %varName% pass in Prepare().
+    /// </summary>
+    public class ActionPropertyQueryResolver
+    {
+        private static readonly Regex _qPattern =
+            new Regex(@"\%q:([^.%]+)\.([^%]+)\%", RegexOptions.Compiled);
+
+        private static readonly Regex _qnPattern =
+            new Regex(@"\%qn:(\w+)-""([^""]+)""\.([^%]+)\%", RegexOptions.Compiled);
+
+        private readonly IDbContext _db;
+
+        public ActionPropertyQueryResolver(IDbContext db)
+        {
+            _db = db;
+        }
+
+        /// <summary>
+        /// Replaces all %q:...% and %qn:...% tokens in <paramref name="raw"/> with resolved values.
+        /// Variable references inside the specifier (e.g. %q:{gameId}.name%) are resolved first
+        /// using <paramref name="variables"/>.
+        /// </summary>
+        public async Task<string> PreResolveQueriesAsync(string raw, Dictionary<string, object> variables)
+        {
+            if (string.IsNullOrEmpty(raw))
+                return raw;
+
+            // Handle %qn:type-"name".prop%
+            var qnMatches = _qnPattern.Matches(raw);
+            foreach (Match m in qnMatches)
+            {
+                var entityType = m.Groups[1].Value;
+                var entityName = m.Groups[2].Value;
+                var propName   = m.Groups[3].Value;
+
+                var resolved = await ResolveByNameAsync(entityType, entityName, propName);
+                raw = raw.Replace(m.Value, resolved ?? m.Value);
+            }
+
+            // Handle %q:{varName}.prop% and %q:guid.prop%
+            var qMatches = _qPattern.Matches(raw);
+            foreach (Match m in qMatches)
+            {
+                var specifier = m.Groups[1].Value; // e.g. "{gameId}" or "some-guid"
+                var propName  = m.Groups[2].Value;
+
+                // Resolve {varName} references inside the specifier
+                var guidStr = ResolveVarRef(specifier, variables);
+
+                var resolved = await ResolveByIdAsync(guidStr, propName);
+                raw = raw.Replace(m.Value, resolved ?? m.Value);
+            }
+
+            return raw;
+        }
+
+        /// <summary>Resolves a single {varName} reference, returning the plain string otherwise.</summary>
+        private static string ResolveVarRef(string specifier, Dictionary<string, object> variables)
+        {
+            if (specifier.StartsWith("{") && specifier.EndsWith("}"))
+            {
+                var varName = specifier[1..^1];
+                if (variables.TryGetValue(varName, out var val))
+                    return val?.ToString() ?? string.Empty;
+            }
+            return specifier;
+        }
+
+        /// <summary>
+        /// Resolves a property for an entity identified by GUID string.
+        /// Property resolution order:
+        ///   1. "id"   → return the GUID itself
+        ///   2. "name" → look up .Name on known named tables
+        ///   3. other  → query Properties table
+        /// </summary>
+        public async Task<string?> ResolveByIdAsync(string guidStr, string propName)
+        {
+            if (!Guid.TryParse(guidStr, out var guid))
+                return null;
+
+            if (string.Equals(propName, "id", StringComparison.OrdinalIgnoreCase))
+                return guid.ToString();
+
+            if (string.Equals(propName, "name", StringComparison.OrdinalIgnoreCase))
+                return await ResolveNameByIdAsync(guid);
+
+            var prop = await _db.Properties
+                .FirstOrDefaultAsync(p => p.ParentID == guid && p.Name == propName);
+            return prop?.Value;
+        }
+
+        /// <summary>
+        /// Resolves a property for an entity identified by type + name.
+        /// </summary>
+        public async Task<string?> ResolveByNameAsync(string entityType, string entityName, string propName)
+        {
+            var guid = await FindGuidByTypeAndNameAsync(entityType, entityName);
+            if (guid == null)
+                return null;
+
+            return await ResolveByIdAsync(guid.Value.ToString(), propName);
+        }
+
+        private async Task<string?> ResolveNameByIdAsync(Guid guid)
+        {
+            // Try each named table in order
+            var game = await _db.Games.FindAsync(guid);
+            if (game != null) return game.Name;
+
+            var card = await _db.Cards.FindAsync(guid);
+            if (card != null) return card.Name;
+
+            var player = await _db.Players.FindAsync(guid);
+            if (player != null) return player.Name;
+
+            var action = await _db.Actions.FindAsync(guid);
+            if (action != null) return action.Name;
+
+            var map = await _db.Maps.FindAsync(guid);
+            if (map != null) return map.Name;
+
+            return null;
+        }
+
+        private async Task<Guid?> FindGuidByTypeAndNameAsync(string entityType, string entityName)
+        {
+            switch (entityType.ToLowerInvariant())
+            {
+                case "game":
+                    var g = await _db.Games.FirstOrDefaultAsync(x => x.Name == entityName);
+                    return g?.Id;
+                case "card":
+                    var c = await _db.Cards.FirstOrDefaultAsync(x => x.Name == entityName);
+                    return c?.Id;
+                case "player":
+                    var p = await _db.Players.FirstOrDefaultAsync(x => x.Name == entityName);
+                    return p?.Id;
+                case "action":
+                    var a = await _db.Actions.FirstOrDefaultAsync(x => x.Name == entityName);
+                    return a?.Id;
+                case "map":
+                    var m = await _db.Maps.FirstOrDefaultAsync(x => x.Name == entityName);
+                    return m?.Id;
+                default:
+                    return null;
+            }
+        }
+    }
+}

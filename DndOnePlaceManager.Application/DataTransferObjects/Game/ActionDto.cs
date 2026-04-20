@@ -14,5 +14,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public bool IsEnabled { get; set; }
         public string Content { get; set; }
         public Permission? Permission { get; set; }
+        public Permission? GenericPermission { get; set; }
+        public Permission? GmPermission { get; set; }
     }
 }
