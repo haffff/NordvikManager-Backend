@@ -24,17 +24,10 @@ namespace DndOnePlaceManager.Application.Commands.Game.RemoveGame
             await base.Handle(request, cancellationToken);
 
             var game = dbContext.Games
-                //.Include(x=>x.Actions)
-                //.Include(x => x.Players)
-                //.Include(x => x.BattleMaps)
-                //.Include(x=>x.Layouts)
-                //.Include(x=>x.Maps).ThenInclude(x=>x.Elements).ThenInclude(x=>x.Properties)
-                //.Include(x=>x.Maps).ThenInclude(x=>x.Properties)
-                //.Include(x=>x.Cards).ThenInclude(x=>x.Properties)
-                //.Include(x => x.Resources)
-                //.Include(x=>x.Addons)
-                //.Include(x=>x.TreeEntries)
-                //.Include(x => x.Properties)
+                .Include(x => x.Addons).ThenInclude(a => a.Views)
+                .Include(x => x.Addons).ThenInclude(a => a.Templates)
+                .Include(x => x.Addons).ThenInclude(a => a.Actions)
+                .Include(x => x.Addons).ThenInclude(a => a.Resources)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             if (game == null)

@@ -66,6 +66,11 @@ namespace DNDOnePlaceManager.Data.Contexts
                 .WithOne(a => a.Game)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            modelBuilder.Entity<GameModel>()
+                .HasMany(g => g.Addons)
+                .WithOne()
+                .OnDelete(DeleteBehavior.Cascade);
+
             modelBuilder.Entity<MapModel>()
                 .HasMany(m => m.Elements)
                 .WithOne(e => e.Map)

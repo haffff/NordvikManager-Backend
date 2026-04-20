@@ -645,10 +645,7 @@ namespace DNDOnePlaceManager.WebRTC
 
             Route("GET", "api/addon/hooks", ctx =>
             {
-                var hooks = Enum.GetValues(typeof(Hook))
-                    .Cast<Hook>()
-                    .Select(x => new { Name = x.ToString(), Value = (int)x })
-                    .ToArray();
+                var hooks = HookInfo.GetAll();
                 return Task.FromResult<(int, object?)>((200, hooks));
             });
 

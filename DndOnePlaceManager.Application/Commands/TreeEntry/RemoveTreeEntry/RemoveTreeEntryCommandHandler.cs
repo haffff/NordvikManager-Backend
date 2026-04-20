@@ -50,7 +50,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
                 game.ThrowIfNoPermission(playerId, Permission.Edit);
             }
 
-            if (game.TreeEntries.Any(x => x.Parent?.Id == treeEntry.Id))
+            if (await dbContext.TreeEntries.AnyAsync(x => x.Parent != null && x.Parent.Id == treeEntry.Id, cancellationToken))
             {
                 throw new TreeException("Folder is not empty!");
             }
