@@ -133,30 +133,34 @@ namespace DNDOnePlaceManager.Services.Implementations
             try
             {
                 var steps = JArray.Parse(action.Content);
-                var variables = sharedVariables ?? new Dictionary<string, object>();
 
-                if (sharedVariables == null)
+                // Start with an empty dict, merge caller-supplied args first so that
+                // trusted system variables written below always win and cannot be spoofed.
+                var variables = new Dictionary<string, object>();
+                if (sharedVariables != null)
+                    foreach (var kv in sharedVariables)
+                        variables[kv.Key] = kv.Value;
+
+                FillHookArgs(hookArg, variables);
+
+                // Pre-fill standard variables available to every action — these always
+                // overwrite any same-named key from sharedVariables to prevent spoofing.
+                variables["gameId"]       = GameLobby.GameId.ToString();
+                variables["actionId"]     = action.Id.ToString();
+                variables["actionName"]   = action.Name ?? string.Empty;
+                variables["actionPrefix"] = action.Prefix ?? string.Empty;
+
+                if (variables.TryGetValue("Player", out var pObj) && pObj is PlayerDTO pd)
                 {
-                    FillHookArgs(hookArg, variables);
-
-                    // Pre-fill standard variables available to every action
-                    variables["gameId"]       = GameLobby.GameId.ToString();
-                    variables["actionId"]     = action.Id.ToString();
-                    variables["actionName"]   = action.Name ?? string.Empty;
-                    variables["actionPrefix"] = action.Prefix ?? string.Empty;
-
-                    if (variables.TryGetValue("Player", out var pObj) && pObj is PlayerDTO pd)
-                    {
-                        variables["playerId"]      = pd.Id?.ToString() ?? string.Empty;
-                        variables["playerName"]    = pd.Name ?? string.Empty;
-                        variables["playerColor"]   = pd.Color ?? string.Empty;
-                        variables["playerIsOwner"] = pd.IsOwner?.ToString()?.ToLower() ?? "false";
-                    }
-
-                    var game = await dbContext.Games.FindAsync(GameLobby.GameId);
-                    if (game != null)
-                        variables["gmId"] = game.MasterId.ToString();
+                    variables["playerId"]      = pd.Id?.ToString() ?? string.Empty;
+                    variables["playerName"]    = pd.Name ?? string.Empty;
+                    variables["playerColor"]   = pd.Color ?? string.Empty;
+                    variables["playerIsOwner"] = pd.IsOwner?.ToString()?.ToLower() ?? "false";
                 }
+
+                var game = await dbContext.Games.FindAsync(GameLobby.GameId);
+                if (game != null)
+                    variables["gmId"] = game.MasterId.ToString();
 
                 await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
 

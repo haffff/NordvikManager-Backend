@@ -34,7 +34,8 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                     if (response == CommandResponse.Ok)
                     {
                         var mapDto = await mediator.Send(new GetMapCommand { Id = id, Player = player });
-                        parsedMsg.Data = JToken.FromObject(mapDto);
+                        if (mapDto != null)
+                            parsedMsg.Data = JToken.FromObject(mapDto);
                     }
                     return response;
                 case WebSocketCommandNames.MapRemove:

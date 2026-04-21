@@ -119,7 +119,6 @@ namespace DndOnePlaceManager.Application.Services.Implementations
             catch (Exception e)
             {
                 throw new WrongArgumentsException("Roll");
-                throw;
             }
         }
     }
