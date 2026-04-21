@@ -43,6 +43,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             model.IsCustomUi = request.IsCustomUi;
             model.IsTemplate = request.IsTemplate;
             model.FirstOpen = true;
+            model.Key = request.Dto.Key;
 
             if (request.Dto.TemplateId != null)
             {

@@ -21,6 +21,7 @@ using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+using DndOnePlaceManager.Application.Commands.Actions.ResolveQuery;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Services;
@@ -636,7 +637,9 @@ namespace DNDOnePlaceManager.WebRTC
                             {
                                 Name = y.Name,
                                 Type = y.PropertyType.Name,
-                                Description = y.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description
+                                Description = y.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description,
+                                ConditionField = y.GetCustomAttribute<Models.ShowIfAttribute>()?.Field,
+                                ConditionValue = y.GetCustomAttribute<Models.ShowIfAttribute>()?.Value,
                             }).ToArray()
                     }).ToArray()
                 };
@@ -668,6 +671,47 @@ namespace DNDOnePlaceManager.WebRTC
                     x.WaitingOnToken
                 }).ToArray();
                 return Task.FromResult<(int, object?)>((200, (object?)entries));
+            });
+
+            Route("POST", "api/addon/resolvequery", async ctx =>
+            {
+                if (ctx.Player.IsOwner != true &&
+                    (ctx.Player.Permission == null || (ctx.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                    return (403, new { error = "Forbidden." });
+
+                var req = ctx.BodyAs<ResolveQueryBody>();
+                if (string.IsNullOrEmpty(req?.Expression))
+                    return (400, new { error = "expression is required." });
+
+                var result = await ctx.Mediator.Send(new ResolveQueryCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Expression = req.Expression,
+                    Variables = req.Variables ?? new Dictionary<string, object>(),
+                });
+                return (200, new { result });
+            });
+
+            Route("POST", "api/addon/killaction", ctx =>
+            {
+                var lobbyService = ctx.Scope.GetRequiredService<ILobbyService>();
+                var lobby = lobbyService.GetLobby(ctx.GameId);
+                if (lobby == null)
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "Game lobby not found." }));
+
+                var runId = ctx.Q("runId");
+                if (runId == default)
+                    return Task.FromResult<(int, object?)>((400, (object?)new { error = "runId query parameter is required." }));
+
+                if (!lobby.ActionProcessingService.RunningActions.TryGetValue(runId, out var entry))
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "No running action found with that runId." }));
+
+                if (entry.State is Models.ActionRunState.Completed or Models.ActionRunState.Faulted or Models.ActionRunState.Killed)
+                    return Task.FromResult<(int, object?)>((409, (object?)new { error = $"Action already in terminal state: {entry.State}." }));
+
+                entry.Kill();
+                return Task.FromResult<(int, object?)>((200, (object?)new { killed = runId, action = entry.ActionName }));
             });
         }
 
@@ -739,6 +783,7 @@ namespace DNDOnePlaceManager.WebRTC
             public string? EntityName { get; set; }
         }
 
+        private class ResolveQueryBody { public string? Expression { get; set; } public Dictionary<string, object>? Variables { get; set; } }
         private class AddonKeyBody { public string? Key { get; set; } }
         private class AddonIdBody { public string? AddonId { get; set; } }
         private class SetEnabledBody { public string? AddonId { get; set; } public bool Enabled { get; set; } }

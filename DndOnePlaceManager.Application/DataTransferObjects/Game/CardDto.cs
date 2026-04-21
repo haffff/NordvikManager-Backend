@@ -7,6 +7,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? Id { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        public string? Key { get; set; }
         public bool? FirstOpen { get; set; }
         public Guid? TemplateId { get; set; }
         public Guid? Owner { get; set; }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -27,5 +28,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("Display name for the dropdown menu button (used when MenuId is set).")]
         public string MenuName { get; set; }
+
+        [Description("Optional key/value arguments passed to the action when the button is clicked. Accessible as variables in the triggered action.")]
+        public Dictionary<string, object> ActionArgs { get; set; }
     }
 }

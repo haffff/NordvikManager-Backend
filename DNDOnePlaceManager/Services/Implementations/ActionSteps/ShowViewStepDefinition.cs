@@ -1,9 +1,12 @@
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using DNDOnePlaceManager.WebSockets;
 using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -14,6 +17,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class ShowViewStepDefinition : IActionStepDefinition
     {
+        private readonly IServiceScopeFactory _scopeFactory;
+
+        public ShowViewStepDefinition(IServiceScopeFactory scopeFactory)
+        {
+            _scopeFactory = scopeFactory;
+        }
+
         public string Name => "Show View";
         public string Value => "ShowView";
         public string Category => "Client";
@@ -24,11 +34,20 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<ShowViewStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ViewId))
-                throw new ActionProcessException("ShowView: 'ViewId' argument is required.");
+            if (string.IsNullOrWhiteSpace(stepData.ViewKey))
+                throw new ActionProcessException("ShowView: 'ViewKey' argument is required.");
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+
+            var card = await dbContext.Cards
+                .FirstOrDefaultAsync(c => c.Key == stepData.ViewKey && c.GameId == gameLobby.GameId);
+
+            if (card == null)
+                throw new ActionProcessException($"ShowView: no view with key '{stepData.ViewKey}' found in this game.");
 
             var payload = new JObject();
-            payload["viewId"] = stepData.ViewId;
+            payload["viewId"] = card.Id.ToString();
 
             if (!string.IsNullOrWhiteSpace(stepData.Data))
                 payload["data"] = stepData.Data;
@@ -52,8 +71,6 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             {
                 gameLobby.Broadcast(command, gameLobby.SystemPlayer);
             }
-
-            await Task.CompletedTask;
         }
     }
 }

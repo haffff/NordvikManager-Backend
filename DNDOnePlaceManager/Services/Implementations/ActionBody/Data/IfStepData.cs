@@ -1,22 +1,19 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class IfStepData
     {
-        [Description("Boolean expression to evaluate, e.g. '{HP} > 0'.")]
+        [Description("Boolean expression to evaluate. Use %varName% to insert a variable, e.g. '%HP% > 0' or '%q:{playerId}.health% >= 10'. Supports standard math and comparison operators.")]
         public string? Condition { get; set; }
 
-        [Description("Label of the step to jump to when the condition is true.")]
-        public string? TrueLabel { get; set; }
+        [Description("Name of the action to execute when the condition is true. Leave empty to do nothing.")]
+        public string? ActionTrue { get; set; }
 
-        [Description("Label of the step to jump to when the condition is false.")]
-        public string? FalseLabel { get; set; }
+        [Description("Name of the action to execute when the condition is false. Leave empty to do nothing.")]
+        public string? ActionFalse { get; set; }
 
-        [Description("Name of the variable where the boolean result will be stored.")]
+        [Description("Name of the variable where the boolean result will be stored. Leave empty to skip.")]
         public string? OutputName { get; set; }
-
-        public string ActionTrue { get; internal set; }
-        public string ActionFalse { get; internal set; }
     }
 }

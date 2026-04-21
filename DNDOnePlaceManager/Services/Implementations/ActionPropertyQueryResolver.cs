@@ -2,14 +2,15 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services.Implementations
 {
     /// <summary>
-    /// Resolves %q:{varOrGuid}.propName% and %qn:type-"name".propName% patterns
-    /// before the standard %varName% pass in Prepare().
+    /// Resolves %q:{varOrGuid}.propName%, %qn:type-"name".propName%, and %v:varName.field%
+    /// patterns before the standard %varName% pass in Prepare().
     /// </summary>
     public class ActionPropertyQueryResolver
     {
@@ -18,6 +19,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private static readonly Regex _qnPattern =
             new Regex(@"\%qn:(\w+)-""([^""]+)""\.([^%]+)\%", RegexOptions.Compiled);
+
+        // %v:varName.fieldName% — reads a public property from a complex object stored in variables
+        private static readonly Regex _vPattern =
+            new Regex(@"\%v:(\w+)\.(\w+)\%", RegexOptions.Compiled);
 
         private readonly IDbContext _db;
 
@@ -36,6 +41,23 @@ namespace DNDOnePlaceManager.Services.Implementations
             if (string.IsNullOrEmpty(raw))
                 return raw;
 
+            // Handle %v:varName.field% — reflect into a complex object stored in variables
+            foreach (Match m in _vPattern.Matches(raw))
+            {
+                var varName   = m.Groups[1].Value;
+                var fieldName = m.Groups[2].Value;
+                string resolved = string.Empty;
+
+                if (variables.TryGetValue(varName, out var obj) && obj != null)
+                {
+                    var prop = obj.GetType().GetProperty(fieldName,
+                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                    resolved = prop?.GetValue(obj)?.ToString() ?? string.Empty;
+                }
+
+                raw = raw.Replace(m.Value, resolved);
+            }
+
             // Handle %qn:type-"name".prop%
             var qnMatches = _qnPattern.Matches(raw);
             foreach (Match m in qnMatches)
@@ -45,7 +67,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                 var propName   = m.Groups[3].Value;
 
                 var resolved = await ResolveByNameAsync(entityType, entityName, propName);
-                raw = raw.Replace(m.Value, resolved ?? m.Value);
+                raw = raw.Replace(m.Value, resolved ?? string.Empty);
             }
 
             // Handle %q:{varName}.prop% and %q:guid.prop%
@@ -59,7 +81,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                 var guidStr = ResolveVarRef(specifier, variables);
 
                 var resolved = await ResolveByIdAsync(guidStr, propName);
-                raw = raw.Replace(m.Value, resolved ?? m.Value);
+                raw = raw.Replace(m.Value, resolved ?? string.Empty);
             }
 
             return raw;
@@ -147,8 +169,19 @@ namespace DNDOnePlaceManager.Services.Implementations
                     var p = await _db.Players.FirstOrDefaultAsync(x => x.Name == entityName);
                     return p?.Id;
                 case "action":
-                    var a = await _db.Actions.FirstOrDefaultAsync(x => x.Name == entityName);
-                    return a?.Id;
+                    if (entityName.Contains('/'))
+                    {
+                        var slash = entityName.IndexOf('/');
+                        var pfx  = entityName[..slash];
+                        var nm   = entityName[(slash + 1)..];
+                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Prefix == pfx && x.Name == nm);
+                        return a?.Id;
+                    }
+                    else
+                    {
+                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Name == entityName);
+                        return a?.Id;
+                    }
                 case "map":
                     var m = await _db.Maps.FirstOrDefaultAsync(x => x.Name == entityName);
                     return m?.Id;

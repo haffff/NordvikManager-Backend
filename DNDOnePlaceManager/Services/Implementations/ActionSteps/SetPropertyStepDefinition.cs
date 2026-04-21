@@ -1,47 +1,64 @@
-﻿using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
-using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
 using DndOnePlaceManager.Application.DataTransferObjects;
+using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using DNDOnePlaceManager.WebSockets;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Linq;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class SetPropertyStepDefinition : IActionStepDefinition
     {
+        private readonly IServiceScopeFactory _scopeFactory;
+
+        public SetPropertyStepDefinition(IServiceScopeFactory scopeFactory)
+        {
+            _scopeFactory = scopeFactory;
+        }
+
         public string Name => "Set Property";
         public string Value => "SetProperty";
         public string Category => "Data";
-
-        public string Description => "Set a property on a DTO";
-
+        public string Description => "Creates or updates a named property on any entity, identified by its ID.";
         public Type DataType => typeof(SetPropertyStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
-            var updatePropertyStepData = step.Data.ToObject<SetPropertyStepData>();
+            var stepData = step.Data.ToObject<SetPropertyStepData>();
 
-            var parentDto = variables[updatePropertyStepData.ParentInputName] as IGameDataTransferObject;
+            if (string.IsNullOrWhiteSpace(stepData.ParentId))
+                throw new ActionProcessException("SetProperty: 'ParentId' is required.");
+            if (string.IsNullOrWhiteSpace(stepData.PropertyName))
+                throw new ActionProcessException("SetProperty: 'PropertyName' is required.");
 
-            if (parentDto == null)
+            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
+                throw new ActionProcessException($"SetProperty: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+
+            var entityName = await DetectEntityNameAsync(dbContext, parentGuid);
+            if (entityName == null)
+                throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found.");
+
+            var getCmd = new GetPropertyCommand()
             {
-                return;
-            }
-
-            GetPropertyCommand getPropertyCommand = new GetPropertyCommand()
-            {
-                Name = updatePropertyStepData.PropertyName,
-                ParentID = parentDto?.Id,
+                Name = stepData.PropertyName,
+                ParentID = parentGuid,
                 Player = gameLobby.SystemPlayer,
             };
 
-            var (resp, property) = await mediator.Send(getPropertyCommand);
+            var (resp, property) = await mediator.Send(getCmd);
 
             if (property == null && resp == CommandResponse.NoResource)
             {
@@ -50,10 +67,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                     Command = "property_add",
                     Data = JObject.FromObject(new PropertyDTO()
                     {
-                        Name = updatePropertyStepData.PropertyName,
-                        ParentID = parentDto?.Id,
-                        Value = updatePropertyStepData.PropertyValue,
-                        EntityName = ToEntityName(parentDto),
+                        Name = stepData.PropertyName,
+                        ParentID = parentGuid,
+                        Value = stepData.PropertyValue,
+                        EntityName = entityName,
                     })
                 });
                 return;
@@ -61,8 +78,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             if (resp == CommandResponse.Ok)
             {
-                property.Value = updatePropertyStepData.PropertyValue;
-
+                property.Value = stepData.PropertyValue;
                 await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
                 {
                     Command = "property_update",
@@ -70,19 +86,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 });
             }
         }
-        private string ToEntityName(IGameDataTransferObject dto)
+
+        private static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id)
         {
-            switch (dto)
-            {
-                case ElementDTO _:
-                    return "ElementModel";
-                case MapDTO _:
-                    return "MapModel";
-                case CardDto _:
-                    return "CardModel";
-                default:
-                    return null;
-            }
+            if (await db.Elements.AnyAsync(e => e.Id == id)) return "ElementModel";
+            if (await db.Maps.AnyAsync(m => m.Id == id))     return "MapModel";
+            if (await db.Cards.AnyAsync(c => c.Id == id))    return "CardModel";
+            if (await db.Games.AnyAsync(g => g.Id == id))    return "GameModel";
+            return null;
         }
     }
 }

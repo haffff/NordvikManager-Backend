@@ -59,7 +59,13 @@ namespace DNDOnePlaceManager.Data.Contexts
             modelBuilder.Entity<GameModel>()
                 .HasMany(g => g.Cards)
                 .WithOne(c => c.Game)
+                .HasForeignKey(c => c.GameId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<CardModel>()
+                .HasIndex(c => new { c.Key, c.GameId })
+                .IsUnique()
+                .HasFilter("\"Key\" IS NOT NULL");
 
             modelBuilder.Entity<GameModel>()
                 .HasMany(g => g.Actions)

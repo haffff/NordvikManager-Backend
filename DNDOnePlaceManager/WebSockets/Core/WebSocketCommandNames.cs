@@ -92,6 +92,7 @@ namespace DNDOnePlaceManager.WebSockets.Core
         public const string CmdPermissionsUpdate = "permissions_update";
         public const string CmdPlayerList = "player_list";
         public const string CmdClientLoaded = "client_loaded";
+        public const string CmdClientLayoutReady = "client_layout_ready";
         public const string CmdDebugModeGet = "debug_mode_get";
         public const string CmdDebugModeSet = "debug_mode_set";
         public const string CmdExecuteAction = "execute_action";

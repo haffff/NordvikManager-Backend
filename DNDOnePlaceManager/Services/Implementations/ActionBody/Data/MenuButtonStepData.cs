@@ -1,4 +1,6 @@
-﻿namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
+﻿using System.Collections.Generic;
+
+namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class MenuButtonStepData
     {
@@ -14,5 +16,8 @@
 
         [System.ComponentModel.Description("Display name for the submenu (used only when SubMenuId is set and the submenu does not yet exist).")]
         public string SubMenuName { get; set; }
+
+        [System.ComponentModel.Description("Optional key/value arguments passed to the action when the menu item is clicked. Accessible as variables in the triggered action.")]
+        public Dictionary<string, object> ActionArgs { get; set; }
     }
 }

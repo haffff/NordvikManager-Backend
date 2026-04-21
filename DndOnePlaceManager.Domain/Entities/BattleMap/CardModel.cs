@@ -18,6 +18,8 @@ namespace DndOnePlaceManager.Domain.Entities.BattleMap
         public bool IsTemplate { get; set; }
         public bool IsR20Card { get; set; }
         public bool? FirstOpen { get; set; }
+        public string? Key { get; set; }
+        public Guid GameId { get; set; }
         public List<PropertyModel> Properties { get; set; }
         public GameModel Game { get; set; }
     }

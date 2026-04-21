@@ -10,7 +10,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name used for the current item within the filter condition.")]
         public string? ItemName { get; set; }
 
-        [Description("Boolean expression used to filter items, e.g. '{Item.HP} > 0'.")]
+        [Description("Boolean expression used to filter items. Use %ItemName.property% or %varName% to insert values, e.g. '%HP% > 0'.")]
         public string? Condition { get; set; }
 
         [Description("Name of the variable where the filtered collection will be stored.")]
