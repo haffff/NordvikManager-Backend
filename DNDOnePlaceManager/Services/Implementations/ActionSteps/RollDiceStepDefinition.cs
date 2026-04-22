@@ -1,7 +1,13 @@
-﻿using DndOnePlaceManager.Application.Commands.Chat.RollDices;
+using DndOnePlaceManager.Application.Commands.Chat.RollDices;
+using DndOnePlaceManager.Application.Services.Implementations.ChatTemplates;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
+using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -10,29 +16,54 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class RollDiceStepDefinition : IActionStepDefinition
     {
-        public string Name => "Roll Dices";
+        private static readonly JsonSerializerSettings _camel = new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver()
+        };
 
+        public string Name => "Roll Dice";
         public string Value => "RollDice";
-
         public string Category => "Roll";
-
-        public string Description => "Perform a roll dice. It can be packed in equation fge. \"2d4+5\"";
-
+        public string Description => "Rolls dice using standard notation (e.g. '2d6+3'). Stores the result and optionally prints it to chat.";
         public Type DataType => typeof(RollDiceStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<RollDiceStepData>();
 
-            var rollResult = await mediator.Send(new RollDicesCommand()
-            {
-                DiceString = stepData.DiceString,
-            });
+            var rollResult = await mediator.Send(new RollDicesCommand { DiceString = stepData.DiceString });
+            if (rollResult == null) return;
 
-            if (rollResult != null)
+            if (!string.IsNullOrWhiteSpace(stepData.OutputVariable))
             {
-                variables[stepData.OutputVariable] = rollResult;
+                variables[stepData.OutputVariable] = stepData.SimpleOutput
+                    ? (object)rollResult.Result
+                    : rollResult;
             }
+
+            if (stepData.PrintToChat)
+                await BroadcastRollAsync(gameLobby, rollResult, stepData);
+        }
+
+        private static async Task BroadcastRollAsync(GameLobby gameLobby, RollDefinition roll, RollDiceStepData stepData)
+        {
+            var template = new RollChatTemplate
+            {
+                Roll = roll,
+                Title         = !string.IsNullOrWhiteSpace(stepData.ChatTitle)       ? stepData.ChatTitle       : "Roll",
+                Message       = stepData.ChatMessage    ?? string.Empty,
+                Color         = stepData.ChatColor,
+                BorderColor   = stepData.ChatBorderColor,
+            };
+
+            var json = JsonConvert.SerializeObject(template, Formatting.None, _camel);
+
+            await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand
+            {
+                Command = WebSocketCommandNames.CmdChatPush,
+                Data    = JToken.Parse(json),
+                GameId  = gameLobby.GameId,
+            });
         }
     }
 }

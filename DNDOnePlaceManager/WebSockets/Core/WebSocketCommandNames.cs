@@ -92,6 +92,7 @@ namespace DNDOnePlaceManager.WebSockets.Core
         public const string CmdPermissionsUpdate = "permissions_update";
         public const string CmdPlayerList = "player_list";
         public const string CmdClientLoaded = "client_loaded";
+        public const string CmdClientLayoutReady = "client_layout_ready";
         public const string CmdDebugModeGet = "debug_mode_get";
         public const string CmdDebugModeSet = "debug_mode_set";
         public const string CmdExecuteAction = "execute_action";
@@ -110,6 +111,12 @@ namespace DNDOnePlaceManager.WebSockets.Core
 
         // Chat
         public const string CmdChatPush = "chat_push";
+
+        // Client UI (addon sandbox)
+        public const string CmdShowView           = "view_show";
+        public const string CmdAddMenuItem        = "menu_item_add";
+        public const string CmdAddToolbarButton   = "toolbar_button_add";
+        public const string CmdFireClientMediator = "client_mediator_fire";
 
         // Debug / action engine
         public const string CmdDebugAction = "debug_action";

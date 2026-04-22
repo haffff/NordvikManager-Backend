@@ -16,5 +16,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? Id { get; set; }
         public byte[]? Data { get; set; }
         public string MimeType { get; set; }
+        public Guid PlayerId { get; set; }
+        public string? PlayerName { get; set; }
     }
 }

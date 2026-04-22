@@ -11,6 +11,7 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
 {
@@ -18,10 +19,12 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
     {
         IMediator mediator;
         string? mainRepositoryUrl;
+        ILogger<AddGameCommandHandler> logger;
 
-        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration) : base(battleMapContext, mapper)
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
+            this.logger = logger;
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
@@ -199,15 +202,22 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             foreach (var addon in request.AddonsSelected)
             {
-                InstallAddonCommand installAddonCommand = new InstallAddonCommand()
+                try
                 {
-                    AddonSourceKey = addon,
-                    GameID = game.Id,
-                    Player = playerDTO,
-                    AutoInstallDeps = true,
-                };
+                    InstallAddonCommand installAddonCommand = new InstallAddonCommand()
+                    {
+                        AddonSourceKey = addon,
+                        GameID = game.Id,
+                        Player = playerDTO,
+                        AutoInstallDeps = true,
+                    };
 
-                await mediator.Send(installAddonCommand);
+                    await mediator.Send(installAddonCommand);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, game.Id);
+                }
             }
 
             return game.Id;

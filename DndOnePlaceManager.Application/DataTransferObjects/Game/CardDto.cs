@@ -7,12 +7,15 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? Id { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        public string? Key { get; set; }
         public bool? FirstOpen { get; set; }
         public Guid? TemplateId { get; set; }
         public Guid? Owner { get; set; }
         public Guid? MainResource { get; set; }
         public List<Guid>? AdditionalResources { get; set; }
         public Permission? Permission { get; set; }
+        public Permission? GenericPermission { get; set; }
+        public Permission? GmPermission { get; set; }
         public IEnumerable<PropertyDTO> Properties { get; set; }
     }
 }

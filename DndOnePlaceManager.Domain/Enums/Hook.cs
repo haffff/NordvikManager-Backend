@@ -59,6 +59,9 @@
         [HookMeta("Map Removed", "Fires when a map is deleted from the game.", "Map")]
         MapRemove,
 
+        [HookMeta("Map Changed", "Fires when the GM switches the active map in a battle map view. Data contains mapId and battleMapId.", "Map")]
+        MapChange,
+
         // ── Game ────────────────────────────────────────────────────────────
         [HookMeta("Game Updated", "Fires when top-level game settings are modified.", "Game")]
         GameUpdate,

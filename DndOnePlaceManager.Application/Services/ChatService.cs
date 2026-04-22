@@ -35,8 +35,8 @@ namespace DndOnePlaceManager.Application.Services.Implementations
                 {
                     Title = "Roll",
                     Roll = resultRoll,
-                    BorderColor = "#000000",//Todo: Get from config
-                    Color = "#FFFFFF",//Todo: Get from config
+                    BorderColor = null,
+                    Color = null,
                     Message = "Roll"
                 };
             }
@@ -119,7 +119,6 @@ namespace DndOnePlaceManager.Application.Services.Implementations
             catch (Exception e)
             {
                 throw new WrongArgumentsException("Roll");
-                throw;
             }
         }
     }

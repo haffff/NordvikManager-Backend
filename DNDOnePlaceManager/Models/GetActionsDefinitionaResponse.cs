@@ -8,6 +8,10 @@ namespace DNDOnePlaceManager.Models
         public string Name { get; set; }
         public string Type { get; set; }
         public string Description { get; set; }
+        /// <summary>Name of the sibling field that controls visibility.</summary>
+        public string? ConditionField { get; set; }
+        /// <summary>Required value of <see cref="ConditionField"/> for this argument to be shown.</summary>
+        public string? ConditionValue { get; set; }
     }
 
     public class ActionDefinitionResponse

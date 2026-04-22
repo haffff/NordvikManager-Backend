@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Generic.Handlers;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
@@ -42,6 +43,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             model.IsCustomUi = request.IsCustomUi;
             model.IsTemplate = request.IsTemplate;
             model.FirstOpen = true;
+            model.Key = request.Dto.Key;
 
             if (request.Dto.TemplateId != null)
             {
@@ -69,6 +71,16 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             this.OmitTreeCreation = request.IsCustomUi || request.IsTemplate;
 
             return model;
+        }
+
+        public override void SetPermissions(GameModel game, CardModel model, AddCardCommand request)
+        {
+            base.SetPermissions(game, model, request);
+
+            if (request.Dto.Owner.HasValue && request.Dto.Owner != request.Player.Id)
+            {
+                model.SetPermissions(request.Dto.Owner.Value, Permission.Edit);
+            }
         }
 
         public override async Task<(CommandResponse, Guid)> Handle(AddCardCommand request, CancellationToken cancellationToken)

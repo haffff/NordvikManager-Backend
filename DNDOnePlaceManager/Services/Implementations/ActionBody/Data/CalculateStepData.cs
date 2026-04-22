@@ -4,7 +4,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class CalculateStepData
     {
-        [Description("Math expression to evaluate, e.g. '2 + 3' or '{HP} * 2'. Supports variable references.")]
+        [Description("Math expression to evaluate, e.g. '2 + 3' or '%HP% * 2'. Supports %variable% substitution before evaluation.")]
         public string Expression { get; set; }
 
         [Description("Name of the variable where the calculation result will be stored.")]

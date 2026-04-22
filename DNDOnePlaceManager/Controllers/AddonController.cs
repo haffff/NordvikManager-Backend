@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+using DndOnePlaceManager.Application.Commands.Actions.ResolveQuery;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
@@ -20,6 +21,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -91,8 +93,10 @@ namespace DNDOnePlaceManager.Controllers
                         .Select(y => new ActionDefinitionArgument()
                         {
                             Name = y.Name,
-                            Type = y.PropertyType.Name,
-                            Description = y.GetCustomAttribute<DescriptionAttribute>()?.Description
+                            Type = y.GetCustomAttribute<DNDOnePlaceManager.Models.UITypeAttribute>()?.Type ?? y.PropertyType.Name,
+                            Description = y.GetCustomAttribute<DescriptionAttribute>()?.Description,
+                            ConditionField = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Field,
+                            ConditionValue = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Value,
                         }).ToArray()
                 }).ToArray()
             };
@@ -356,7 +360,9 @@ namespace DNDOnePlaceManager.Controllers
             byte[] fileBytes;
             try
             {
-                fileBytes = Convert.FromBase64String(body.Data);
+                var raw = System.Text.RegularExpressions.Regex
+                    .Replace(body.Data, @"^data:[^;]+;base64,", "");
+                fileBytes = Convert.FromBase64String(raw);
             }
             catch
             {
@@ -462,6 +468,44 @@ namespace DNDOnePlaceManager.Controllers
             var (response, dtos) = await mediator.Send(getCards);
 
             return Ok(dtos);
+        }
+
+        // =========================================================================
+        // Query resolver
+        // =========================================================================
+
+        public class ResolveQueryRequest
+        {
+            public string Expression { get; set; }
+            public Dictionary<string, object> Variables { get; set; }
+        }
+
+        /// <summary>POST addon/resolveQuery — resolve %q:%, %qn:%, %v:%, %varName% patterns against the live database.</summary>
+        [Route("resolveQuery")]
+        [HttpPost]
+        public async Task<IActionResult> ResolveQuery([FromQuery] Guid gameId, [FromBody] ResolveQueryRequest body)
+        {
+            if (string.IsNullOrEmpty(body?.Expression))
+                return BadRequest(new { error = "expression is required." });
+
+            var player = await GetPlayer(gameId);
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
+
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var command = new ResolveQueryCommand
+            {
+                GameId = gameId,
+                Player = player.Player,
+                Expression = body.Expression,
+                Variables = body.Variables ?? new Dictionary<string, object>(),
+            };
+
+            var result = await mediator.Send(command);
+            return Ok(new { result });
         }
 
         // =========================================================================

@@ -20,16 +20,26 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
             var game = dbContext.Games.Include(x => x.Resources).FirstOrDefault(x => x.Id == request.GameId);
             var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
 
+            var canSeeAll = player.System == true
+                || (game != null && request.Player.Id.HasValue && game.MasterId == request.Player.Id.Value);
+
             var resources = dbContext.Resources
-                .Where(r => r.GameId == request.GameId && (r.PlayerId == request.Player.Id || player.System == true))
+                .Where(r => r.GameId == request.GameId && (r.PlayerId == request.Player.Id || canSeeAll))
                 .ToList();
 
-            var resourcesDto = resources.Select(x => mapper.Map<ResourceDTO>(x));
+            var playerIds = resources.Select(r => r.PlayerId).Distinct().ToList();
+            var playerNames = dbContext.Players
+                .Where(p => playerIds.Contains(p.Id))
+                .ToDictionary(p => p.Id, p => p.Name ?? p.Id.ToString());
 
-            foreach (var item in resourcesDto)
+            var resourcesDto = resources.Select(x =>
             {
-                item.Data = null; // To not return a lot of images/sounds
-            }
+                var dto = mapper.Map<ResourceDTO>(x);
+                dto.Data = null;
+                dto.PlayerId = x.PlayerId;
+                dto.PlayerName = playerNames.TryGetValue(x.PlayerId, out var n) ? n : null;
+                return dto;
+            });
 
             return (CommandResponse.Ok, resourcesDto.ToList());
         }

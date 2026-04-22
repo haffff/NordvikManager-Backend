@@ -32,6 +32,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
             // Update the card properties
             card.Name = request.Dto.Name;
             card.Description = request.Dto.Description;
+            card.Key = request.Dto.Key;
             card.MainResource = request.Dto.MainResource;
             card.AdditionalResources = JsonConvert.SerializeObject(request.Dto.AdditionalResources);
             card.FirstOpen = request.Dto.FirstOpen ?? card.FirstOpen;

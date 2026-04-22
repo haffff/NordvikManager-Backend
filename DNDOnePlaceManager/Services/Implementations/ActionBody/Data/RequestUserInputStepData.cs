@@ -5,13 +5,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class RequestUserInputStepData
     {
-        [Description("Username of the player to request input from.")]
+        [Description("Username of the player to request input from. Supports %variable% substitution (e.g. %playerId%).")]
         public string? UserName { get; set; }
 
-        [Description("ID of the player to request input from. Takes precedence over UserName if both are set.")]
+        [Description("ID of the player to request input from. Supports %variable% substitution. Takes precedence over UserName if both are set.")]
         public string? UserID { get; set; }
 
-        [Description("Message or prompt displayed to the user when requesting input.")]
+        [Description("Message or prompt displayed to the user when requesting input. Supports %variable% substitution.")]
         public string? Message { get; set; }
 
         [Description("Maximum time to wait for user input before the step times out.")]

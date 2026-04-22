@@ -5,6 +5,7 @@ using DndOnePlaceManager.Application.Commands.Properties.GetProperties;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Extensions;
@@ -43,6 +44,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             { WebSocketCommandNames.MapAdd,          Hook.MapAdd },
             { WebSocketCommandNames.MapUpdate,       Hook.MapUpdate },
             { WebSocketCommandNames.MapRemove,       Hook.MapRemove },
+            { WebSocketCommandNames.MapChange,       Hook.MapChange },
             { WebSocketCommandNames.PlayerJoin,      Hook.PlayerJoin },
             { WebSocketCommandNames.PlayerLeave,     Hook.PlayerLeave },
             { WebSocketCommandNames.PropertyAdd,     Hook.PropertyAdd },
@@ -88,7 +90,17 @@ namespace DNDOnePlaceManager.Services.Implementations
         public async Task CommandToHook(WebSocketCommand webSocketCommand)
         {
             if (commandsToHooks.TryGetValue(webSocketCommand.Command, out var hook))
-                await CallHookAsync(hook, new HookArgs.CommandHookArgs() { Command = webSocketCommand });
+            {
+                var player = webSocketCommand.PlayerId.HasValue
+                    ? GameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == webSocketCommand.PlayerId)
+                    : null;
+                await CallHookAsync(hook, new HookArgs.CommandHookArgs()
+                {
+                    Command = webSocketCommand,
+                    Player = player,
+                    Data = webSocketCommand.Data as JObject,
+                });
+            }
         }
 
         private async Task<List<ActionDto>> GetActionsAsync(IMediator mediator)
@@ -109,11 +121,11 @@ namespace DNDOnePlaceManager.Services.Implementations
         }
         public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null)
         {
-            if (mediator == null)
-            {
-                using var scope = serviceScopeFactory.CreateScope();
-                mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-            }
+            // Always create a scope so we can get dbContext for the property query resolver.
+            // If mediator was already provided by a caller, we still need our own scope for dbContext.
+            using var scope = serviceScopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+            mediator ??= scope.ServiceProvider.GetRequiredService<IMediator>();
 
             var entry = new ActionRunEntry { ActionName = action.Name };
             RunningActions[entry.RunId] = entry;
@@ -121,10 +133,36 @@ namespace DNDOnePlaceManager.Services.Implementations
             try
             {
                 var steps = JArray.Parse(action.Content);
-                var variables = sharedVariables ?? new Dictionary<string, object>();
 
-                if (sharedVariables == null)
-                    FillHookArgs(hookArg, variables); await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
+                // Start with an empty dict, merge caller-supplied args first so that
+                // trusted system variables written below always win and cannot be spoofed.
+                var variables = new Dictionary<string, object>();
+                if (sharedVariables != null)
+                    foreach (var kv in sharedVariables)
+                        variables[kv.Key] = kv.Value;
+
+                FillHookArgs(hookArg, variables);
+
+                // Pre-fill standard variables available to every action — these always
+                // overwrite any same-named key from sharedVariables to prevent spoofing.
+                variables["gameId"]       = GameLobby.GameId.ToString();
+                variables["actionId"]     = action.Id.ToString();
+                variables["actionName"]   = action.Name ?? string.Empty;
+                variables["actionPrefix"] = action.Prefix ?? string.Empty;
+
+                if (variables.TryGetValue("Player", out var pObj) && pObj is PlayerDTO pd)
+                {
+                    variables["playerId"]      = pd.Id?.ToString() ?? string.Empty;
+                    variables["playerName"]    = pd.Name ?? string.Empty;
+                    variables["playerColor"]   = pd.Color ?? string.Empty;
+                    variables["playerIsOwner"] = pd.IsOwner?.ToString()?.ToLower() ?? "false";
+                }
+
+                var game = await dbContext.Games.FindAsync(GameLobby.GameId);
+                if (game != null)
+                    variables["gmId"] = game.MasterId.ToString();
+
+                await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
 
                 foreach (var step in steps)
                 {
@@ -154,9 +192,19 @@ namespace DNDOnePlaceManager.Services.Implementations
                         var stepType = step[WebSocketCommandNames.StepTypeKey]?.ToString();
                         entry.SetStep(stepType);
 
-                        // Recursively prepare all token values
+                        // Resolve %q:% / %qn:% query patterns first, then standard %varName% substitution.
+                        // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
+                        // after Value has been evaluated, so a %var% default isn't erased by an empty variable.
+                        var resolver = new ActionPropertyQueryResolver(dbContext, GameLobby.GameId);
                         foreach (var token in stepObject.Descendants().OfType<JValue>())
-                            token.Value = token.Value.ToString().Prepare(variables);
+                        {
+                            if (token.Parent is JProperty jp && jp.Name == "DefaultValue")
+                                continue;
+
+                            var raw = token.Value?.ToString() ?? string.Empty;
+                            raw = await resolver.PreResolveQueriesAsync(raw, variables);
+                            token.Value = raw.Prepare(variables);
+                        }
 
                         await stepDefinition.Execute(mediator, variables, GameLobby, step.ToObject<ActionStep>());
                     }
@@ -186,7 +234,20 @@ namespace DNDOnePlaceManager.Services.Implementations
             using var scope = serviceScopeFactory.CreateScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            var foundActionDto = (await GetActionsAsync(mediator)).FirstOrDefault(x => x.Name == action);
+            var allActions = await GetActionsAsync(mediator);
+            ActionDto foundActionDto;
+            if (action != null && action.Contains('/'))
+            {
+                var slash = action.IndexOf('/');
+                var prefix = action[..slash];
+                var name   = action[(slash + 1)..];
+                foundActionDto = allActions.FirstOrDefault(x => x.Prefix == prefix && x.Name == name);
+            }
+            else
+            {
+                foundActionDto = allActions.FirstOrDefault(x => x.Name == action);
+            }
+
             if (foundActionDto != null)
                 await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator);
         }
@@ -231,6 +292,8 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private static void FillHookArgs(HookArgs.HookArgs hookArg, Dictionary<string, object> variables)
         {
+            if(hookArg == null)
+                return;
             foreach (var item in hookArg.GetType().GetProperties())
                 variables[item.Name] = item.GetValue(hookArg);
         }

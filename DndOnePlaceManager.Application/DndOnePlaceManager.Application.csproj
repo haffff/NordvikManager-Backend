@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="DNDOnePlaceManager.Application.Tests" />
+    <InternalsVisibleTo Include="DndOnePlaceManager.Application.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>

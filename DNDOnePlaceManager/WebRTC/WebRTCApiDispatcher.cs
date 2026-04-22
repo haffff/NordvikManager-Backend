@@ -20,15 +20,28 @@ using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
+using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+using DndOnePlaceManager.Application.Commands.Actions.ResolveQuery;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DNDOnePlaceManager.Enums;
+using DNDOnePlaceManager.Services;
+using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Entities.Resources;
+using DndOnePlaceManager.Domain.Enums;
+using DndOnePlaceManager.Infrastructure.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.WebRTC
@@ -77,6 +90,7 @@ namespace DNDOnePlaceManager.WebRTC
                     Player = player,
                     GameId = gameId,
                     Mediator = mediator,
+                    Scope = scope.ServiceProvider,
                     Query = request.Query ?? new Dictionary<string, string>(),
                     Body = request.Body
                 };
@@ -290,6 +304,18 @@ namespace DNDOnePlaceManager.WebRTC
                     GameId = ctx.GameId,
                     Player = ctx.Player,
                     Templates = false,
+                    CustomUis = false
+                });
+                return (200, result);
+            });
+
+            Route("GET", "api/materials/getcustomwiews", async ctx =>
+            {
+                var (_, result) = await ctx.Mediator.Send(new GetAllCardsCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Templates = false,
                     CustomUis = true
                 });
                 return (200, result);
@@ -350,6 +376,113 @@ namespace DNDOnePlaceManager.WebRTC
                 return (200, new { result = result.ToString() });
             });
 
+            // ── Resource data (text/JSON store, no tree-entry noise) ─────────────
+
+            Route("POST", "api/materials/createresource", async ctx =>
+            {
+                var req = ctx.BodyAs<CreateResourceBody>();
+                if (string.IsNullOrWhiteSpace(req?.Key) && string.IsNullOrWhiteSpace(req?.Name))
+                    return (400, new { error = "key or name is required." });
+
+                var db = ctx.Scope.GetRequiredService<IDbContext>();
+
+                if (!string.IsNullOrWhiteSpace(req.Key))
+                {
+                    var existing = await db.Resources.FirstOrDefaultAsync(r =>
+                        r.GameId == ctx.GameId && r.Key == req.Key);
+                    if (existing != null)
+                        return (409, new { error = $"Resource with key '{req.Key}' already exists." });
+                }
+
+                var player = await db.Players.FirstOrDefaultAsync(p => p.Id == ctx.Player.Id);
+                if (player == null) return (403, new { error = "Player not found." });
+
+                byte[] data;
+                try   { data = string.IsNullOrEmpty(req.Content) ? Array.Empty<byte>() : Convert.FromBase64String(req.Content); }
+                catch { return (400, new { error = "content must be a valid base64 string." }); }
+
+                var mimeType = req.MimeType?.ToEnumUsingDescriptionAttribute<MimeType>() ?? MimeType.None;
+
+                var model = new ResourceModel
+                {
+                    Name     = req.Name ?? req.Key,
+                    Key      = string.IsNullOrWhiteSpace(req.Key) ? null : req.Key,
+                    Data     = data,
+                    MimeType = mimeType,
+                    GameId   = ctx.GameId,
+                    PlayerId = player.Id,
+                    Player   = player,
+                };
+                await db.Resources.AddAsync(model);
+                db.SaveChanges();
+                return (200, new { id = model.Id });
+            });
+
+            Route("PUT", "api/materials/resourcedata", async ctx =>
+            {
+                var req = ctx.BodyAs<ResourceDataBody>();
+                if (string.IsNullOrWhiteSpace(req?.Key) && req?.Id == null)
+                    return (400, new { error = "key or id is required." });
+
+                var db = ctx.Scope.GetRequiredService<IDbContext>();
+                ResourceModel resource = null;
+                if (!string.IsNullOrWhiteSpace(req.Key))
+                    resource = await db.Resources.FirstOrDefaultAsync(r =>
+                        r.GameId == ctx.GameId && r.Key == req.Key);
+                else if (req.Id.HasValue)
+                    resource = await db.Resources.FirstOrDefaultAsync(r =>
+                        r.GameId == ctx.GameId && r.Id == req.Id.Value);
+
+                if (resource == null) return (404, new { error = "Resource not found." });
+
+                if (!CanWriteResource(ctx, resource))
+                    return (403, new { error = "You do not own this resource." });
+
+                byte[] data;
+                try   { data = string.IsNullOrEmpty(req.Content) ? Array.Empty<byte>() : Convert.FromBase64String(req.Content); }
+                catch { return (400, new { error = "content must be a valid base64 string." }); }
+
+                resource.Data = data;
+                if (!string.IsNullOrWhiteSpace(req.MimeType))
+                {
+                    MimeType? parsed = req.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();
+                    if (parsed.HasValue) resource.MimeType = parsed.Value;
+                }
+
+                db.SaveChanges();
+                return (200, new { id = resource.Id });
+            });
+
+            Route("DELETE", "api/materials/resourcedata", async ctx =>
+            {
+                var key = ctx.QStr("key", null);
+                var id  = ctx.QNullable("id");
+                if (string.IsNullOrWhiteSpace(key) && id == null)
+                    return (400, new { error = "key or id query parameter is required." });
+
+                var db = ctx.Scope.GetRequiredService<IDbContext>();
+                ResourceModel resource = null;
+                if (!string.IsNullOrWhiteSpace(key))
+                    resource = await db.Resources.FirstOrDefaultAsync(r =>
+                        r.GameId == ctx.GameId && r.Key == key);
+                else if (id.HasValue)
+                    resource = await db.Resources.FirstOrDefaultAsync(r =>
+                        r.GameId == ctx.GameId && r.Id == id.Value);
+
+                if (resource == null) return (404, new { error = "Resource not found." });
+
+                if (!CanWriteResource(ctx, resource))
+                    return (403, new { error = "You do not own this resource." });
+
+                var treeEntries = db.TreeEntries.Where(t => t.TargetId == resource.Id).ToList();
+                if (treeEntries.Count > 0)
+                    db.TreeEntries.RemoveRange(treeEntries);
+
+                db.Resources.Remove(resource);
+                db.SaveChanges();
+                return (200, null);
+            });
+
             // ── Properties ───────────────────────────────────────────────────────
 
             Route("GET", "api/properties/getproperties", async ctx =>
@@ -395,7 +528,8 @@ namespace DNDOnePlaceManager.WebRTC
                     Id = p.Id,
                     Name = p.Name,
                     Value = p.Value,
-                    ParentID = p.ParentId
+                    ParentID = p.ParentId,
+                    EntityName = p.EntityName
                 }).ToArray();
 
                 var result = await ctx.Mediator.Send(new AddPropertiesCommand
@@ -418,7 +552,8 @@ namespace DNDOnePlaceManager.WebRTC
                     Id = p.Id,
                     Name = p.Name,
                     Value = p.Value,
-                    ParentID = p.ParentId
+                    ParentID = p.ParentId,
+                    EntityName = p.EntityName
                 }).ToArray();
 
                 var result = await ctx.Mediator.Send(new UpdatePropertiesCommand
@@ -552,7 +687,12 @@ namespace DNDOnePlaceManager.WebRTC
                     return (400, new { error = "data is required." });
 
                 byte[] fileBytes;
-                try { fileBytes = Convert.FromBase64String(req.Data); }
+                try
+                {
+                    var raw = System.Text.RegularExpressions.Regex
+                        .Replace(req.Data, @"^data:[^;]+;base64,", "");
+                    fileBytes = Convert.FromBase64String(raw);
+                }
                 catch { return (400, new { error = "data must be a valid base64 string." }); }
 
                 var (resp, _) = await ctx.Mediator.Send(new InstallAddonCommand
@@ -565,6 +705,131 @@ namespace DNDOnePlaceManager.WebRTC
                 if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
                     return (400, new { error = resp.ToString() });
                 return (200, null);
+            });
+
+            // ── Actions ──────────────────────────────────────────────────────────
+
+            Route("GET", "api/addon/actions", async ctx =>
+            {
+                var (resp, dto) = await ctx.Mediator.Send(new GetActionsCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    flatList = true
+                });
+                if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                    return (400, new { error = resp.ToString() });
+                return (200, dto);
+            });
+
+            Route("GET", "api/addon/action", async ctx =>
+            {
+                var (resp, dto) = await ctx.Mediator.Send(new GetActionByIdCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Id = ctx.Q("id")
+                });
+                if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
+                    return (400, new { error = resp.ToString() });
+                if (dto == null)
+                    return (404, new { error = "Action not found." });
+                return (200, dto);
+            });
+
+            Route("GET", "api/addon/stepdefinitions", ctx =>
+            {
+                var services = ctx.Scope.GetServices<IActionStepDefinition>();
+                var result = new GetActionsDefinitionaResponse
+                {
+                    StepDefinitions = services.Select(x => new ActionDefinitionResponse
+                    {
+                        Name = x.Name,
+                        Value = x.Value,
+                        Category = x.Category,
+                        Description = x.Description,
+                        Arguments = x.DataType?
+                            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                            .Where(y => y.SetMethod?.IsPublic == true)
+                            .Select(y => new ActionDefinitionArgument
+                            {
+                                Name = y.Name,
+                                Type = y.GetCustomAttribute<Models.UITypeAttribute>()?.Type ?? y.PropertyType.Name,
+                                Description = y.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description,
+                                ConditionField = y.GetCustomAttribute<Models.ShowIfAttribute>()?.Field,
+                                ConditionValue = y.GetCustomAttribute<Models.ShowIfAttribute>()?.Value,
+                            }).ToArray()
+                    }).ToArray()
+                };
+                return Task.FromResult<(int, object?)>((200, result));
+            });
+
+            Route("GET", "api/addon/hooks", ctx =>
+            {
+                var hooks = HookInfo.GetAll();
+                return Task.FromResult<(int, object?)>((200, hooks));
+            });
+
+            Route("GET", "api/addon/runningactions", ctx =>
+            {
+                var lobbyService = ctx.Scope.GetRequiredService<ILobbyService>();
+                var lobby = lobbyService.GetLobby(ctx.GameId);
+                if (lobby == null)
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "Game lobby not found." }));
+
+                var entries = lobby.ActionProcessingService.RunningActions.Values.Select(x => new
+                {
+                    x.RunId,
+                    x.ActionName,
+                    x.StartedAt,
+                    x.FinishedAt,
+                    State = x.State.ToString(),
+                    x.CurrentStep,
+                    x.FaultMessage,
+                    x.WaitingOnToken
+                }).ToArray();
+                return Task.FromResult<(int, object?)>((200, (object?)entries));
+            });
+
+            Route("POST", "api/addon/resolvequery", async ctx =>
+            {
+                if (ctx.Player.IsOwner != true &&
+                    (ctx.Player.Permission == null || (ctx.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                    return (403, new { error = "Forbidden." });
+
+                var req = ctx.BodyAs<ResolveQueryBody>();
+                if (string.IsNullOrEmpty(req?.Expression))
+                    return (400, new { error = "expression is required." });
+
+                var result = await ctx.Mediator.Send(new ResolveQueryCommand
+                {
+                    GameId = ctx.GameId,
+                    Player = ctx.Player,
+                    Expression = req.Expression,
+                    Variables = req.Variables ?? new Dictionary<string, object>(),
+                });
+                return (200, new { result });
+            });
+
+            Route("POST", "api/addon/killaction", ctx =>
+            {
+                var lobbyService = ctx.Scope.GetRequiredService<ILobbyService>();
+                var lobby = lobbyService.GetLobby(ctx.GameId);
+                if (lobby == null)
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "Game lobby not found." }));
+
+                var runId = ctx.Q("runId");
+                if (runId == default)
+                    return Task.FromResult<(int, object?)>((400, (object?)new { error = "runId query parameter is required." }));
+
+                if (!lobby.ActionProcessingService.RunningActions.TryGetValue(runId, out var entry))
+                    return Task.FromResult<(int, object?)>((404, (object?)new { error = "No running action found with that runId." }));
+
+                if (entry.State is Models.ActionRunState.Completed or Models.ActionRunState.Faulted or Models.ActionRunState.Killed)
+                    return Task.FromResult<(int, object?)>((409, (object?)new { error = $"Action already in terminal state: {entry.State}." }));
+
+                entry.Kill();
+                return Task.FromResult<(int, object?)>((200, (object?)new { killed = runId, action = entry.ActionName }));
             });
         }
 
@@ -582,6 +847,17 @@ namespace DNDOnePlaceManager.WebRTC
             return $"{method.ToUpperInvariant()}:{normalised}";
         }
 
+        /// <summary>
+        /// Returns true if the player owns the resource or has Edit (GM) permission.
+        /// </summary>
+        private static bool CanWriteResource(DispatchContext ctx, ResourceModel resource)
+        {
+            if (resource.PlayerId == ctx.Player.Id) return true;
+            if (ctx.Player.IsOwner == true) return true;
+            return ctx.Player.Permission.HasValue &&
+                   (ctx.Player.Permission.Value & DndOnePlaceManager.Domain.Enums.Permission.Edit) != 0;
+        }
+
         // ── Nested types ─────────────────────────────────────────────────────────
 
         /// <summary>Carries per-request state into each route handler.</summary>
@@ -590,6 +866,7 @@ namespace DNDOnePlaceManager.WebRTC
             public PlayerDTO Player { get; init; } = null!;
             public Guid GameId { get; init; }
             public IMediator Mediator { get; init; } = null!;
+            public IServiceProvider Scope { get; init; } = null!;
             public IReadOnlyDictionary<string, string> Query { get; init; } = new Dictionary<string, string>();
             public JToken? Body { get; init; }
 
@@ -632,8 +909,12 @@ namespace DNDOnePlaceManager.WebRTC
             public string? Name { get; set; }
             public string? Value { get; set; }
             public Guid ParentId { get; set; }
+            public string? EntityName { get; set; }
         }
 
+        private class ResolveQueryBody { public string? Expression { get; set; } public Dictionary<string, object>? Variables { get; set; } }
+        private class CreateResourceBody { public string? Key { get; set; } public string? Name { get; set; } public string? Content { get; set; } public string? MimeType { get; set; } }
+        private class ResourceDataBody   { public string? Key { get; set; } public Guid?   Id  { get; set; } public string? Content { get; set; } public string? MimeType { get; set; } }
         private class AddonKeyBody { public string? Key { get; set; } }
         private class AddonIdBody { public string? AddonId { get; set; } }
         private class SetEnabledBody { public string? AddonId { get; set; } public bool Enabled { get; set; } }

@@ -21,9 +21,11 @@ namespace DndOnePlaceManager.Application.Commands.Resources
         public override async Task<CommandResponse> Handle(RemoveResourceCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var image = await dbContext.Resources.FirstOrDefaultAsync(x => x.Id == request.ID);
+            var image = await dbContext.Resources.FirstOrDefaultAsync(x =>
+                (request.ID.HasValue && x.Id == request.ID) ||
+                (!string.IsNullOrWhiteSpace(request.Key) && x.Key == request.Key && x.GameId == request.GameId));
 
-            if (image.PlayerId != request.Player.Id)
+            if (image.PlayerId != request.Player.Id && !(request.Player.IsOwner ?? false))
             {
                 throw new PermissionException(Permission.Edit);
             }

@@ -114,6 +114,8 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
         private (CommandResponse, List<TreeEntryDto>) CreateLastItem(GameModel game, TreeEntryModel? treeEntry, List<TreeEntryDto> affectedTreeEntries, Guid? parentId)
         {
             var lastItem = game.TreeEntries.FirstOrDefault(x => x.Parent?.Id == parentId && x != treeEntry && x.Next == null);
+            if (lastItem == null)
+                return CreateFirstItem(game, treeEntry, affectedTreeEntries, parentId);
             lastItem.Next = treeEntry;
 
             affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(treeEntry));
@@ -178,8 +180,8 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
             treeEntry.Next = null;
 
-            affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldBefore));
-            affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldNext));
+            if (oldBefore != null) affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldBefore));
+            if (oldNext != null)   affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldNext));
         }
     }
 }

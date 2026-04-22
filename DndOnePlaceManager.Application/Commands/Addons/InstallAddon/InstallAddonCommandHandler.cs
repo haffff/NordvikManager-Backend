@@ -122,6 +122,18 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 // Bug fix: was incorrectly adding to addon.Templates instead of addon.Views
                 var card = game.Cards.FirstOrDefault(x => x.Id == res)
                     ?? throw new InvalidOperationException($"Card '{res}' not found after adding view '{dto.Name}'.");
+
+                if (dto.GenericPermission.HasValue)
+                {
+                    card.ClearPermissions(Guid.Empty);
+                    card.SetGlobalPermission(dto.GenericPermission.Value);
+                }
+                if (dto.GmPermission.HasValue)
+                {
+                    card.ClearPermissions(game.MasterId);
+                    card.SetPermissions(game.MasterId, dto.GmPermission.Value);
+                }
+
                 addon.Views!.Add(card);
             }
         }
@@ -144,6 +156,18 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
                 var card = game.Cards.FirstOrDefault(x => x.Id == res)
                     ?? throw new InvalidOperationException($"Card '{res}' not found after adding template '{dto.Name}'.");
+
+                if (dto.GenericPermission.HasValue)
+                {
+                    card.ClearPermissions(Guid.Empty);
+                    card.SetGlobalPermission(dto.GenericPermission.Value);
+                }
+                if (dto.GmPermission.HasValue)
+                {
+                    card.ClearPermissions(game.MasterId);
+                    card.SetPermissions(game.MasterId, dto.GmPermission.Value);
+                }
+
                 addon.Templates!.Add(card);
             }
         }
@@ -166,6 +190,18 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
                 var actionModel = game.Actions.FirstOrDefault(x => x.Id == result)
                     ?? throw new InvalidOperationException($"Action '{result}' not found after adding '{dto.Name}'.");
+
+                if (dto.GenericPermission.HasValue)
+                {
+                    actionModel.ClearPermissions(Guid.Empty);
+                    actionModel.SetGlobalPermission(dto.GenericPermission.Value);
+                }
+                if (dto.GmPermission.HasValue)
+                {
+                    actionModel.ClearPermissions(game.MasterId);
+                    actionModel.SetPermissions(game.MasterId, dto.GmPermission.Value);
+                }
+
                 addon.Actions!.Add(actionModel);
             }
         }

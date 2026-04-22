@@ -59,11 +59,27 @@ namespace DNDOnePlaceManager.Data.Contexts
             modelBuilder.Entity<GameModel>()
                 .HasMany(g => g.Cards)
                 .WithOne(c => c.Game)
+                .HasForeignKey(c => c.GameId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            var cardKeyIndex = modelBuilder.Entity<CardModel>()
+                .HasIndex(c => new { c.Key, c.GameId })
+                .IsUnique();
+
+            // SQLite allows multiple NULLs in unique indexes natively and does not support
+            // filtered indexes. Apply the filter only on other providers (PostgreSQL, SQL Server).
+            var isSqlite = Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+            if (!isSqlite)
+                cardKeyIndex.HasFilter("\"Key\" IS NOT NULL");
 
             modelBuilder.Entity<GameModel>()
                 .HasMany(g => g.Actions)
                 .WithOne(a => a.Game)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<GameModel>()
+                .HasMany(g => g.Addons)
+                .WithOne()
                 .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<MapModel>()

@@ -1,11 +1,13 @@
 ﻿using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Map.AddMap;
+using DndOnePlaceManager.Application.Commands.Map.GetMap;
 using DndOnePlaceManager.Application.Commands.Map.RemoveMap;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Threading.Tasks;
 
@@ -29,6 +31,12 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 case WebSocketCommandNames.MapAdd:
                     (var response, var id) = await HandleMapAdd(parsedMsg, player);
                     parsedMsg.Result = id;
+                    if (response == CommandResponse.Ok)
+                    {
+                        var mapDto = await mediator.Send(new GetMapCommand { Id = id, Player = player });
+                        if (mapDto != null)
+                            parsedMsg.Data = JToken.FromObject(mapDto);
+                    }
                     return response;
                 case WebSocketCommandNames.MapRemove:
                     return await HandleMapRemove(parsedMsg, player);

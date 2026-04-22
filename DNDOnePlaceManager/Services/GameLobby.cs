@@ -293,8 +293,15 @@ namespace DNDOnePlaceManager.Services.Implementations
             if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
             {
                 parsedMsg.OnlyToSender = true;
+                // Intentional fall-through: command continues to normal dispatch
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLayoutReady)
+            {
+                // Layout helper is fully initialised on the client — safe to show views now
                 _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs() { Player = player }));
-                // Intentional fall-through: hook is fired but command continues to normal dispatch
+                parsedMsg.OnlyToSender = true;
+                return true;
             }
 
             if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeGet)
@@ -329,7 +336,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                 _ = Task.Run(() => ActionProcessingService.ExecActionAsync(
                     actionName,
-                    new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject },
+                    new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject, Player = player },
                     sharedVariables));
 
                 parsedMsg.OnlyToSender = true;
