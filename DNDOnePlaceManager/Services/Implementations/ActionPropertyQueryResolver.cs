@@ -25,10 +25,12 @@ namespace DNDOnePlaceManager.Services.Implementations
             new Regex(@"\%v:(\w+)\.(\w+)\%", RegexOptions.Compiled);
 
         private readonly IDbContext _db;
+        private readonly Guid _gameId;
 
-        public ActionPropertyQueryResolver(IDbContext db)
+        public ActionPropertyQueryResolver(IDbContext db, Guid gameId)
         {
             _db = db;
+            _gameId = gameId;
         }
 
         /// <summary>
@@ -118,7 +120,14 @@ namespace DNDOnePlaceManager.Services.Implementations
                 return await ResolveNameByIdAsync(guid);
 
             var prop = await _db.Properties
-                .FirstOrDefaultAsync(p => p.ParentID == guid && p.Name == propName);
+                .FirstOrDefaultAsync(p =>
+                    p.ParentID == guid &&
+                    p.Name == propName &&
+                    !p.IsProtected &&
+                    (p.Game.Id == _gameId ||
+                     p.Map.Game.Id == _gameId ||
+                     p.Element.Map.Game.Id == _gameId ||
+                     p.Card.GameId == _gameId));
             return prop?.Value;
         }
 
@@ -136,20 +145,19 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private async Task<string?> ResolveNameByIdAsync(Guid guid)
         {
-            // Try each named table in order
-            var game = await _db.Games.FindAsync(guid);
+            var game = await _db.Games.FirstOrDefaultAsync(g => g.Id == guid && g.Id == _gameId);
             if (game != null) return game.Name;
 
-            var card = await _db.Cards.FindAsync(guid);
+            var card = await _db.Cards.FirstOrDefaultAsync(c => c.Id == guid && c.GameId == _gameId);
             if (card != null) return card.Name;
 
-            var player = await _db.Players.FindAsync(guid);
+            var player = await _db.Players.FirstOrDefaultAsync(p => p.Id == guid && p.Game.Id == _gameId);
             if (player != null) return player.Name;
 
-            var action = await _db.Actions.FindAsync(guid);
+            var action = await _db.Actions.FirstOrDefaultAsync(a => a.Id == guid && a.Game.Id == _gameId);
             if (action != null) return action.Name;
 
-            var map = await _db.Maps.FindAsync(guid);
+            var map = await _db.Maps.FirstOrDefaultAsync(m => m.Id == guid && m.Game.Id == _gameId);
             if (map != null) return map.Name;
 
             return null;
@@ -160,13 +168,13 @@ namespace DNDOnePlaceManager.Services.Implementations
             switch (entityType.ToLowerInvariant())
             {
                 case "game":
-                    var g = await _db.Games.FirstOrDefaultAsync(x => x.Name == entityName);
+                    var g = await _db.Games.FirstOrDefaultAsync(x => x.Name == entityName && x.Id == _gameId);
                     return g?.Id;
                 case "card":
-                    var c = await _db.Cards.FirstOrDefaultAsync(x => x.Name == entityName);
+                    var c = await _db.Cards.FirstOrDefaultAsync(x => x.Name == entityName && x.GameId == _gameId);
                     return c?.Id;
                 case "player":
-                    var p = await _db.Players.FirstOrDefaultAsync(x => x.Name == entityName);
+                    var p = await _db.Players.FirstOrDefaultAsync(x => x.Name == entityName && x.Game.Id == _gameId);
                     return p?.Id;
                 case "action":
                     if (entityName.Contains('/'))
@@ -174,16 +182,16 @@ namespace DNDOnePlaceManager.Services.Implementations
                         var slash = entityName.IndexOf('/');
                         var pfx  = entityName[..slash];
                         var nm   = entityName[(slash + 1)..];
-                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Prefix == pfx && x.Name == nm);
+                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Prefix == pfx && x.Name == nm && x.Game.Id == _gameId);
                         return a?.Id;
                     }
                     else
                     {
-                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Name == entityName);
+                        var a = await _db.Actions.FirstOrDefaultAsync(x => x.Name == entityName && x.Game.Id == _gameId);
                         return a?.Id;
                     }
                 case "map":
-                    var m = await _db.Maps.FirstOrDefaultAsync(x => x.Name == entityName);
+                    var m = await _db.Maps.FirstOrDefaultAsync(x => x.Name == entityName && x.Game.Id == _gameId);
                     return m?.Id;
                 default:
                     return null;

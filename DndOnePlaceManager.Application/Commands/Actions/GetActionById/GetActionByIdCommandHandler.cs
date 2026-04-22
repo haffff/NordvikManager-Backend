@@ -36,7 +36,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.GetActions
             var action = game.Actions.FirstOrDefault(a => a.Id == request.Id);
 
             if (action == null)
-                return (CommandResponse.Ok, null);
+                return (CommandResponse.NoResource, null);
 
             var dto = mapper.Map<ActionDto>(action);
 

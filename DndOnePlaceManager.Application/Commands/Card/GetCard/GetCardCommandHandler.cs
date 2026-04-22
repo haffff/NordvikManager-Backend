@@ -40,9 +40,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetCard
 
             dto.GenericPermission = permissions.FirstOrDefault(p => p.All)?.Permission;
 
-            // Resolve GM permission: find the game that owns this card to get MasterId
-            var game = dbContext.Games.Include(g => g.Cards)
-                .FirstOrDefault(g => g.Cards.Any(c => c.Id == entity.Id));
+            var game = dbContext.Games.Find(entity.GameId);
             if (game != null)
             {
                 dto.GmPermission = permissions

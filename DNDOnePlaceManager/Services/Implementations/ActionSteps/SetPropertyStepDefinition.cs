@@ -47,9 +47,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
 
-            var entityName = await DetectEntityNameAsync(dbContext, parentGuid);
+            var entityName = await DetectEntityNameAsync(dbContext, parentGuid, gameLobby.GameId);
             if (entityName == null)
-                throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found.");
+                throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found in the current game.");
 
             var getCmd = new GetPropertyCommand()
             {
@@ -87,12 +87,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             }
         }
 
-        private static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id)
+        private static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id, Guid gameId)
         {
-            if (await db.Elements.AnyAsync(e => e.Id == id)) return "ElementModel";
-            if (await db.Maps.AnyAsync(m => m.Id == id))     return "MapModel";
-            if (await db.Cards.AnyAsync(c => c.Id == id))    return "CardModel";
-            if (await db.Games.AnyAsync(g => g.Id == id))    return "GameModel";
+            if (await db.Elements.AnyAsync(e => e.Id == id && e.Map.Game.Id == gameId)) return "ElementModel";
+            if (await db.Maps.AnyAsync(m => m.Id == id && m.Game.Id == gameId))         return "MapModel";
+            if (await db.Cards.AnyAsync(c => c.Id == id && c.GameId == gameId))         return "CardModel";
+            if (await db.Games.AnyAsync(g => g.Id == id && g.Id == gameId))             return "GameModel";
             return null;
         }
     }

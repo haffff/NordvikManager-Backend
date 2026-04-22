@@ -195,7 +195,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                         // Resolve %q:% / %qn:% query patterns first, then standard %varName% substitution.
                         // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
                         // after Value has been evaluated, so a %var% default isn't erased by an empty variable.
-                        var resolver = new ActionPropertyQueryResolver(dbContext);
+                        var resolver = new ActionPropertyQueryResolver(dbContext, GameLobby.GameId);
                         foreach (var token in stepObject.Descendants().OfType<JValue>())
                         {
                             if (token.Parent is JProperty jp && jp.Name == "DefaultValue")
@@ -292,6 +292,8 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private static void FillHookArgs(HookArgs.HookArgs hookArg, Dictionary<string, object> variables)
         {
+            if(hookArg == null)
+                return;
             foreach (var item in hookArg.GetType().GetProperties())
                 variables[item.Name] = item.GetValue(hookArg);
         }
