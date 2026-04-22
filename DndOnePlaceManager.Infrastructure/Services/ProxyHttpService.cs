@@ -33,6 +33,8 @@ namespace DndOnePlaceManager.Infrastructure.Services
             if (!string.IsNullOrWhiteSpace(bearerToken))
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
 
+            request.Headers.UserAgent.ParseAdd("NordvikManager/1.0 (https://nordvikmanager.pl/)");
+
             var client = httpClientFactory.CreateClient();
             var response = await client.SendAsync(request, cancellationToken);
 

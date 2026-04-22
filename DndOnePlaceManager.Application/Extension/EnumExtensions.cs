@@ -8,10 +8,10 @@ namespace DndOnePlaceManager.Application.Extension
         {
             var type = value.GetType();
             var name = Enum.GetName(type, value);
-            return type.GetField(name) // I prefer to get attributes this way
+            return type.GetField(name)
                 .GetCustomAttributes(false)
                 .OfType<DescriptionAttribute>()
-                .SingleOrDefault().Description;
+                .SingleOrDefault()?.Description;
         }
 
         public static TEnum? ToEnumUsingDescriptionAttribute<TEnum>(this string value)

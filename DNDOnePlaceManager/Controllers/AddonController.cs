@@ -93,7 +93,7 @@ namespace DNDOnePlaceManager.Controllers
                         .Select(y => new ActionDefinitionArgument()
                         {
                             Name = y.Name,
-                            Type = y.PropertyType.Name,
+                            Type = y.GetCustomAttribute<DNDOnePlaceManager.Models.UITypeAttribute>()?.Type ?? y.PropertyType.Name,
                             Description = y.GetCustomAttribute<DescriptionAttribute>()?.Description,
                             ConditionField = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Field,
                             ConditionValue = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Value,
@@ -360,7 +360,9 @@ namespace DNDOnePlaceManager.Controllers
             byte[] fileBytes;
             try
             {
-                fileBytes = Convert.FromBase64String(body.Data);
+                var raw = System.Text.RegularExpressions.Regex
+                    .Replace(body.Data, @"^data:[^;]+;base64,", "");
+                fileBytes = Convert.FromBase64String(raw);
             }
             catch
             {

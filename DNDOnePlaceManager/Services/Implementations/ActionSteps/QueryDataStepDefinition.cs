@@ -9,7 +9,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
     public class QueryDataStepDefinition : IActionStepDefinition
     {
-        public string Name => "Query Data";
+        public string Name => "Assign Variables";
         public string Value => "QueryData";
         public string Category => "Data";
         public string Description => "Batch variable assignment. Each line in Assignments is 'variableName=value'. " +
