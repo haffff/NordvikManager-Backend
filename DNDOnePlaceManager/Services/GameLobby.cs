@@ -60,6 +60,8 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public bool Debug { get; internal set; }
 
+        public Implementations.GameEventLog EventLog { get; } = new();
+
         public bool CheckForPlayer(PlayerDTO player)
         {
             return ConnectedPlayers.Any(x => x.Key.Id == player.Id);
@@ -141,21 +143,25 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             catch (PermissionException e)
             {
+                EventLog.Log("Error", "Permission", e.Message, player.Name);
                 SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player), player);
                 return null;
             }
             catch (WrongArgumentsException e)
             {
+                EventLog.Log("Warning", "Command", e.Message, player.Name);
                 SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player), player);
                 return null;
             }
             catch (ResourceNotFoundException e)
             {
+                EventLog.Log("Warning", "Command", e.Message, player.Name);
                 SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player), player);
                 return null;
             }
             catch (Exception e)
             {
+                EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
                 SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player), player);
                 return null;
             }

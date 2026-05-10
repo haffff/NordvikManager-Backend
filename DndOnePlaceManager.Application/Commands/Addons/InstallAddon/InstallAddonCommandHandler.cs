@@ -107,8 +107,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         {
             foreach (var view in GetByFolder(archive, "views/"))
             {
-                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(view), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                var rawDto = JsonSerializer.Deserialize<CardInstallDto>(ReadToBytes(view), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? throw new InvalidOperationException($"Failed to deserialize view '{view.FullName}'.");
+                var dto = ResolveCardDto(rawDto, game, addon.Resources);
 
                 var (_, res) = await mediator.Send(new AddCardCommand
                 {
@@ -142,8 +143,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         {
             foreach (var template in GetByFolder(archive, "templates/"))
             {
-                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(template), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                var rawDto = JsonSerializer.Deserialize<CardInstallDto>(ReadToBytes(template), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? throw new InvalidOperationException($"Failed to deserialize template '{template.FullName}'.");
+                var dto = ResolveCardDto(rawDto, game, addon.Resources);
 
                 var (_, res) = await mediator.Send(new AddCardCommand
                 {
@@ -176,8 +178,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         {
             foreach (var action in GetByFolder(archive, "actions/"))
             {
-                var dto = JsonSerializer.Deserialize<ActionDto>(ReadToBytes(action), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                    ?? throw new InvalidOperationException($"Failed to deserialize action '{action.FullName}'.");
+                var dto = DeserializeAction(ReadToBytes(action), action.FullName);
 
                 dto.Prefix = addon.Key;
 
@@ -355,12 +356,108 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         private static bool CompareVersions(AddonModel installed, AddonModel required)
             => required.Version == null || installed.Version == required.Version;
 
+        /// <summary>
+        /// Deserializes an action JSON file, accepting <c>content</c> as either a
+        /// pre-serialized JSON string or a raw JSON array — the latter is serialized
+        /// back to a string so addon authors can write human-readable step arrays.
+        /// </summary>
+        private static ActionDto DeserializeAction(byte[] bytes, string fileName)
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            using var doc = JsonDocument.Parse(bytes);
+
+            // Fast path: content is already a string (or absent) — deserialize directly.
+            if (!doc.RootElement.TryGetProperty("content", out var contentEl)
+                || contentEl.ValueKind == JsonValueKind.String)
+            {
+                return JsonSerializer.Deserialize<ActionDto>(bytes, options)
+                    ?? throw new InvalidOperationException($"Failed to deserialize action '{fileName}'.");
+            }
+
+            // content is a JSON array — rewrite it as a serialized string so it fits
+            // the ActionDto.Content field (which the database stores as a JSON string).
+            using var ms = new MemoryStream();
+            using var writer = new Utf8JsonWriter(ms);
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Name.Equals("content", StringComparison.OrdinalIgnoreCase))
+                    writer.WriteString(prop.Name, prop.Value.GetRawText());
+                else
+                    prop.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+            writer.Flush();
+
+            return JsonSerializer.Deserialize<ActionDto>(ms.ToArray(), options)
+                ?? throw new InvalidOperationException($"Failed to deserialize action '{fileName}'.");
+        }
+
         private static byte[] ReadToBytes(ZipArchiveEntry entry)
         {
             using var memoryStream = new MemoryStream();
             using var stream = entry.Open();
             stream.CopyTo(memoryStream);
             return memoryStream.ToArray();
+        }
+
+        /// <summary>
+        /// Resolves a resource reference that may be either a GUID string or a resource key.
+        /// Newly installed addon resources (not yet saved) are checked via addonResources;
+        /// pre-existing game resources are checked via game.Resources.
+        /// </summary>
+        private CardDto ResolveCardDto(CardInstallDto raw, GameModel game, IEnumerable<ResourceModel> addonResources)
+        {
+            var allResources = game.Resources.Concat(addonResources);
+            return new CardDto
+            {
+                Id                 = raw.Id,
+                Name               = raw.Name,
+                Description        = raw.Description,
+                Key                = raw.Key,
+                FirstOpen          = raw.FirstOpen,
+                TemplateId         = raw.TemplateId,
+                Owner              = raw.Owner,
+                MainResource       = ResolveResourceRef(raw.MainResource, allResources),
+                AdditionalResources = raw.AdditionalResources?
+                    .Select(r => ResolveResourceRef(r, allResources))
+                    .Where(g => g.HasValue)
+                    .Select(g => g!.Value)
+                    .ToList(),
+                Permission         = raw.Permission,
+                GenericPermission  = raw.GenericPermission,
+                GmPermission       = raw.GmPermission,
+                Properties         = raw.Properties ?? Enumerable.Empty<PropertyDTO>(),
+            };
+        }
+
+        private static Guid? ResolveResourceRef(string? value, IEnumerable<ResourceModel> resources)
+        {
+            if (value == null) return null;
+            if (Guid.TryParse(value, out var guid)) return guid;
+            return resources.FirstOrDefault(r => r.Key == value)?.Id;
+        }
+
+        /// <summary>
+        /// Intermediate DTO used when deserializing card JSON from addon archives.
+        /// MainResource and AdditionalResources accept either a GUID string or a
+        /// resource key — resolved to GUIDs by ResolveCardDto before use.
+        /// </summary>
+        private sealed class CardInstallDto
+        {
+            public Guid? Id { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string? Key { get; set; }
+            public bool? FirstOpen { get; set; }
+            public Guid? TemplateId { get; set; }
+            public Guid? Owner { get; set; }
+            public string? MainResource { get; set; }
+            public List<string>? AdditionalResources { get; set; }
+            public Permission? Permission { get; set; }
+            public Permission? GenericPermission { get; set; }
+            public Permission? GmPermission { get; set; }
+            public IEnumerable<PropertyDTO>? Properties { get; set; }
         }
     }
 }

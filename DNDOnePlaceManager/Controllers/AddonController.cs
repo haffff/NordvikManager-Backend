@@ -106,10 +106,9 @@ namespace DNDOnePlaceManager.Controllers
 
         [Route("Hooks")]
         [HttpGet]
-        public async Task<IActionResult> GetHooks()
+        public IActionResult GetHooks()
         {
-            var hooks = Enum.GetValues(typeof(Hook)).Cast<Hook>().Select(x => new { Name = x.ToString(), Value = (int)x }).ToArray();
-            return Ok(hooks);
+            return Ok(DNDOnePlaceManager.Enums.HookInfo.GetAll());
         }
 
         [Route("RunningActions")]
@@ -506,6 +505,50 @@ namespace DNDOnePlaceManager.Controllers
 
             var result = await mediator.Send(command);
             return Ok(new { result });
+        }
+
+        // =========================================================================
+        // Event log
+        // =========================================================================
+
+        [Route("EventLog")]
+        [HttpGet]
+        public async Task<IActionResult> GetEventLog([FromQuery] Guid gameId, [FromQuery] string? sinceId)
+        {
+            var player = await GetPlayer(gameId);
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
+
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return NotFound(new { error = "Game lobby not found." });
+
+            Guid? sinceGuid = Guid.TryParse(sinceId, out var g) ? g : (Guid?)null;
+            return Ok(lobby.EventLog.GetEntries(sinceGuid));
+        }
+
+        [Route("EventLog")]
+        [HttpDelete]
+        public async Task<IActionResult> ClearEventLog([FromQuery] Guid gameId)
+        {
+            var player = await GetPlayer(gameId);
+            if (player?.Player == null)
+                return Unauthorized(new { error = "You are not a player in this game." });
+
+            if (player.Player.IsOwner != true &&
+                (player.Player.Permission == null || (player.Player.Permission & DndOnePlaceManager.Domain.Enums.Permission.Edit) == 0))
+                return Forbid();
+
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return NotFound(new { error = "Game lobby not found." });
+
+            lobby.EventLog.Clear();
+            return Ok(new { cleared = true });
         }
 
         // =========================================================================

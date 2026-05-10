@@ -9,43 +9,41 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
+namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
 {
-    public class SetResourceCommandHandler : HandlerBase<SetResourceCommand, Guid>
+    internal class CreateResourceCommandHandler : HandlerBase<CreateResourceCommand, (CommandResponse, Guid?)>
     {
         private readonly IMediator _mediator;
 
-        public SetResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator)
+        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator)
             : base(dbContext, mapper)
         {
             _mediator = mediator;
         }
 
-        public override async Task<Guid> Handle(SetResourceCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, Guid?)> Handle(CreateResourceCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
 
-            var existing = await dbContext.Resources.FirstOrDefaultAsync(r =>
-                r.GameId == request.GameId && r.Key == request.Key, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(request.Key))
+            {
+                var existing = await dbContext.Resources.FirstOrDefaultAsync(
+                    r => r.GameId == request.GameId && r.Key == request.Key, cancellationToken);
+                if (existing != null)
+                    return (CommandResponse.AlreadyExists, null);
+            }
+
+            var player = await dbContext.Players.FirstOrDefaultAsync(
+                p => p.Id == request.Player.Id, cancellationToken);
+            if (player == null)
+                return (CommandResponse.NoResource, null);
 
             var mimeType = request.MimeType?.ToEnumUsingDescriptionAttribute<MimeType>() ?? MimeType.None;
 
-            if (existing != null)
-            {
-                existing.Data = request.Data;
-                if (mimeType != MimeType.None)
-                    existing.MimeType = mimeType;
-                dbContext.SaveChanges();
-                return existing.Id;
-            }
-
-            var player = await dbContext.Players.FirstOrDefaultAsync(p =>
-                p.Id == request.Player.Id, cancellationToken);
-
             var model = new ResourceModel
             {
-                Name     = request.Name ?? request.Key,
-                Key      = request.Key,
+                Name     = request.Name,
+                Key      = string.IsNullOrWhiteSpace(request.Key) ? null : request.Key,
                 Data     = request.Data,
                 MimeType = mimeType,
                 GameId   = request.GameId,
@@ -70,7 +68,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
                 },
             }, cancellationToken);
 
-            return model.Id;
+            return (CommandResponse.Ok, model.Id);
         }
     }
 }

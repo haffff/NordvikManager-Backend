@@ -12,5 +12,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("New text content to store. Supports %variable% substitution.")]
         public string Content { get; set; }
+
+        [Description("MIME type to set on the resource (e.g. 'application/json', 'text/plain'). Left unchanged when not set.")]
+        public string MimeType { get; set; }
     }
 }

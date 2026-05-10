@@ -33,11 +33,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             await mediator.Send(new SetResourceCommand
             {
-                GameId = gameLobby.GameId,
-                Player = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
-                Key    = key,
-                Name   = key,
-                Data   = Encoding.UTF8.GetBytes(stepData.Content ?? string.Empty),
+                GameId   = gameLobby.GameId,
+                Player   = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
+                Key      = key,
+                Name     = key,
+                Data     = Encoding.UTF8.GetBytes(stepData.Content ?? string.Empty),
+                MimeType = stepData.MimeType,
             });
         }
     }

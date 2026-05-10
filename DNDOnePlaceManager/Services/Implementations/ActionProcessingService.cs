@@ -219,6 +219,8 @@ namespace DNDOnePlaceManager.Services.Implementations
             catch (Exception e)
             {
                 entry.SetFaulted(e.Message);
+                GameLobby?.EventLog?.Log("Error", "Action", $"Action '{action.Name}' failed: {e.Message}",
+                    details: new { actionName = action.Name, actionId = action.Id, lastStep = entry.CurrentStep, exceptionType = e.GetType().Name });
                 await DebugLog(mediator, DebugLogData.Fault(e.Message), false, entry: entry);
             }
             finally

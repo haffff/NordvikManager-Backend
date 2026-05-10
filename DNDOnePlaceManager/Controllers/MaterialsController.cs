@@ -2,8 +2,12 @@
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
+using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
+using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
+using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Services;
@@ -270,6 +274,203 @@ namespace DNDOnePlaceManager.Controllers
             removeCommand.GameId = gameId;
 
             var result = await mediator.Send(removeCommand);
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Returns resource bytes as base64 JSON — used by the WebRTC tunnel where
+        /// raw binary File() responses are not usable over a data channel.
+        /// </summary>
+        [HttpGet]
+        [Authorize]
+        [Route("ResourceWebRTC")]
+        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var result = await mediator.Send(new GetResourceDataCommand
+            {
+                GameID = gameId,
+                Player = playerResult.Player,
+                ID     = id,
+                Key    = key,
+            });
+
+            if (result.Item1 == null)
+                return NotFound();
+
+            return Ok(new
+            {
+                data     = Convert.ToBase64String(result.Item1),
+                mimeType = result.Item2.GetDescriptionValue(),
+            });
+        }
+
+        /// <summary>
+        /// Creates a resource with a stable key; returns 409 if key already exists.
+        /// Used by addons via the WebRTC tunnel.
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("CreateResource")]
+        public async Task<IActionResult> CreateResource([FromQuery] Guid gameId, [FromBody] CreateResourceRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Key) && string.IsNullOrWhiteSpace(request?.Name))
+                return BadRequest(new { error = "key or name is required." });
+
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            byte[] data;
+            try
+            {
+                data = string.IsNullOrEmpty(request.Content)
+                    ? Array.Empty<byte>()
+                    : Convert.FromBase64String(request.Content);
+            }
+            catch
+            {
+                return BadRequest(new { error = "content must be a valid base64 string." });
+            }
+
+            var (resp, id) = await mediator.Send(new CreateResourceCommand
+            {
+                GameId   = gameId,
+                Player   = playerResult.Player,
+                Key      = request.Key,
+                Name     = request.Name ?? request.Key ?? string.Empty,
+                Data     = data,
+                MimeType = request.MimeType,
+            });
+
+            if (resp == CommandResponse.AlreadyExists)
+                return Conflict(new { error = $"Resource with key '{request.Key}' already exists." });
+            if (resp == CommandResponse.NoResource)
+                return Forbid();
+            if (resp != CommandResponse.Ok || id == null)
+                return StatusCode(500, new { error = "Failed to create resource." });
+
+            var lobby = _lobbyService.GetLobby(gameId);
+            if (lobby != null)
+            {
+                await lobby.HandlePostCommand(playerResult.Player, new WebSockets.WebSocketCommand
+                {
+                    Command = WebSockets.Core.WebSocketCommandNames.ResourceAdd,
+                    Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
+                    Data    = Newtonsoft.Json.Linq.JToken.FromObject(new
+                    {
+                        id,
+                        name       = request.Name ?? request.Key,
+                        path       = (string?)null,
+                        mimeType   = request.MimeType,
+                        playerId   = playerResult.Player.Id,
+                        playerName = playerResult.Player.Name,
+                    }),
+                });
+            }
+
+            return Ok(new { id });
+        }
+
+        /// <summary>
+        /// Overwrites the binary content of an existing resource (by id or key).
+        /// </summary>
+        [HttpPut]
+        [Authorize]
+        [Route("ResourceData")]
+        public async Task<IActionResult> UpdateResourceData(
+            [FromQuery] Guid gameId, [FromBody] UpdateResourceDataRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Key) && request?.Id == null)
+                return BadRequest(new { error = "key or id is required." });
+
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var (resp, id) = await mediator.Send(new UpdateResourceDataCommand
+            {
+                GameId  = gameId,
+                Player  = playerResult.Player,
+                Key     = request.Key,
+                Id      = request.Id,
+                Content = request.Content,
+                MimeType = request.MimeType,
+            });
+
+            return resp switch
+            {
+                CommandResponse.Ok            => Ok(new { id }),
+                CommandResponse.NoResource    => NotFound(new { error = "Resource not found." }),
+                CommandResponse.NoPermission  => StatusCode(403, new { error = "You do not own this resource." }),
+                CommandResponse.WrongArguments => BadRequest(new { error = "content must be a valid base64 string." }),
+                _                             => StatusCode(500, new { error = resp.ToString() }),
+            };
+        }
+
+        /// <summary>
+        /// Deletes a resource (and its tree entries) by id or key.
+        /// </summary>
+        [HttpDelete]
+        [Authorize]
+        [Route("ResourceData")]
+        public async Task<IActionResult> DeleteResourceData(
+            [FromQuery] Guid gameId, [FromQuery] string? key, [FromQuery] Guid? id)
+        {
+            if (string.IsNullOrWhiteSpace(key) && id == null)
+                return BadRequest(new { error = "key or id query parameter is required." });
+
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var resp = await mediator.Send(new DeleteResourceDataCommand
+            {
+                GameId = gameId,
+                Player = playerResult.Player,
+                Key    = key,
+                Id     = id,
+            });
+
+            return resp switch
+            {
+                CommandResponse.Ok           => Ok(),
+                CommandResponse.NoResource   => NotFound(new { error = "Resource not found." }),
+                CommandResponse.NoPermission => StatusCode(403, new { error = "You do not own this resource." }),
+                _                            => StatusCode(500, new { error = resp.ToString() }),
+            };
+        }
+
+        /// <summary>
+        /// Returns all custom UI cards for the game.
+        /// Route aliases preserve the legacy typo used by WebRTC clients.
+        /// </summary>
+        [HttpGet]
+        [Authorize]
+        [Route("GetCustomViews")]
+        [Route("GetCustomWiews")]
+        public async Task<IActionResult> GetCustomViews([FromQuery] Guid gameId)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var (_, result) = await mediator.Send(new GetAllCardsCommand
+            {
+                GameId    = gameId,
+                Player    = playerResult.Player,
+                Templates = false,
+                CustomUis = true,
+            });
 
             return Ok(result);
         }

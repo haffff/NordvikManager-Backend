@@ -67,8 +67,12 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
                     nextFromDeleted.Head = true;
             }
 
+            // Flush the predecessor fix-up before the delete — SQLite checks FK constraints
+            // per-statement and will reject DELETE if another row still has Next = treeEntry.Id.
+            await dbContext.SaveChangesAsync(cancellationToken);
+
             game.TreeEntries.Remove(treeEntry);
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync(cancellationToken);
 
             return CommandResponse.Ok;
         }
