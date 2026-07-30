@@ -1,7 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -20,17 +20,11 @@ namespace DndOnePlaceManager.Application.Commands.Map.UpdateMap
         {
             await base.Handle(request, cancellationToken);
             var game = dbContext.Games.Include(x => x.Maps).FirstOrDefault(x => x.Id == request.GameId);
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
 
             var map = game.Maps.FirstOrDefault(x => x.Id == request.Map.Id);
 
-            if (map == null)
-            {
-                throw new ResourceNotFoundException(nameof(map));
-            }
+            Guard.NotFound(map, "Map", request.Map.Id);
 
             map.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 

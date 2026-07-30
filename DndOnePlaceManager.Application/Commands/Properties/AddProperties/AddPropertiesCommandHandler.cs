@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
@@ -29,17 +30,11 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperties
             var firstProperty = request.Properties.FirstOrDefault();
             var type = firstProperty.EntityName?.ToEntityType();
 
-            if (!request.Properties.All(x => x.ParentID == firstProperty.ParentID) && type != null)
-            {
-                throw new WrongArgumentsException(nameof(request.Properties));
-            }
+            Guard.Argument(request.Properties.All(x => x.ParentID == firstProperty.ParentID) || type == null, nameof(request.Properties));
 
             var entity = dbContext.Find(type, firstProperty.ParentID);
 
-            if (entity == null)
-            {
-                throw new ResourceNotFoundException(nameof(entity));
-            }
+            Guard.NotFound(entity, type?.Name ?? "Entity", firstProperty.ParentID);
 
             (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
@@ -49,7 +44,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperties
                 return CommandResponse.Ok;
             }
 
-            throw new ResourceNotFoundException(nameof(entity));
+            throw new ResourceNotFoundException(type?.Name ?? "Entity", firstProperty.ParentID);
         }
 
         private bool AddProperties(AddPropertiesCommand request, object entity, PropertyModel[] property)

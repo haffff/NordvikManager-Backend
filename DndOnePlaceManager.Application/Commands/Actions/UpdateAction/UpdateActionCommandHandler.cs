@@ -1,6 +1,6 @@
 using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -19,17 +19,12 @@ namespace DndOnePlaceManager.Application.Commands.Actions
             await base.Handle(request, cancellationToken);
             // Retrieve the action from the database
             var game = await dbContext.Games.Include(x => x.Actions).FirstOrDefaultAsync(x => x.Id == request.GameId);
+            ArgumentNullException.ThrowIfNull(game);
             var action = game.Actions.FirstOrDefault(x => x.Id == request.Action.Id);
-            if (action == null)
-            {
-                throw new ResourceNotFoundException(nameof(action));
-            }
+            Guard.NotFound(action, "Action", request.Action.Id);
 
             // Check for permissions
-            if (!game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit))
-            {
-                throw new PermissionException(Permission.Edit);
-            }
+            game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Permission.Edit);
 
             action.Hook = request.Action.Hook;
             action.Prefix = request.Action.Prefix;

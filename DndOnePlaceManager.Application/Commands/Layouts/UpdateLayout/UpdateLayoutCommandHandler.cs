@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -21,17 +21,11 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.UpdateLayout
             await base.Handle(request, cancellationToken);
             var game = dbContext.Games.Include(x => x.Layouts).FirstOrDefault(x => x.Id == request.Dto.GameModelId);
 
-            if (game == null || request.Player == null)
-            {
-                throw new WrongArgumentsException(nameof(request.Dto));
-            }
+            Guard.Argument(game != null && request.Player != null, nameof(request.Dto));
 
             var layout = dbContext.Layouts.FirstOrDefault(x => x.Id == request.Dto.Id);
 
-            if (layout == null)
-            {
-                throw new ResourceNotFoundException(nameof(layout));
-            }
+            Guard.NotFound(layout, "Layout", request.Dto.Id);
 
             layout.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 

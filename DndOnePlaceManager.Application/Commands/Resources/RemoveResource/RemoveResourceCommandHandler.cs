@@ -2,6 +2,7 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -30,10 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 throw new PermissionException(Permission.Edit);
             }
 
-            if (image.GameId != request.GameId)
-            {
-                throw new WrongArgumentsException(nameof(request.GameId));
-            }
+            Guard.Argument(image.GameId == request.GameId, nameof(request.GameId));
 
             if (image != null)
             {
@@ -58,7 +56,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 return result;
             }
 
-            throw new ResourceNotFoundException(nameof(image));
+            throw new ResourceNotFoundException("Resource", (object?)request.ID ?? request.Key);
         }
     }
 }

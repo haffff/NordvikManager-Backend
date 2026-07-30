@@ -1,5 +1,5 @@
 ﻿using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -19,10 +19,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResource
         {
             await base.Handle(request, cancellationToken);
 
-            if (request.Player == null)
-            {
-                throw new WrongArgumentsException(nameof(request.Player));
-            }
+            Guard.Argument(request.Player != null, nameof(request.Player));
 
             var resourceModel = dbContext.Resources.FirstOrDefault(x => x.Id == request.Resource.Id && request.Player.Id == x.PlayerId);
 

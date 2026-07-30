@@ -1,6 +1,6 @@
 using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -22,10 +22,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
             // Retrieve the card from the database
             CardModel card = await dbContext.Cards.FindAsync(request.Dto.Id);
 
-            if (card == null)
-            {
-                throw new ResourceNotFoundException(nameof(card));
-            }
+            Guard.NotFound(card, "Card", request.Dto.Id);
 
             card.ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 

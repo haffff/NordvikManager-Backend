@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 
@@ -16,10 +16,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
             await base.Handle(request, cancellationToken);
 
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameId);
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
 
             game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 

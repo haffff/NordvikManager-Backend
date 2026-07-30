@@ -1,7 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -29,16 +29,10 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
                 .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Next)
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(GameModel));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
 
             var treeEntry = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Id);
-            if (treeEntry == null)
-            {
-                throw new ResourceNotFoundException(nameof(TreeEntryModel));
-            }
+            Guard.NotFound(treeEntry, "TreeEntry", request.TreeEntryDto.Id);
 
             if (treeEntry.IsFolder)
             {
@@ -57,10 +51,9 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
                 return (CommandResponse.Ok, new List<TreeEntryDto>() { mapper.Map<TreeEntryDto>(treeEntry) });
             }
 
-            if (request.TreeEntryDto.ParentId == request.TreeEntryDto.Id || request.TreeEntryDto.Next == request.TreeEntryDto.Id)
-            {
-                throw new WrongArgumentsException(nameof(request.TreeEntryDto.ParentId), nameof(request.TreeEntryDto.Next));
-            }
+            Guard.Argument(
+                request.TreeEntryDto.ParentId != request.TreeEntryDto.Id && request.TreeEntryDto.Next != request.TreeEntryDto.Id,
+                nameof(request.TreeEntryDto.ParentId), nameof(request.TreeEntryDto.Next));
 
             DisconnectOldReferences(request, game, treeEntry, affectedTreeEntries);
 

@@ -1,6 +1,6 @@
 using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -19,20 +19,13 @@ namespace DndOnePlaceManager.Application.Commands.Actions
             await base.Handle(request, cancellationToken);
             var game = await dbContext.Games.Include(x => x.Actions).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
 
-            if (request.GameId == Guid.Empty || request.Action == null)
-            {
-                throw new WrongArgumentsException(nameof(request.GameId), nameof(request.Action));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
+            Guard.Argument(request.GameId != Guid.Empty && request.Action != null, nameof(request.GameId), nameof(request.Action));
 
             game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             var action = mapper.Map<ActionModel>(request.Action);
             action.Id = default;
-
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
 
             game.Actions.Add(action);
 

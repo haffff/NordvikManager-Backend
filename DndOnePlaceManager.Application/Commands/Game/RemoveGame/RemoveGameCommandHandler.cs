@@ -1,7 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -30,10 +30,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.RemoveGame
                 .Include(x => x.Addons).ThenInclude(a => a.Resources)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameID);
 
             game.ThrowIfNoPermission(request.Player?.Id ?? Guid.Empty, Domain.Enums.Permission.Remove);
 

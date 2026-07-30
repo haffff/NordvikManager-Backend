@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -30,10 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree
                 .Include(x => x.TreeEntries)
                 .FirstOrDefaultAsync(x => x.Id == request.GameID, cancellationToken);
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(GameModel));
-            }
+            Guard.NotFound(game, "Game", request.GameID);
 
             var treeEntries = game.TreeEntries.Where(x => x.EntryType == request.EntityType);
             var groups = treeEntries.GroupBy(x => x.Parent);

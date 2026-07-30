@@ -1,7 +1,7 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
@@ -24,31 +24,21 @@ namespace DndOnePlaceManager.Application.Commands.Properties
             var property = dbContext.Properties.Find(request.Id);
 
             // Check if the property exists
-            if (property == null)
-            {
-                throw new ResourceNotFoundException(nameof(property));
-            }
+            Guard.NotFound(property, "Property", request.Id);
 
             var entityType = property?.EntityName?.ToEntityType();
-            if (entityType != null)
-            {
-                var entity = dbContext.Find(entityType, property.ParentID);
+            Guard.Argument(entityType != null, nameof(entityType));
 
-                if (entity == null)
-                {
-                    throw new ResourceNotFoundException(nameof(entity));
-                }
+            var entity = dbContext.Find(entityType, property.ParentID);
+            Guard.NotFound(entity, entityType.Name, property.ParentID);
 
-                (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-                // Remove the property from the database
-                dbContext.Properties.Remove(property);
-                dbContext.SaveChanges();
+            // Remove the property from the database
+            dbContext.Properties.Remove(property);
+            dbContext.SaveChanges();
 
-                return CommandResponse.Ok;
-            }
-
-            throw new WrongArgumentsException(nameof(entityType));
+            return CommandResponse.Ok;
         }
     }
 }

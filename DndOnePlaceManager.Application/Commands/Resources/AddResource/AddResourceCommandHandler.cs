@@ -4,6 +4,7 @@ using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
@@ -31,7 +32,8 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 
             var game = dbContext.Games.Include(x => x.Resources).Include(x => x.TreeEntries).FirstOrDefault(x => x.Id == request.GameID);
 
-            var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id) ?? throw new ArgumentNullException("Player not found");
+            var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
+            Guard.NotFound(player, "Player", request.Player.Id);
 
             var model = new ResourceModel()
             {

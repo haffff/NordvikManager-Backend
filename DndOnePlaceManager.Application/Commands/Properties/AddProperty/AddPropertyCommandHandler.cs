@@ -1,7 +1,7 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Resources;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
@@ -23,37 +23,30 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperty
             await base.Handle(request, cancellationToken);
 
             var type = request.Property.EntityName?.ToEntityType();
-            if (type != null)
+            Guard.Argument(type != null, nameof(type));
+
+            var entity = dbContext.Find(type, request.Property.ParentID);
+            Guard.NotFound(entity, type.Name, request.Property.ParentID);
+
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
+
+            // Map PropertyDTO to domain entity
+            var property = mapper.Map<PropertyModel>(request.Property);
+            property.ParentID = (Guid)request.Property.ParentID;
+            property.EntityName = request.Property.EntityName;
+
+            var propId = await PropertyExists(property);
+            if (propId != null)
             {
-                var entity = dbContext.Find(type, request.Property.ParentID);
-
-                if (entity == null)
-                {
-                    throw new ResourceNotFoundException(nameof(entity));
-                }
-
-                (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
-
-                // Map PropertyDTO to domain entity
-                var property = mapper.Map<PropertyModel>(request.Property);
-                property.ParentID = (Guid)request.Property.ParentID;
-                property.EntityName = request.Property.EntityName;
-
-                var propId = await PropertyExists(property);
-                if (propId != null)
-                {
-                    return (CommandResponse.AlreadyExists, Guid.Empty);
-                }
-
-                AddProperty(request, entity, property);
-
-                // Add the property to the database
-                var result = await dbContext.SaveChangesAsync(cancellationToken);
-
-                return (CommandResponse.Ok, property.Id);
+                return (CommandResponse.AlreadyExists, Guid.Empty);
             }
 
-            throw new WrongArgumentsException(nameof(type));
+            AddProperty(request, entity, property);
+
+            // Add the property to the database
+            var result = await dbContext.SaveChangesAsync(cancellationToken);
+
+            return (CommandResponse.Ok, property.Id);
         }
 
         private async Task<Guid?> PropertyExists(PropertyModel property)
