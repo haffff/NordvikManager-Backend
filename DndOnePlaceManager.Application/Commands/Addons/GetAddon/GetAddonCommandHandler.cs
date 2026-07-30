@@ -21,7 +21,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddon
             if (!game.HasPermission(request.Player.Id ?? default, Domain.Enums.Permission.Edit))
                 return null;
 
-            var addon = game.Addons.FirstOrDefault(x => x.Id == request.Id);
+            var addon = game.Addons.FirstOrDefault(x => x.Id == request.Id || x.Key == request.AddonKey);
 
             return addon;
         }

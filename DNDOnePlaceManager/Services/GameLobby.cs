@@ -33,14 +33,21 @@ namespace DNDOnePlaceManager.Services.Implementations
             WebSocketCommandNames.CmdPreviewStart,
             WebSocketCommandNames.CmdPreviewUpdate,
             WebSocketCommandNames.CmdPreviewEnd
-        };
-
+        };        
+        
         public GameLobby(IServiceScopeFactory serviceScopeFactory)
         {
             serviceScope = serviceScopeFactory.CreateScope();
 
             ActionProcessingService = serviceScope.ServiceProvider.GetRequiredService<IActionProcessingService>();
             ActionProcessingService.GameLobby = this;
+
+            // Attach the scoped IGameEventLogger to this lobby's EventLog so that
+            // application-layer handlers resolved from this scope can write to it.
+            var eventLogger = serviceScope.ServiceProvider
+                .GetService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                as LobbyGameEventLogger;
+            eventLogger?.Attach(EventLog);
 
             // Store in the private field only; the public property delegates to it
             this.serviceScopeFactory = serviceScopeFactory;
@@ -56,11 +63,24 @@ namespace DNDOnePlaceManager.Services.Implementations
         public IActionProcessingService ActionProcessingService { get; set; }
 
         // Delegates to the private field so external callers still work
-        public IServiceScopeFactory ServiceScopeFactory => serviceScopeFactory;
-
-        public bool Debug { get; internal set; }
+        public IServiceScopeFactory ServiceScopeFactory => serviceScopeFactory;        public bool Debug { get; internal set; }
 
         public Implementations.GameEventLog EventLog { get; } = new();
+
+        /// <summary>
+        /// Returns an <see cref="Microsoft.Extensions.Logging.ILogger"/> whose output is
+        /// written to this lobby's <see cref="EventLog"/>.  Pass the owning class type
+        /// as the generic argument to get a named category automatically:
+        /// <code>
+        ///   var log = lobby.CreateLogger&lt;MyService&gt;();
+        /// </code>
+        /// </summary>
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string category)
+            => new Implementations.GameEventLogLogger(EventLog, category);
+
+        /// <inheritdoc cref="CreateLogger(string)"/>
+        public Microsoft.Extensions.Logging.ILogger CreateLogger<T>()
+            => CreateLogger(typeof(T).Name);
 
         public bool CheckForPlayer(PlayerDTO player)
         {

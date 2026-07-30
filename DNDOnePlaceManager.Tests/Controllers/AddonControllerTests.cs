@@ -39,9 +39,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             SetupPlayer(_mediator, SomePlayer());
             _controller = CreateController(_mediator, contextUser: AnyUser());
-        }
-
-        private static AddonController CreateController(
+        }        private static AddonController CreateController(
             Mock<IMediator> mediatorMock,
             IServiceProvider? serviceProvider = null,
             Mock<ILobbyService>? lobbyMock = null,
@@ -50,7 +48,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
             lobbyMock ??= new Mock<ILobbyService>();
             serviceProvider ??= new ServiceCollection().BuildServiceProvider();
 
-            var controller = new AddonController(mediatorMock.Object, lobbyMock.Object, serviceProvider);
+            var gameEventLogger = new Mock<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>();
+            var controller = new AddonController(mediatorMock.Object, lobbyMock.Object, serviceProvider, gameEventLogger.Object);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -122,10 +121,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetHooks_ReturnsOk_WithAllHooks()
+        public void GetHooks_ReturnsOk_WithAllHooks()
         {
             // Act
-            var result = await _controller.GetHooks();
+            var result = _controller.GetHooks();
 
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);

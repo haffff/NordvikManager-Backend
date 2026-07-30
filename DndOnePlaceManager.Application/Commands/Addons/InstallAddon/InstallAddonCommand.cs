@@ -3,7 +3,7 @@ using DndOnePlaceManager.Domain.Enums;
 
 namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 {
-    public class InstallAddonCommand : GamePlayerCommandBase<(CommandResponse, Guid)>
+    public class InstallAddonCommand : GamePlayerCommandBase<(CommandResponse, InstallAddonCommandResponse)>
     {
         public bool? AutoInstallDeps { get; set; }
         public byte[]? AddonFile { get; set; }

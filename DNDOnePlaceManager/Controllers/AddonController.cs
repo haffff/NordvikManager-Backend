@@ -27,22 +27,40 @@ using System.Linq;
 using System.Reflection;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using DNDOnePlaceManager.Services.Implementations.HookArgs;
+using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
 
 namespace DNDOnePlaceManager.Controllers
 {
     [Authorize]
-    [Route("api/[controller]")]
-    public class AddonController : Controller
+    [Route("api/[controller]")]    public class AddonController : Controller
     {
         private readonly IMediator mediator;
         private readonly IServiceProvider serviceProvider;
         private readonly ILobbyService lobbyService;
+        private readonly DndOnePlaceManager.Application.Interfaces.IGameEventLogger gameEventLogger;
 
-        public AddonController(IMediator mediator, ILobbyService lobbyService, IServiceProvider serviceProvider)
+        public AddonController(
+            IMediator mediator,
+            ILobbyService lobbyService,
+            IServiceProvider serviceProvider,
+            DndOnePlaceManager.Application.Interfaces.IGameEventLogger gameEventLogger)
         {
             this.mediator = mediator;
             this.serviceProvider = serviceProvider;
             this.lobbyService = lobbyService;
+            this.gameEventLogger = gameEventLogger;
+        }        /// <summary>
+        /// Resolves the lobby for <paramref name="gameId"/> and attaches it to the scoped
+        /// game event logger so that MediatR handlers dispatched from this HTTP request
+        /// write to the correct in-memory event log.
+        /// </summary>
+        private void AttachLobbyLog(Guid gameId)
+        {
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null) return;
+            (gameEventLogger as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)
+                ?.Attach(lobby.EventLog);
         }
 
         // =========================================================================
@@ -238,12 +256,13 @@ namespace DNDOnePlaceManager.Controllers
 
         /// <summary>POST addon/install — install from repository by key.</summary>
         [Route("install")]
-        [HttpPost]
+        [HttpPost]        
         public async Task<IActionResult> InstallAddon([FromQuery] Guid gameId, [FromBody] InstallAddonRequest body)
         {
             if (string.IsNullOrWhiteSpace(body?.Key))
                 return BadRequest(new { error = "key is required." });
 
+            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
             var command = new InstallAddonCommand
@@ -253,21 +272,30 @@ namespace DNDOnePlaceManager.Controllers
                 AddonSourceKey = body.Key,
             };
 
-            var (resp, _) = await mediator.Send(command);
+            var (resp, addonInfo) = await mediator.Send(command);
             if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = resp.ToString() });
+                return BadRequest(new { error = resp.ToString() });            // get lobby and trigger Install hook
+            var lobby = lobbyService.GetLobby(gameId);
+            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+            {
+                GameId = gameId,
+                PlayerId = player.Player.Id ?? default,
+                AddonKey = addonInfo.AddonKey,
+            });
+
 
             return Ok();
         }
 
         /// <summary>POST addon/update — re-install latest version from repository.</summary>
         [Route("update")]
-        [HttpPost]
+        [HttpPost]        
         public async Task<IActionResult> UpdateAddon([FromQuery] Guid gameId, [FromBody] InstallAddonRequest body)
         {
             if (string.IsNullOrWhiteSpace(body?.Key))
                 return BadRequest(new { error = "key is required." });
 
+            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
             var command = new InstallAddonCommand
@@ -289,16 +317,43 @@ namespace DNDOnePlaceManager.Controllers
 
         /// <summary>POST addon/uninstall — uninstall by id or key.</summary>
         [Route("uninstall")]
-        [HttpPost]
+        [HttpPost]        
         public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromBody] UninstallAddonRequest body)
         {
             if (string.IsNullOrWhiteSpace(body?.AddonId))
                 return BadRequest(new { error = "addonId is required." });
 
+            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
             Guid? addonGuid = Guid.TryParse(body.AddonId, out var g) ? g : null;
 
+            // ensure addon exists and try to get key for hook call
+            var getExistingAddonCommand = new GetAddonCommand()
+            {
+                GameID = gameId,
+                Player = player.Player,
+                Id = addonGuid ?? Guid.Empty,
+                AddonKey = addonGuid == null ? body.AddonId : null,
+            };
+
+            var existingAddon = await mediator.Send(getExistingAddonCommand);
+
+            if (existingAddon == null)
+                return BadRequest(new { error = "Addon not found." });
+            
+            var addonKey = existingAddon.Key;
+
+            //call hook
+            var lobby = lobbyService.GetLobby(gameId);
+            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Uninstall, new AddonHookArgs
+            {
+                GameId = gameId,
+                PlayerId = player.Player.Id ?? default,
+                AddonKey = addonKey,
+            });
+
+            // after hook proceed with uninstall
             var command = new UninstallAddonCommand
             {
                 GameID = gameId,
@@ -307,7 +362,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonKey = addonGuid == null ? body.AddonId : null,
             };
 
-            var response = await mediator.Send(command);
+            var (response, deletedAddon) = await mediator.Send(command);
             if (response != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
                 return BadRequest(new { error = response.ToString() });
 
@@ -362,12 +417,12 @@ namespace DNDOnePlaceManager.Controllers
                 var raw = System.Text.RegularExpressions.Regex
                     .Replace(body.Data, @"^data:[^;]+;base64,", "");
                 fileBytes = Convert.FromBase64String(raw);
-            }
-            catch
+            }            catch
             {
                 return BadRequest(new { error = "data must be a valid base64 string." });
             }
 
+            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
             var command = new InstallAddonCommand
@@ -378,9 +433,20 @@ namespace DNDOnePlaceManager.Controllers
                 AddonFileName = body.FileName,
             };
 
-            var (resp, _) = await mediator.Send(command);
+            var (resp, addonInfo) = await mediator.Send(command);
             if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
                 return BadRequest(new { error = resp.ToString() });
+
+            var lobby = lobbyService.GetLobby(gameId);
+            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+            {
+                GameId = gameId,
+                PlayerId = player.Player.Id ?? default,
+                AddonKey = addonInfo.AddonKey,
+            });
+
+
+
 
             return Ok();
         }

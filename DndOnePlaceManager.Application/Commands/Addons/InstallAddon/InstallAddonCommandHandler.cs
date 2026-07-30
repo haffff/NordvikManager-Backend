@@ -6,6 +6,7 @@ using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Interfaces;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Resources;
@@ -19,22 +20,24 @@ using System.Text.Json;
 
 namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 {
-    internal class InstallAddonCommandHandler : HandlerBase<InstallAddonCommand, (CommandResponse, Guid)>
+    internal class InstallAddonCommandHandler : HandlerBase<InstallAddonCommand, (CommandResponse, InstallAddonCommandResponse)>
     {
         private readonly IDbContext dbContext;
         private readonly IMapper mapper;
         private readonly IAddonRepositoryService addonFromUriProvider;
         private readonly IMediator mediator;
+        private readonly IGameEventLogger gameEventLogger;
 
-        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator) : base(dbContext, mapper)
+        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator, IGameEventLogger gameEventLogger) : base(dbContext, mapper)
         {
             this.dbContext = dbContext;
             this.mapper = mapper;
             this.addonFromUriProvider = addonFromUriProvider;
             this.mediator = mediator;
+            this.gameEventLogger = gameEventLogger;
         }
 
-        public override async Task<(CommandResponse, Guid)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
             var game = dbContext.Games
                 .Include(x => x.Addons)
@@ -47,17 +50,22 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
             // Bug fix: was crashing with NullReferenceException when game not found
             if (game == null)
-                return (CommandResponse.NoResource, Guid.Empty);
+                return (CommandResponse.NoResource, new InstallAddonCommandResponse());
 
             if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-                return (CommandResponse.NoPermission, Guid.Empty);
+                return (CommandResponse.NoPermission, new InstallAddonCommandResponse());
 
             // Bug fix: both null would silently fall through to ZipArchive(null) crash
             if (request.AddonFile == null && request.AddonSourceKey == null)
                 throw new ArgumentException("Either AddonFile or AddonSourceKey must be provided.");
 
+            gameEventLogger.Info("AddonInstall", $"Installing addon for game '{game.Name}' (ID: {game.Id}) by player '{request.Player.Name}' (ID: {request.Player.Id}).");
+            
             if (request.AddonFile == null)
+            {
                 request.AddonFile = await addonFromUriProvider.GetAddonByKey(request.AddonSourceKey!);
+                gameEventLogger.Info("AddonInstall", $"Fetched addon file from source key '{request.AddonSourceKey}");
+            }
 
             using var archive = new ZipArchive(new MemoryStream(request.AddonFile));
 
@@ -100,7 +108,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             addon.SetGlobalPermission();
             addon.SetPermissions(game.MasterId, Permission.All);
 
-            return (CommandResponse.Ok, addon.Id);
+            return (CommandResponse.Ok, new InstallAddonCommandResponse
+            {
+                AddonId = addon.Id,
+                AddonKey = addon.Key,
+                AddonName = addon.Name,
+                AddonVersion = addon.Version
+            });
         }
 
         private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
@@ -136,6 +150,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Views!.Add(card);
+
+                gameEventLogger.Info("AddonInstall", $"Added view '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -171,6 +187,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Templates!.Add(card);
+
+                gameEventLogger.Info("AddonInstall", $"Added template '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -204,6 +222,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Actions!.Add(actionModel);
+
+                gameEventLogger.Info("AddonInstall", $"Added action '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -233,7 +253,10 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 // Bug fix: was not null-checking dbContext.Find result
                 var model = dbContext.Find<ResourceModel>(resourceID.Value)
                     ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
+
                 addon.Resources!.Add(model);
+                
+                gameEventLogger.Info("AddonInstall", $"Added resource '{resource.Name}' (Key: {addon.Key + "_" + resource.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -264,6 +287,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 var model = dbContext.Find<ResourceModel>(resourceID.Value)
                     ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
                 addon.Resources!.Add(model);
+
+                gameEventLogger.Info("AddonInstall", $"Added script '{script.Name}' (Key: {addon.Key + "_" + script.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -328,16 +353,27 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
             foreach (var dependency in addon.Dependencies)
             {
+                gameEventLogger.Info("AddonInstall", $"Checking dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
+
                 // Bug fix: was matching by name which can differ — now matches by key
                 var alreadyInstalled = game.Addons.Any(x => x.Key == dependency.Key && CompareVersions(x, dependency));
                 if (alreadyInstalled)
+                {
+                    gameEventLogger.Info("AddonInstall", $"Dependency '{dependency.Key}' (v{dependency.Version}) is already installed for game '{game.Name}'.");
                     continue;
+                }
 
                 if (request.AutoInstallDeps == false)
                     throw new InvalidOperationException($"Dependency '{dependency.Key}' (v{dependency.Version}) is not installed and auto-install is disabled.");
 
+                gameEventLogger.Info("AddonInstall", $"Auto-installing dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
+
                 // Bug fix: was passing version arg that no longer exists on the interface
                 var depFile = await addonFromUriProvider.GetAddonByKey(dependency.Key);
+                if (depFile == null)
+                    throw new InvalidOperationException($"Failed to fetch addon file for dependency '{dependency.Key}'.");
+
+                gameEventLogger.Info("AddonInstall", $"Fetched addon file for dependency '{dependency.Key}'.");
 
                 var (response, _) = await mediator.Send(new InstallAddonCommand
                 {

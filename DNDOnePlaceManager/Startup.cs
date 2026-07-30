@@ -63,6 +63,8 @@ namespace DNDOnePlaceManager
             });
 
             services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
+            services.AddScoped<DndOnePlaceManager.Application.Interfaces.IGameEventLogger,
+                               DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger>();
             services.AddSingleton<IMaterialsService, MaterialsService>();
             services.AddScoped<ILobbyService, LobbyService>();
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
