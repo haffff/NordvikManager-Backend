@@ -2,8 +2,12 @@ using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
+using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
+using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
+using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Controllers.Requests;
@@ -315,6 +319,153 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.Equal(CommandResponse.Ok, ok.Value);
+        }
+
+        // =========================================================================
+        // CreateResource
+        // =========================================================================
+
+        [Fact]
+        public async Task CreateResource_ReturnsOk_WithNewResourceId()
+        {
+            // Arrange
+            var newId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)newId));
+
+            // Act
+            var result = await _controller.CreateResource(Guid.NewGuid(),
+                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
+        }
+
+        [Fact]
+        public async Task CreateResource_ReturnsConflict_WhenKeyAlreadyExists()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.AlreadyExists, (Guid?)null));
+
+            // Act
+            var result = await _controller.CreateResource(Guid.NewGuid(),
+                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
+
+            // Assert
+            Assert.IsType<ConflictObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task CreateResource_ThrowsPermissionException_WhenPlayerMissingInDb()
+        {
+            // Arrange — CreateResourceCommandHandler throws PermissionException (403) when
+            // the player row backing the request can no longer be found.
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Read));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.CreateResource(Guid.NewGuid(), new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" }));
+        }
+
+        // =========================================================================
+        // UpdateResourceData
+        // =========================================================================
+
+        [Fact]
+        public async Task UpdateResourceData_ReturnsOk_WhenResourceExists()
+        {
+            // Arrange
+            var id = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)id));
+
+            // Act
+            var result = await _controller.UpdateResourceData(Guid.NewGuid(),
+                new UpdateResourceDataRequest { Id = id, Content = "aGVsbG8=" });
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsPermissionException_WhenNotOwner()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Edit));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsWrongArgumentsException_WhenContentNotBase64()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new WrongArgumentsException(nameof(UpdateResourceDataRequest.Content)));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "not-base64!!!" }));
+        }
+
+        // =========================================================================
+        // DeleteResourceData
+        // =========================================================================
+
+        [Fact]
+        public async Task DeleteResourceData_ReturnsOk_WhenResourceExists()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task DeleteResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        [Fact]
+        public async Task DeleteResourceData_ThrowsPermissionException_WhenNotOwner()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Edit));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
         }
     }
 }

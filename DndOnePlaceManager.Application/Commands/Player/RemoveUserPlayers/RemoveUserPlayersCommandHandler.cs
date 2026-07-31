@@ -1,4 +1,5 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -19,10 +20,7 @@ namespace DndOnePlaceManager.Application.Commands.Player.RemoveUserPlayers
                 .Where(p => p.CentralServerUserId == request.CentralUserId || p.User == request.CentralUserId)
                 .ToListAsync(cancellationToken);
 
-            if (players.Count == 0)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(players.Count > 0, nameof(request.CentralUserId));
 
             dbContext.Players.RemoveRange(players);
             dbContext.SaveChanges();

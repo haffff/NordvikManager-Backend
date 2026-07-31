@@ -104,47 +104,70 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private async Task<WebSocketCommand> HandleWebSocketCommand(WebSocketCommand message, PlayerDTO player)
         {
-            if (!CheckIfAllowed(message))
+            try
             {
-                message.Command = WebSocketCommandNames.ErrorGeneric;
-                message.OnlyToSender = true;
-                message.Result = WebSocketCommandNames.ResultNotAllowed;
-                return message;
-            }
-
-            message.PlayerId = player.Id;
-            message.GameId = GameId;
-
-            if (AllowedPassthroughCommands.Contains(message.Command))
-            {
-                message.Result = WebSocketCommandNames.ResultPass;
-                return message;
-            }
-
-            using var handlerScope = serviceScopeFactory.CreateScope();
-            var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
-
-            foreach (var item in WebSockerHandlers)
-            {
-                var res = await item.Handle(message, player);
-                if (res != null)
+                if (!CheckIfAllowed(message))
                 {
-                    // Bug fix: the original code set Result to the enum name then unconditionally
-                    // overwrote it with "Ok" on the very next line — only set "Ok" in the else branch.
-                    if (res != CommandResponse.Ok)
-                    {
-                        message.OnlyToSender = true;
-                        message.Result = Enum.GetName(typeof(CommandResponse), res);
-                    }
-                    else
-                    {
-                        message.Result = WebSocketCommandNames.ResultOk;
-                    }
-                    break;
+                    message.Command = WebSocketCommandNames.ErrorGeneric;
+                    message.OnlyToSender = true;
+                    message.Result = WebSocketCommandNames.ResultNotAllowed;
+                    return message;
                 }
-            }
 
-            return message;
+                message.PlayerId = player.Id;
+                message.GameId = GameId;
+
+                if (AllowedPassthroughCommands.Contains(message.Command))
+                {
+                    message.Result = WebSocketCommandNames.ResultPass;
+                    return message;
+                }
+
+                using var handlerScope = serviceScopeFactory.CreateScope();
+                var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
+
+                foreach (var item in WebSockerHandlers)
+                {
+                    var res = await item.Handle(message, player);
+                    if (res != null)
+                    {
+                        // Bug fix: the original code set Result to the enum name then unconditionally
+                        // overwrote it with "Ok" on the very next line — only set "Ok" in the else branch.
+                        if (res != CommandResponse.Ok)
+                        {
+                            message.OnlyToSender = true;
+                            message.Result = Enum.GetName(typeof(CommandResponse), res);
+                        }
+                        else
+                        {
+                            message.Result = WebSocketCommandNames.ResultOk;
+                        }
+                        break;
+                    }
+                }
+
+                return message;
+            }
+            catch (PermissionException e)
+            {
+                EventLog.Log("Error", "Permission", e.Message, player.Name);
+                return MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player);
+            }
+            catch (WrongArgumentsException e)
+            {
+                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                return MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player);
+            }
+            catch (ResourceNotFoundException e)
+            {
+                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                return MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player);
+            }
+            catch (Exception e)
+            {
+                EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
+                return MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player);
+            }
         }
 
         // Use OrdinalIgnoreCase to avoid a string allocation from .ToLower()
@@ -155,36 +178,22 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private async Task<WebSocketCommand> HandleWebSocketCommand(string message, PlayerDTO player)
         {
+            WebSocketCommand webSocketCommand;
             try
             {
                 JObject parsedMsg = JObject.Parse(message);
-                WebSocketCommand webSocketCommand = parsedMsg.ToObject<WebSocketCommand>();
-                return await HandleWebSocketCommand(webSocketCommand, player);
-            }
-            catch (PermissionException e)
-            {
-                EventLog.Log("Error", "Permission", e.Message, player.Name);
-                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player), player);
-                return null;
-            }
-            catch (WrongArgumentsException e)
-            {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
-                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player), player);
-                return null;
-            }
-            catch (ResourceNotFoundException e)
-            {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
-                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player), player);
-                return null;
+                webSocketCommand = parsedMsg.ToObject<WebSocketCommand>();
             }
             catch (Exception e)
             {
+                // Domain exceptions (PermissionException etc.) can't occur during parsing —
+                // those are handled by the WebSocketCommand-object overload this delegates to.
                 EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
                 SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player), player);
                 return null;
             }
+
+            return await HandleWebSocketCommand(webSocketCommand, player);
         }
 
         // Extracted helper — eliminates the four identical WebSocketCommand initialiser blocks

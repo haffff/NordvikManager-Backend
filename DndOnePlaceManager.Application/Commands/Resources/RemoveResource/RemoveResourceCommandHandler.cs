@@ -36,7 +36,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             if (image != null)
             {
                 dbContext.Remove(image);
-                var result = dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.WrongArguments;
+                Guard.Argument(dbContext.SaveChanges() > 0, nameof(request.ID));
 
                 var foundEntries = dbContext.TreeEntries.Where(x => x.TargetId == request.ID).ToList();
 
@@ -53,7 +53,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                     await mediator.Send(removeTreeEntryCommand);
                 }
 
-                return result;
+                return CommandResponse.Ok;
             }
 
             throw new ResourceNotFoundException("Resource", (object?)request.ID ?? request.Key);

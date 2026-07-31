@@ -1,4 +1,8 @@
 using DndOnePlaceManager.Application.Commands.Player.GetLocalPlayers;
+using DndOnePlaceManager.Application.Commands.Player.KickPlayer;
+using DndOnePlaceManager.Application.Commands.Player.RemoveUserPlayers;
+using DndOnePlaceManager.Application.Commands.Player.UnbanUser;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Models;
@@ -260,6 +264,118 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var result = await controller.Users(1, 10);
 
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // KickPlayer
+        // =========================================================================
+
+        [Fact]
+        public async Task KickPlayer_ReturnsUnauthorized_WhenNotAdmin()
+        {
+            var controller = CreateController(contextUser: RegularUser());
+            var result = await controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() });
+            Assert.IsType<UnauthorizedResult>(result);
+        }
+
+        [Fact]
+        public async Task KickPlayer_ReturnsOk_WhenPlayerExists()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<KickPlayerCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(DndOnePlaceManager.Domain.Enums.CommandResponse.Ok);
+            var lobby = new Mock<ILobbyService>();
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser(), lobbyMock: lobby);
+
+            var result = await controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() });
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task KickPlayer_ThrowsWrongArgumentsException_WhenPlayerMissing()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<KickPlayerCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new WrongArgumentsException(nameof(KickPlayerRequest.PlayerId)));
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() }));
+        }
+
+        // =========================================================================
+        // RemoveUser
+        // =========================================================================
+
+        [Fact]
+        public async Task RemoveUser_ReturnsUnauthorized_WhenNotAdmin()
+        {
+            var controller = CreateController(contextUser: RegularUser());
+            var result = await controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" });
+            Assert.IsType<UnauthorizedResult>(result);
+        }
+
+        [Fact]
+        public async Task RemoveUser_ReturnsOk_WhenPlayersExist()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<RemoveUserPlayersCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(DndOnePlaceManager.Domain.Enums.CommandResponse.Ok);
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            var result = await controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" });
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task RemoveUser_ThrowsWrongArgumentsException_WhenNoPlayersFound()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<RemoveUserPlayersCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new WrongArgumentsException(nameof(CentralUserRequest.CentralUserId)));
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" }));
+        }
+
+        // =========================================================================
+        // UnbanUser
+        // =========================================================================
+
+        [Fact]
+        public async Task UnbanUser_ReturnsUnauthorized_WhenNotAdmin()
+        {
+            var controller = CreateController(contextUser: RegularUser());
+            var result = await controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" });
+            Assert.IsType<UnauthorizedResult>(result);
+        }
+
+        [Fact]
+        public async Task UnbanUser_ReturnsOk_WhenBanExists()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<UnbanUserCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(DndOnePlaceManager.Domain.Enums.CommandResponse.Ok);
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            var result = await controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" });
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task UnbanUser_ThrowsWrongArgumentsException_WhenNoBanFound()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<UnbanUserCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new WrongArgumentsException(nameof(CentralUserRequest.CentralUserId)));
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" }));
         }
 
         // =========================================================================

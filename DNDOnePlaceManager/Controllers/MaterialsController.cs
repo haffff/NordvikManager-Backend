@@ -351,10 +351,6 @@ namespace DNDOnePlaceManager.Controllers
 
             if (resp == CommandResponse.AlreadyExists)
                 return Conflict(new { error = $"Resource with key '{request.Key}' already exists." });
-            if (resp == CommandResponse.NoResource)
-                return Forbid();
-            if (resp != CommandResponse.Ok || id == null)
-                return StatusCode(500, new { error = "Failed to create resource." });
 
             var lobby = _lobbyService.GetLobby(gameId);
             if (lobby != null)
@@ -395,7 +391,7 @@ namespace DNDOnePlaceManager.Controllers
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var (resp, id) = await mediator.Send(new UpdateResourceDataCommand
+            var (_, id) = await mediator.Send(new UpdateResourceDataCommand
             {
                 GameId  = gameId,
                 Player  = playerResult.Player,
@@ -405,14 +401,7 @@ namespace DNDOnePlaceManager.Controllers
                 MimeType = request.MimeType,
             });
 
-            return resp switch
-            {
-                CommandResponse.Ok            => Ok(new { id }),
-                CommandResponse.NoResource    => NotFound(new { error = "Resource not found." }),
-                CommandResponse.NoPermission  => StatusCode(403, new { error = "You do not own this resource." }),
-                CommandResponse.WrongArguments => BadRequest(new { error = "content must be a valid base64 string." }),
-                _                             => StatusCode(500, new { error = resp.ToString() }),
-            };
+            return Ok(new { id });
         }
 
         /// <summary>
@@ -432,7 +421,7 @@ namespace DNDOnePlaceManager.Controllers
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var resp = await mediator.Send(new DeleteResourceDataCommand
+            await mediator.Send(new DeleteResourceDataCommand
             {
                 GameId = gameId,
                 Player = playerResult.Player,
@@ -440,13 +429,7 @@ namespace DNDOnePlaceManager.Controllers
                 Id     = id,
             });
 
-            return resp switch
-            {
-                CommandResponse.Ok           => Ok(),
-                CommandResponse.NoResource   => NotFound(new { error = "Resource not found." }),
-                CommandResponse.NoPermission => StatusCode(403, new { error = "You do not own this resource." }),
-                _                            => StatusCode(500, new { error = resp.ToString() }),
-            };
+            return Ok();
         }
 
         /// <summary>

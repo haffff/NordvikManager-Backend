@@ -272,9 +272,8 @@ namespace DNDOnePlaceManager.Controllers
                 AddonSourceKey = body.Key,
             };
 
-            var (resp, addonInfo) = await mediator.Send(command);
-            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = resp.ToString() });            // get lobby and trigger Install hook
+            var (_, addonInfo) = await mediator.Send(command);
+            // get lobby and trigger Install hook
             var lobby = lobbyService.GetLobby(gameId);
             lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
             {
@@ -306,9 +305,7 @@ namespace DNDOnePlaceManager.Controllers
                 Reinstall = true,
             };
 
-            var (resp, _) = await mediator.Send(command);
-            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = resp.ToString() });
+            await mediator.Send(command);
 
             return Ok();
         }
@@ -362,9 +359,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonKey = addonGuid == null ? body.AddonId : null,
             };
 
-            var (response, deletedAddon) = await mediator.Send(command);
-            if (response != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = response.ToString() });
+            await mediator.Send(command);
 
             return Ok();
         }
@@ -389,9 +384,7 @@ namespace DNDOnePlaceManager.Controllers
                 Enabled = body.Enabled,
             };
 
-            var response = await mediator.Send(command);
-            if (response != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = response.ToString() });
+            await mediator.Send(command);
 
             return Ok();
         }
@@ -433,9 +426,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonFileName = body.FileName,
             };
 
-            var (resp, addonInfo) = await mediator.Send(command);
-            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-                return BadRequest(new { error = resp.ToString() });
+            var (_, addonInfo) = await mediator.Send(command);
 
             var lobby = lobbyService.GetLobby(gameId);
             lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
@@ -489,12 +480,7 @@ namespace DNDOnePlaceManager.Controllers
                 Id = id
             };
 
-            var (resp, dto) = await mediator.Send(getActionsCommand);
-
-            if (resp != DndOnePlaceManager.Domain.Enums.CommandResponse.Ok)
-            {
-                return BadRequest(resp);
-            }
+            var (_, dto) = await mediator.Send(getActionsCommand);
 
             return Ok(dto);
         }

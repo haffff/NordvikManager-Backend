@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -18,28 +19,16 @@ namespace DndOnePlaceManager.Application.Commands.Player.RemovePlayer
             await base.Handle(request, cancellationToken);
             var game = (await dbContext.Games.Include(x => x.Players)?.FirstOrDefaultAsync(x => x.Id == request.GameID));
 
-            if (game == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(game != null, nameof(request.GameID));
 
-            if (!game.HasPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit))
-            {
-                return CommandResponse.NoPermission;
-            }
+            game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 
-            var playerToDelete = game?.Players?.FirstOrDefault(x => x.Id == request.PlayerID);
+            var playerToDelete = game.Players?.FirstOrDefault(x => x.Id == request.PlayerID);
+            Guard.Argument(playerToDelete != null, nameof(request.PlayerID));
 
-            if (playerToDelete != null)
-            {
-                game.Players.Remove(playerToDelete);
-                dbContext.SaveChanges();
-                return CommandResponse.Ok;
-            }
-            else
-            {
-                return CommandResponse.WrongArguments;
-            }
+            game.Players.Remove(playerToDelete);
+            dbContext.SaveChanges();
+            return CommandResponse.Ok;
         }
     }
 }

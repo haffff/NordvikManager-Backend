@@ -2,6 +2,7 @@ using AutoMapper;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
@@ -18,41 +19,29 @@ namespace DndOnePlaceManager.Application.Commands.Properties
             // Update the property in the database
             var propertyEntity = await dbContext.Properties.FindAsync(request.Property.Id);
 
-            if (propertyEntity == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.NotFound(propertyEntity, "Property", request.Property.Id);
 
-            var type = propertyEntity?.EntityName?.ToEntityType(); ;
-            if (type != null)
-            {
-                var entity = dbContext.Find(type, propertyEntity.ParentID);
+            var type = propertyEntity.EntityName?.ToEntityType();
+            Guard.Argument(type != null, nameof(propertyEntity.EntityName));
 
-                if (entity == null)
-                {
-                    return CommandResponse.NoResource;
-                }
+            var entity = dbContext.Find(type, propertyEntity.ParentID);
+            Guard.NotFound(entity, type.Name, propertyEntity.ParentID);
 
-                if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Edit))
-                {
-                    return CommandResponse.NoPermission;
-                }
-                propertyEntity.Name = request.Property.Name;
-                var wasProtected = propertyEntity.IsProtected;
-                propertyEntity.IsProtected = request.Property.IsProtected;
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-                // When transitioning from protected → unprotected, wipe the stored value
-                // so secrets that were hidden can never be silently exposed after the flag change.
-                if (wasProtected && !request.Property.IsProtected)
-                    propertyEntity.Value = null;
-                else
-                    propertyEntity.Value = request.Property.Value;
+            propertyEntity.Name = request.Property.Name;
+            var wasProtected = propertyEntity.IsProtected;
+            propertyEntity.IsProtected = request.Property.IsProtected;
 
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return CommandResponse.Ok;
-            }
+            // When transitioning from protected → unprotected, wipe the stored value
+            // so secrets that were hidden can never be silently exposed after the flag change.
+            if (wasProtected && !request.Property.IsProtected)
+                propertyEntity.Value = null;
+            else
+                propertyEntity.Value = request.Property.Value;
 
-            return CommandResponse.WrongArguments;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return CommandResponse.Ok;
         }
     }
 }

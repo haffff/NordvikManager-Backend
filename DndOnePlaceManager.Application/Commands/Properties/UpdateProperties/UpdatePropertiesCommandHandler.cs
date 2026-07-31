@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -19,36 +20,22 @@ namespace DndOnePlaceManager.Application.Commands.Properties.UpdateProperties
             // Update the property in the database
 
             var firstProperty = request.Properties.FirstOrDefault();
+            Guard.Argument(firstProperty != null, nameof(request.Properties));
 
-            if (firstProperty == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            var type = firstProperty.EntityName?.ToEntityType();
+            Guard.Argument(type != null, nameof(firstProperty.EntityName));
 
-            var type = firstProperty?.EntityName?.ToEntityType();
-            if (type != null)
-            {
-                var entity = dbContext.Find(type, firstProperty.ParentID);
+            var entity = dbContext.Find(type, firstProperty.ParentID);
+            Guard.NotFound(entity, type.Name, firstProperty.ParentID);
 
-                if (entity == null)
-                {
-                    return CommandResponse.NoResource;
-                }
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-                if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Edit))
-                {
-                    return CommandResponse.NoPermission;
-                }
+            var preparedProperties = request.Properties.Select(x => mapper.Map<PropertyModel>(x));
+            preparedProperties = preparedProperties.DistinctBy(x => x.Id);
+            dbContext.UpdateRange(preparedProperties);
 
-                var preparedProperties = request.Properties.Select(x => mapper.Map<PropertyModel>(x));
-                preparedProperties = preparedProperties.DistinctBy(x => x.Id);
-                dbContext.UpdateRange(preparedProperties);
-
-                await dbContext.SaveChangesAsync(cancellationToken);
-                return CommandResponse.Ok;
-            }
-
-            return CommandResponse.WrongArguments;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return CommandResponse.Ok;
         }
     }
 }

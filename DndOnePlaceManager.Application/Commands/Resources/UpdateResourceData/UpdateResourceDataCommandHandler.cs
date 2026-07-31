@@ -1,5 +1,7 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -26,8 +28,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
                 resource = await dbContext.Resources.FirstOrDefaultAsync(
                     r => r.GameId == request.GameId && r.Id == request.Id.Value, cancellationToken);
 
-            if (resource == null)
-                return (CommandResponse.NoResource, null);
+            Guard.NotFound(resource, "Resource", (object?)request.Key ?? request.Id);
 
             var canWrite = resource.PlayerId == request.Player.Id
                 || (request.Player.IsOwner ?? false)
@@ -35,7 +36,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
                     && (request.Player.Permission.Value & Permission.Edit) != 0);
 
             if (!canWrite)
-                return (CommandResponse.NoPermission, null);
+                throw new PermissionException(Permission.Edit);
 
             byte[] data;
             try
@@ -46,7 +47,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
             }
             catch
             {
-                return (CommandResponse.WrongArguments, null);
+                throw new WrongArgumentsException(nameof(request.Content));
             }
 
             resource.Data = data;

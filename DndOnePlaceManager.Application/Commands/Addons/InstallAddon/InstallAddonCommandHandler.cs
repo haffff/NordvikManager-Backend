@@ -6,6 +6,7 @@ using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Interfaces;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -48,12 +49,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 .Include(x => x.Properties)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
-            // Bug fix: was crashing with NullReferenceException when game not found
-            if (game == null)
-                return (CommandResponse.NoResource, new InstallAddonCommandResponse());
+            Guard.NotFound(game, "Game", request.GameID);
 
-            if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-                return (CommandResponse.NoPermission, new InstallAddonCommandResponse());
+            game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             // Bug fix: both null would silently fall through to ZipArchive(null) crash
             if (request.AddonFile == null && request.AddonSourceKey == null)
@@ -375,16 +373,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
                 gameEventLogger.Info("AddonInstall", $"Fetched addon file for dependency '{dependency.Key}'.");
 
-                var (response, _) = await mediator.Send(new InstallAddonCommand
+                await mediator.Send(new InstallAddonCommand
                 {
                     AddonFile = depFile,
                     AutoInstallDeps = true,
                     GameID = request.GameID,
                     Player = request.Player
                 });
-
-                if (response != CommandResponse.Ok)
-                    throw new InvalidOperationException($"Failed to install dependency '{dependency.Key}'. Response: {response}");
             }
         }
 

@@ -1,5 +1,6 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -15,12 +16,10 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         public override async Task<CommandResponse> Handle(UpdateBattleMapCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            if (request.Player == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(request.Player != null, nameof(request.Player));
 
             var model = dbContext.BattleMaps.FirstOrDefault(x => x.Id == request.Dto.Id);
+            Guard.NotFound(model, "BattleMap", request.Dto.Id);
 
             model.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 

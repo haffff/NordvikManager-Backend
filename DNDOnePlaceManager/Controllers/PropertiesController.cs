@@ -148,10 +148,6 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             var result = await mediator.Send(addPropertiesCmd);
-            if (result != CommandResponse.Ok)
-            {
-                return BadRequest(new { result = result });
-            }
             return Ok(new { result = result });
         }
 
@@ -181,11 +177,6 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             var result = await mediator.Send(updatePropertiesCommand);
-
-            if (result != CommandResponse.Ok)
-            {
-                return BadRequest(new { result = result });
-            }
 
             return Ok(new { result = result });
         }

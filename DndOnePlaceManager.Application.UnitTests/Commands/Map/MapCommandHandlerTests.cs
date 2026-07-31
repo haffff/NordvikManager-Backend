@@ -8,6 +8,7 @@ using DndOnePlaceManager.Application.Commands.Map.RemoveMap;
 using DndOnePlaceManager.Application.Commands.Map.UpdateMap;
 using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
@@ -196,7 +197,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
         }
 
         [Fact]
-        public async Task Handle_UnknownGameId_ReturnsWrongArguments()
+        public async Task Handle_UnknownGameId_ThrowsWrongArgumentsException()
         {
             // Arrange
             var cmd = new AddMapCommand
@@ -205,12 +206,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
                 Player = Player()
             };
 
-            // Act
-            var (response, mapId) = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
-            Assert.Equal(CommandResponse.WrongArguments, response);
-            Assert.Equal(Guid.Empty, mapId);
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
         [Fact]

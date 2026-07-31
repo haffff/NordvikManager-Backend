@@ -2,6 +2,7 @@ using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
@@ -35,8 +36,10 @@ namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
 
             var player = await dbContext.Players.FirstOrDefaultAsync(
                 p => p.Id == request.Player.Id, cancellationToken);
+            // Player identity can't be confirmed — treat as a permission failure (403),
+            // not a resource-not-found (404): the resource being created doesn't exist yet.
             if (player == null)
-                return (CommandResponse.NoResource, null);
+                throw new PermissionException(Permission.Read);
 
             var mimeType = request.MimeType?.ToEnumUsingDescriptionAttribute<MimeType>() ?? MimeType.None;
 

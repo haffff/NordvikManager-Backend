@@ -4,6 +4,7 @@ using DndOnePlaceManager.Application.Commands.Properties.GetProperties;
 using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.Commands.Properties.UpdateProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
 using DNDOnePlaceManager.Domain.Entities.Auth;
@@ -169,17 +170,15 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task AddBulkProperties_ReturnsBadRequest_WhenCommandResponseIsNotOk()
+        public async Task AddBulkProperties_ThrowsWrongArgumentsException_WhenPropertiesInvalid()
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<AddPropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.WrongArguments);
+                     .ThrowsAsync(new WrongArgumentsException(nameof(AddPropertiesCommand.Properties)));
 
-            // Act
-            var result = await _controller.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                _controller.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()));
         }
 
         [Fact]
@@ -214,17 +213,15 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task UpdateBulkProperties_ReturnsBadRequest_WhenCommandResponseIsNotOk()
+        public async Task UpdateBulkProperties_ThrowsWrongArgumentsException_WhenPropertiesInvalid()
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.WrongArguments);
+                     .ThrowsAsync(new WrongArgumentsException(nameof(UpdatePropertiesCommand.Properties)));
 
-            // Act
-            var result = await _controller.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                _controller.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()));
         }
 
         [Fact]

@@ -1,4 +1,5 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -18,10 +19,7 @@ namespace DndOnePlaceManager.Application.Commands.Player.UnbanUser
             var banned = await dbContext.BannedUsers
                 .FirstOrDefaultAsync(b => b.CentralServerUserId == request.CentralUserId, cancellationToken);
 
-            if (banned == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(banned != null, nameof(request.CentralUserId));
 
             dbContext.BannedUsers.Remove(banned);
             dbContext.SaveChanges();

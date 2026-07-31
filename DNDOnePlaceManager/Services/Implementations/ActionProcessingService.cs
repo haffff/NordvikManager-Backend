@@ -77,29 +77,45 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task CallHookAsync(Hook hook, HookArgs.HookArgs hookArg)
         {
-            using var scope = serviceScopeFactory.CreateScope();
-            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            try
+            {
+                using var scope = serviceScopeFactory.CreateScope();
+                var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            var actions = await GetActionsAsync(mediator);
-            var actList = actions.Where(x => x.Hook == hook && x.IsEnabled).ToList();
+                var actions = await GetActionsAsync(mediator);
+                var actList = actions.Where(x => x.Hook == hook && x.IsEnabled).ToList();
 
-            foreach (var action in actList)
-                await ExecActionAsync(action, hookArg, null, mediator);
+                foreach (var action in actList)
+                    await ExecActionAsync(action, hookArg, null, mediator);
+            }
+            catch (Exception e)
+            {
+                GameLobby?.EventLog?.Log("Error", "Action", $"Hook '{hook}' failed: {e.Message}",
+                    details: new { hook, exceptionType = e.GetType().Name });
+            }
         }
 
         public async Task CommandToHook(WebSocketCommand webSocketCommand)
         {
-            if (commandsToHooks.TryGetValue(webSocketCommand.Command, out var hook))
+            try
             {
-                var player = webSocketCommand.PlayerId.HasValue
-                    ? GameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == webSocketCommand.PlayerId)
-                    : null;
-                await CallHookAsync(hook, new HookArgs.CommandHookArgs()
+                if (commandsToHooks.TryGetValue(webSocketCommand.Command, out var hook))
                 {
-                    Command = webSocketCommand,
-                    Player = player,
-                    Data = webSocketCommand.Data as JObject,
-                });
+                    var player = webSocketCommand.PlayerId.HasValue
+                        ? GameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == webSocketCommand.PlayerId)
+                        : null;
+                    await CallHookAsync(hook, new HookArgs.CommandHookArgs()
+                    {
+                        Command = webSocketCommand,
+                        Player = player,
+                        Data = webSocketCommand.Data as JObject,
+                    });
+                }
+            }
+            catch (Exception e)
+            {
+                GameLobby?.EventLog?.Log("Error", "Action", $"CommandToHook for '{webSocketCommand.Command}' failed: {e.Message}",
+                    details: new { command = webSocketCommand.Command, exceptionType = e.GetType().Name });
             }
         }
 
@@ -236,7 +252,18 @@ namespace DNDOnePlaceManager.Services.Implementations
             using var scope = serviceScopeFactory.CreateScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            var allActions = await GetActionsAsync(mediator);
+            List<ActionDto> allActions;
+            try
+            {
+                allActions = await GetActionsAsync(mediator);
+            }
+            catch (Exception e)
+            {
+                GameLobby?.EventLog?.Log("Error", "Action", $"Failed to resolve action '{action}': {e.Message}",
+                    details: new { action, exceptionType = e.GetType().Name });
+                return;
+            }
+
             ActionDto foundActionDto;
             if (action != null && action.Contains('/'))
             {

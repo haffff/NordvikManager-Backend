@@ -80,10 +80,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
                 return CreateFirstItem(game, treeEntry, affectedTreeEntries, parentId);
             }
 
-            if (nextModel == null && next != null)
-            {
-                return (CommandResponse.WrongArguments, new List<TreeEntryDto>());
-            }
+            Guard.Argument(nextModel != null, nameof(request.TreeEntryDto.Next));
 
             if (parentId == null && next != null)
             {
