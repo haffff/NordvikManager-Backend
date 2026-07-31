@@ -1,6 +1,4 @@
 ﻿using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
-using DndOnePlaceManager.Application.Commands.Map.GetMap;
-using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;

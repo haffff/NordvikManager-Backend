@@ -11,7 +11,6 @@ using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Services;
-using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
