@@ -11,13 +11,13 @@ using MediatR;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
 {
-    public class RemovePropertyCommandHandler : HandlerBase<RemovePropertyCommand, CommandResponse>
+    public class RemovePropertyCommandHandler : HandlerBase<RemovePropertyCommand, (CommandResponse, PropertyDTO)>
     {
         public RemovePropertyCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
 
-        public override async Task<CommandResponse> Handle(RemovePropertyCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, PropertyDTO)> Handle(RemovePropertyCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
             // Retrieve the property from the database
@@ -34,11 +34,14 @@ namespace DndOnePlaceManager.Application.Commands.Properties
 
             (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
+            // Capture the DTO before deletion — the broadcast needs to describe what was removed.
+            var dto = mapper.Map<PropertyDTO>(property);
+
             // Remove the property from the database
             dbContext.Properties.Remove(property);
             dbContext.SaveChanges();
 
-            return CommandResponse.Ok;
+            return (CommandResponse.Ok, dto);
         }
     }
 }

@@ -32,5 +32,18 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [ShowIf("PrintToChat", "true")]
         [Description("Border colour of the chat card (CSS colour, e.g. '#e94560'). Leave empty for default.")]
         public string? ChatBorderColor { get; set; }
+
+        [ShowIf("PrintToChat", "true")]
+        [Description("Name of an action to offer as a follow-up button under the roll (e.g. 'dnd5e.roll_damage'). Leave empty for no button.")]
+        public string? FollowUpActionName { get; set; }
+
+        [ShowIf("PrintToChat", "true")]
+        [Description("Label shown on the follow-up button. Supports %variable% substitution.")]
+        public string? FollowUpActionLabel { get; set; }
+
+        [ShowIf("PrintToChat", "true")]
+        [UIType("textarea")]
+        [Description("Arguments baked into the follow-up button, sent as-is when clicked. One 'name=value' per line, supports %variable% substitution. Example:\n  damage=%damage%\n  damageType=%damageType%")]
+        public string? FollowUpActionArgs { get; set; }
     }
 }

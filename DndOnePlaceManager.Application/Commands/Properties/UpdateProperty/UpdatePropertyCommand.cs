@@ -4,7 +4,7 @@ using MediatR;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
 {
-    public class UpdatePropertyCommand : CommandBase<CommandResponse>
+    public class UpdatePropertyCommand : CommandBase<(CommandResponse, PropertyDTO)>
     {
         public PlayerDTO Player { get; set; }
         public PropertyDTO Property { get; set; }

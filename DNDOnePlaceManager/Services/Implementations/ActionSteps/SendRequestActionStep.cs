@@ -66,7 +66,20 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                     : null,
             };
 
-            var result = await mediator.Send(command);
+            ProxyCommandResult result;
+            try
+            {
+                result = await mediator.Send(command);
+            }
+            catch (Exception ex)
+            {
+                // ProxyCommandHandler already reports HTTP-level failures (4xx/5xx) without
+                // throwing. This only catches network-level failures (DNS, connection refused,
+                // timeout) so downstream steps (e.g. an If branching on Output.Success) still
+                // run instead of the whole action silently faulting with no step ever observing
+                // the failure.
+                result = new ProxyCommandResult { Success = false, StatusCode = 0, ResponseBody = ex.Message };
+            }
 
             variables[stepData.Output] = result;
         }

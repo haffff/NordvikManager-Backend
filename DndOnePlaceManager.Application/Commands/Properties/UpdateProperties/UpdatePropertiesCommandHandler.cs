@@ -22,16 +22,18 @@ namespace DndOnePlaceManager.Application.Commands.Properties.UpdateProperties
             var firstProperty = request.Properties.FirstOrDefault();
             Guard.Argument(firstProperty != null, nameof(request.Properties));
 
-            var type = firstProperty.EntityName?.ToEntityType();
-            Guard.Argument(type != null, nameof(firstProperty.EntityName));
+            var type = await dbContext.DetectEntityTypeAsync((Guid)firstProperty.ParentID);
+            Guard.NotFound(type, "Entity", firstProperty.ParentID);
 
             var entity = dbContext.Find(type, firstProperty.ParentID);
             Guard.NotFound(entity, type.Name, firstProperty.ParentID);
 
             (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-            var preparedProperties = request.Properties.Select(x => mapper.Map<PropertyModel>(x));
-            preparedProperties = preparedProperties.DistinctBy(x => x.Id);
+            var preparedProperties = request.Properties.Select(x => mapper.Map<PropertyModel>(x))
+                .DistinctBy(x => x.Id)
+                .ToList();
+            foreach (var property in preparedProperties) property.EntityName = type.Name;
             dbContext.UpdateRange(preparedProperties);
 
             await dbContext.SaveChangesAsync(cancellationToken);

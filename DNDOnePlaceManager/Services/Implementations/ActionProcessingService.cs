@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperties;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
+using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -251,6 +252,7 @@ namespace DNDOnePlaceManager.Services.Implementations
         {
             using var scope = serviceScopeFactory.CreateScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
 
             List<ActionDto> allActions;
             try
@@ -277,8 +279,56 @@ namespace DNDOnePlaceManager.Services.Implementations
                 foundActionDto = allActions.FirstOrDefault(x => x.Name == action);
             }
 
-            if (foundActionDto != null)
-                await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator);
+            if (foundActionDto == null)
+                return;
+
+            // This overload is reached whenever an action is looked up BY NAME — the only
+            // caller that puts an attacker-controlled name here is GameLobby's CmdExecuteAction
+            // handler, which forwards whatever action name a connected client sent over the
+            // socket. Hook-triggered and nested (ExecuteAction step) invocations either call the
+            // ActionDto overload directly or inherit an already-checked Player from
+            // sharedVariables, so gating here — instead of inside the ActionDto overload —
+            // enforces the boundary exactly where untrusted input enters without re-checking
+            // (and breaking) system/hook-triggered chains that have no live requesting player.
+            if (foundActionDto.GmPermission.HasValue &&
+                hookArg is HookArgs.CommandHookArgs cmdArgs &&
+                cmdArgs.Player != null)
+            {
+                // InstallAddonCommandHandler grants game.MasterId this exact permission on the
+                // action entity itself when GmPermission is set from an addon's JSON definition —
+                // that's the per-action ACL row this check is meant to honor. As a fallback (for
+                // actions that predate that grant, or were never round-tripped through an
+                // install/update path that populates it) we accept the game's master directly,
+                // rather than a generic permission check that any other Permission.All grant on
+                // the game entity would also satisfy.
+                var hasPermission = false;
+
+                if (foundActionDto.Id.HasValue)
+                {
+                    hasPermission = await mediator.Send(new CheckPermissionsCommand
+                    {
+                        Player = cmdArgs.Player,
+                        EntityId = foundActionDto.Id.Value,
+                        RequiredPermission = foundActionDto.GmPermission.Value,
+                    });
+                }
+
+                if (!hasPermission)
+                {
+                    var game = await dbContext.Games.FindAsync(GameLobby.GameId);
+                    hasPermission = game != null && cmdArgs.Player.Id == game.MasterId;
+                }
+
+                if (!hasPermission)
+                {
+                    GameLobby?.EventLog?.Log("Warning", "Permission",
+                        $"Player '{cmdArgs.Player.Name}' attempted to execute action '{action}' without sufficient permission.",
+                        cmdArgs.Player.Name);
+                    return;
+                }
+            }
+
+            await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator);
         }
         private async Task<WebSocketCommand> DebugLog(IMediator mediator, object data, bool expectInput = true, ActionRunEntry entry = null)
         {

@@ -58,10 +58,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Player = gameLobby.SystemPlayer,
             };
 
-            var (resp, property) = await mediator.Send(getCmd);
-
-            if (property == null && resp == CommandResponse.NoResource)
+            PropertyDTO property;
+            try
             {
+                (_, property) = await mediator.Send(getCmd);
+            }
+            catch (ResourceNotFoundException)
+            {
+                // Property doesn't exist yet for this parent — create it.
                 await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
                 {
                     Command = "property_add",
@@ -76,15 +80,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 return;
             }
 
-            if (resp == CommandResponse.Ok)
+            property.Value = stepData.PropertyValue;
+            await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
             {
-                property.Value = stepData.PropertyValue;
-                await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
-                {
-                    Command = "property_update",
-                    Data = JObject.FromObject(property)
-                });
-            }
+                Command = "property_update",
+                Data = JObject.FromObject(property)
+            });
         }
 
         private static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id, Guid gameId)

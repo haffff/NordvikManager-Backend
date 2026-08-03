@@ -1,4 +1,5 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Application.Extension;
@@ -7,13 +8,13 @@ using DndOnePlaceManager.Domain.Entities.Interfaces;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
 {
-    public class UpdatePropertyCommandHandler : HandlerBase<UpdatePropertyCommand, CommandResponse>
+    public class UpdatePropertyCommandHandler : HandlerBase<UpdatePropertyCommand, (CommandResponse, PropertyDTO)>
     {
         public UpdatePropertyCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
 
-        public override async Task<CommandResponse> Handle(UpdatePropertyCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, PropertyDTO)> Handle(UpdatePropertyCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
             // Update the property in the database
@@ -41,7 +42,7 @@ namespace DndOnePlaceManager.Application.Commands.Properties
                 propertyEntity.Value = request.Property.Value;
 
             await dbContext.SaveChangesAsync(cancellationToken);
-            return CommandResponse.Ok;
+            return (CommandResponse.Ok, mapper.Map<PropertyDTO>(propertyEntity));
         }
     }
 }
