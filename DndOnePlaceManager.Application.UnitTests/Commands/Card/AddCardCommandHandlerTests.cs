@@ -123,8 +123,15 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
         }
 
         [Fact]
-        public async Task Handle_DtoOwnerDifferentFromPlayer_GrantsEditPermissionToOwner()
+        public async Task Handle_DtoOwnerDifferentFromPlayer_GrantsEditAndReadPermissionToOwner()
         {
+            // Regression test for a real bug: this used to grant Permission.Edit only.
+            // Permission is a bit-flag enum (Read=1, Edit=8, ...) — Edit does not imply
+            // Read, and GetPermissionFromDB matches a per-player row before ever falling
+            // back to the generic "everyone gets Read" row SetGlobalPermission() already
+            // creates — so an Edit-only grant made the owner unable to see their own
+            // newly-created card in GetAllCardsCommandHandler's Read-filtered list.
+            // Deliberately not Permission.All — delete rights stay a GM decision.
             var game = SeedGameWithCards();
             var ownerId = Guid.NewGuid();
             var cmd = new AddCardCommand
@@ -136,7 +143,30 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
 
             await Handler().Handle(cmd, CancellationToken.None);
 
-            PermissionsMock.Verify(p => p.SetPermissions(ownerId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), Permission.Edit), Times.Once);
+            PermissionsMock.Verify(p => p.SetPermissions(ownerId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), Permission.Edit | Permission.Read), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_OwnerIsGameMaster_GrantsFullPermissionIncludingRemove()
+        {
+            // When the card's owner is the GM themselves, they get full rights (they can
+            // already delete anything as GM) — unlike a regular player owner, who only
+            // gets Edit+Read (see the test above).
+            var game = SeedGameWithCards();
+            var masterId = Guid.NewGuid();
+            game.MasterId = masterId;
+            Db.SaveChanges();
+
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Owner = masterId, Properties = new List<PropertyDTO>() },
+            };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            PermissionsMock.Verify(p => p.SetPermissions(masterId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), Permission.All), Times.Once);
         }
     }
 }
