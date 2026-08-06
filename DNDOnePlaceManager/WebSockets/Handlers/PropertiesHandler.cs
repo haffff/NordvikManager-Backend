@@ -19,10 +19,10 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
         // (see TreeHandler.cs) — Newtonsoft has no ambient camelCase default in this
         // codebase, so casing has to be chosen explicitly at each call site or PascalCase
         // C# field names (e.g. ParentID) leak onto the wire unchanged.
-        private static readonly JsonSerializer _camelSerializer = new JsonSerializer
+        private static readonly System.Threading.ThreadLocal<JsonSerializer> _camelSerializer = new(() => new JsonSerializer
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver()
-        };
+        });
 
         private IMediator mediator;
 
