@@ -23,12 +23,6 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             // key can legitimately exist under multiple games. Checking GameId only
             // after picking an arbitrary matching row meant a stale/other game's row
             // could shadow the current game's own resource and produce a false 404.
-            // GameId must be part of the predicate itself, not a filter applied after
-            // FirstOrDefaultAsync — a resource Key is only unique per-game (see
-            // SetResourceCommandHandler's (GameId, Key) existence check), so the same
-            // key can legitimately exist under multiple games. Checking GameId only
-            // after picking an arbitrary matching row meant a stale/other game's row
-            // could shadow the current game's own resource and produce a false 404.
             var image = await dbContext.Resources.FirstOrDefaultAsync(x =>
                 x.GameId == request.GameID &&
                 (x.Id == request.ID || (x.Key != null && request.Key != null && x.Key == request.Key)));
