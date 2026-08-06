@@ -64,7 +64,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
             var (response, added) = await mediator.Send(addPropertyCommand);
             if (added != null)
-                parsedMsg.Data = JObject.FromObject(added, _camelSerializer);
+                parsedMsg.Data = JObject.FromObject(added, _camelSerializer.Value);
             return response;
         }
 
