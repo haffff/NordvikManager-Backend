@@ -20,55 +20,10 @@ using Moq;
 namespace DndOnePlaceManager.Application.UnitTests.Commands.TreeEntry
 {
     // =========================================================================
-    // Shared test base
+    // Shared test base — TreeEntry-specific seeding on top of HandlerTestBase
     // =========================================================================
-    public abstract class TreeHandlerTestBase : IDisposable
+    public abstract class TreeHandlerTestBase : HandlerTestBase
     {
-        protected readonly DndOneContext Db;
-        protected readonly IMapper Mapper;
-        protected readonly Mock<IPermissionService> PermissionsMock;
-        protected readonly Guid PlayerId = Guid.NewGuid();
-        private readonly string _dbName = Guid.NewGuid().ToString();
-
-        protected TreeHandlerTestBase()
-        {
-            var options = new DbContextOptionsBuilder<DndOneContext>()
-                .UseInMemoryDatabase(_dbName)
-                .Options;
-            Db = new DndOneContext(options);
-
-            PermissionsMock = new Mock<IPermissionService>();
-            PermissionsMock.Setup(p => p.CheckIfHasPermissions(It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>())).Returns(true);
-            PermissionsMock.Setup(p => p.GetPermission(It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<bool>())).Returns(Permission.All);
-            PermissionsMock.Setup(p => p.SetGenericPermissions(It.IsAny<IEntity>(), It.IsAny<Permission>())).Returns(true);
-            PermissionsMock.Setup(p => p.SetPermissions(It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission?>())).Returns(true);
-            PermissionsMock.Setup(p => p.UnsetPermission(It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>())).Returns(true);
-
-            var services = new ServiceCollection();
-            services.AddLogging();
-            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
-            services.AddSingleton(PermissionsMock.Object);
-            var sp = services.BuildServiceProvider();
-
-            Mapper = sp.GetRequiredService<IMapper>();
-            PermissionsExtension.ServiceProvider = sp;
-        }
-
-        protected GameModel BuildGame(Guid? gameId = null)
-        {
-            var game = new GameModel
-            {
-                Id = gameId ?? Guid.NewGuid(),
-                Name = "Test Game",
-                SystemPlayerId = Guid.NewGuid(),
-                Maps = new List<MapModel>(),
-                Players = new List<PlayerModel> { new PlayerModel { Id = PlayerId, Name = "Tester" } },
-            };
-            Db.Games.Add(game);
-            Db.SaveChanges();
-            return game;
-        }
-
         // Seeds a tree entry via the real handler so EF tracking is never bypassed.
         // The `head` parameter is a hint only — AutoConnect computes the actual head flag.
         protected async Task<TreeEntryModel> BuildTreeEntry(GameModel game, string name,
@@ -98,10 +53,6 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TreeEntry
                 .Include(x => x.Next)
                 .First(x => x.TargetId == tid);
         }
-
-        protected PlayerDTO Player() => new PlayerDTO { Id = PlayerId, Name = "Tester" };
-
-        public void Dispose() => Db.Dispose();
     }
 
     // =========================================================================

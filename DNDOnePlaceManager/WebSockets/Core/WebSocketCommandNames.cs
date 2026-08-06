@@ -1,6 +1,4 @@
-﻿using DndOnePlaceManager.Domain.Enums;
-
-namespace DNDOnePlaceManager.WebSockets.Core
+﻿namespace DNDOnePlaceManager.WebSockets.Core
 {
     public static class WebSocketCommandNames
     {

@@ -28,11 +28,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             var id = await mediator.Send(new SetResourceCommand
             {
-                GameId = gameLobby.GameId,
-                Player = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
-                Key    = stepData.Key,
-                Name   = stepData.Name ?? stepData.Key,
-                Data   = Encoding.UTF8.GetBytes(stepData.Content ?? string.Empty),
+                GameId       = gameLobby.GameId,
+                Player       = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
+                Key          = stepData.Key,
+                Name         = stepData.Name ?? stepData.Key,
+                Data         = Encoding.UTF8.GetBytes(stepData.Content ?? string.Empty),
+                MimeType     = stepData.MimeType,
+                ParentFolder = stepData.FolderId,
             });
 
             if (!string.IsNullOrWhiteSpace(stepData.OutputVariable))

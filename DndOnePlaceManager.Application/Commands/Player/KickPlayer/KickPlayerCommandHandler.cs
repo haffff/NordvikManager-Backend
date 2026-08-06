@@ -1,5 +1,5 @@
 using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -18,10 +18,7 @@ namespace DndOnePlaceManager.Application.Commands.Player.KickPlayer
 
             var player = await dbContext.Players.FirstOrDefaultAsync(p => p.Id == request.PlayerId, cancellationToken);
 
-            if (player == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(player != null, nameof(request.PlayerId));
 
             dbContext.Players.Remove(player);
             dbContext.SaveChanges();

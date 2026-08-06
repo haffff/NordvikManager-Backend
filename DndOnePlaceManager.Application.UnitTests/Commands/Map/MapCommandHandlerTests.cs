@@ -1,5 +1,3 @@
-using AutoMapper;
-using DndOnePlaceManager.Application;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Map.AddMap;
 using DndOnePlaceManager.Application.Commands.Map.GetFlatMaps;
@@ -8,105 +6,21 @@ using DndOnePlaceManager.Application.Commands.Map.RemoveMap;
 using DndOnePlaceManager.Application.Commands.Map.UpdateMap;
 using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
-using DndOnePlaceManager.Infrastructure.Interfaces;
-using DNDOnePlaceManager.Data.Contexts;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 {
     // =========================================================================
-    // Shared base — one fresh InMemory DB + real AutoMapper + permissive
-    //               IPermissionService per test class instance
-    // =========================================================================
-    public abstract class MapHandlerTestBase : IDisposable
-    {
-        protected readonly DndOneContext Db;
-        protected readonly IMapper Mapper;
-        protected readonly Mock<IPermissionService> PermissionsMock;
-        protected readonly Guid PlayerId = Guid.NewGuid();
-        private readonly string _dbName = Guid.NewGuid().ToString();
-        protected IServiceProvider TestServiceProvider { get; private set; }
-
-        protected MapHandlerTestBase()
-        {
-            // Fresh InMemory database per test-class instance
-            var options = new DbContextOptionsBuilder<DndOneContext>()
-                .UseInMemoryDatabase(_dbName)
-                .Options;
-            Db = new DndOneContext(options);
-
-            // IPermissionService that always grants every permission
-            PermissionsMock = new Mock<IPermissionService>();
-            PermissionsMock.Setup(p => p.CheckIfHasPermissions(
-                    It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
-                .Returns(true);
-            PermissionsMock.Setup(p => p.GetPermission(
-                    It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<bool>()))
-                .Returns(Permission.All);
-            PermissionsMock.Setup(p => p.SetGenericPermissions(
-                    It.IsAny<IEntity>(), It.IsAny<Permission>()))
-                .Returns(true);
-            PermissionsMock.Setup(p => p.SetPermissions(
-                    It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission?>()))
-                .Returns(true);
-            PermissionsMock.Setup(p => p.UnsetPermission(
-                    It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
-                .Returns(true);
-
-            // Wire AutoMapper (v16 requires DI) and PermissionsExtension service locator
-            var services = new ServiceCollection();
-            services.AddLogging();
-            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
-            services.AddSingleton(PermissionsMock.Object);
-            var sp = services.BuildServiceProvider();
-            TestServiceProvider = sp;
-            Mapper = sp.GetRequiredService<IMapper>();
-            PermissionsExtension.ServiceProvider = sp;
-        }
-
-        // Build a game that already has the player in its Players list so that
-        // GenericAddHandler.CheckPermissions / ThrowIfNoPermission pass.
-        protected GameModel BuildGame(Guid? gameId = null)
-        {
-            var id = gameId ?? Guid.NewGuid();
-            var game = new GameModel
-            {
-                Id = id,
-                Name = "Test Game",
-                SystemPlayerId = Guid.NewGuid(),
-                Maps = new List<MapModel>(),
-                Players = new List<PlayerModel>
-                {
-                    new PlayerModel { Id = PlayerId, Name = "Tester" }
-                },
-            };
-            Db.Games.Add(game);
-            Db.SaveChanges();
-            return game;
-        }
-
-        protected PlayerDTO Player() => new PlayerDTO { Id = PlayerId, Name = "Tester" };
-
-        protected DndOneContext SeedContext() => new DndOneContext(
-            new DbContextOptionsBuilder<DndOneContext>()
-                .UseInMemoryDatabase(_dbName)
-                .Options);
-
-        public void Dispose() => Db.Dispose();
-    }
-
-    // =========================================================================
     // AddMapCommandHandler
     // =========================================================================
-    public class AddMapCommandHandlerTests : MapHandlerTestBase
+    public class AddMapCommandHandlerTests : HandlerTestBase
     {
         private readonly Mock<IMediator> _mediator = new();
 
@@ -196,7 +110,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
         }
 
         [Fact]
-        public async Task Handle_UnknownGameId_ReturnsWrongArguments()
+        public async Task Handle_UnknownGameId_ThrowsWrongArgumentsException()
         {
             // Arrange
             var cmd = new AddMapCommand
@@ -205,12 +119,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
                 Player = Player()
             };
 
-            // Act
-            var (response, mapId) = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
-            Assert.Equal(CommandResponse.WrongArguments, response);
-            Assert.Equal(Guid.Empty, mapId);
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
         [Fact]
@@ -233,7 +143,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // GetMapCommandHandler
     // =========================================================================
-    public class GetMapCommandHandlerTests : MapHandlerTestBase
+    public class GetMapCommandHandlerTests : HandlerTestBase
     {
         private readonly Mock<IPermissionService> _permSvc;
 
@@ -340,7 +250,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // GetFlatMapsCommandHandler
     // =========================================================================
-    public class GetFlatMapsCommandHandlerTests : MapHandlerTestBase
+    public class GetFlatMapsCommandHandlerTests : HandlerTestBase
     {
         private GetFlatMapsCommandHandler Handler() =>
             new GetFlatMapsCommandHandler(Db, Mapper);
@@ -433,7 +343,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // UpdateMapCommandHandler
     // =========================================================================
-    public class UpdateMapCommandHandlerTests : MapHandlerTestBase
+    public class UpdateMapCommandHandlerTests : HandlerTestBase
     {
         private UpdateMapCommandHandler Handler() =>
             new UpdateMapCommandHandler(Db, Mapper);
@@ -557,7 +467,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // RemoveMapCommandHandler
     // =========================================================================
-    public class RemoveMapCommandHandlerTests : MapHandlerTestBase
+    public class RemoveMapCommandHandlerTests : HandlerTestBase
     {
         private readonly Mock<IMediator> _mediator = new();
 

@@ -5,6 +5,9 @@ using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using System;
 using System.Threading.Tasks;
 
@@ -12,6 +15,15 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 {
     public class PropertiesHandler : IWebSocketHandler
     {
+        // Matches every other WS handler that rebuilds parsedMsg.Data for broadcast
+        // (see TreeHandler.cs) — Newtonsoft has no ambient camelCase default in this
+        // codebase, so casing has to be chosen explicitly at each call site or PascalCase
+        // C# field names (e.g. ParentID) leak onto the wire unchanged.
+        private static readonly System.Threading.ThreadLocal<JsonSerializer> _camelSerializer = new(() => new JsonSerializer
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver()
+        });
+
         private IMediator mediator;
 
         public PropertiesHandler(IMediator mediator)
@@ -28,14 +40,19 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 case WebSocketCommandNames.PropertyRemove:
                     return await RemoveProperty(parsedMsg, player);
                 case WebSocketCommandNames.PropertyAdd:
-                    var (response, id) = await AddProperty(parsedMsg, player);
-                    parsedMsg.Data["id"] = id;
-                    return response;
+                    return await AddProperty(parsedMsg, player);
             }
             return null;
         }
 
-        private async Task<(CommandResponse, Guid)> AddProperty(WebSocketCommand parsedMsg, PlayerDTO player)
+        // In all three cases below, parsedMsg.Data is replaced with a freshly serialized,
+        // server-authoritative PropertyDTO before returning — the caller broadcasts
+        // parsedMsg as-is, so this is what every connected client actually receives.
+        // Previously this re-broadcast whatever Data the client originally sent (or, for
+        // Remove, a bare property ID), so the wire shape — including field casing — varied
+        // by which code path produced the original message instead of being consistent.
+
+        private async Task<CommandResponse?> AddProperty(WebSocketCommand parsedMsg, PlayerDTO player)
         {
             var dto = parsedMsg.Data.ToObject<PropertyDTO>();
 
@@ -45,7 +62,10 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 Property = dto,
             };
 
-            return await mediator.Send(addPropertyCommand);
+            var (response, added) = await mediator.Send(addPropertyCommand);
+            if (added != null)
+                parsedMsg.Data = JObject.FromObject(added, _camelSerializer.Value);
+            return response;
         }
 
         private async Task<CommandResponse?> RemoveProperty(WebSocketCommand parsedMsg, PlayerDTO player)
@@ -56,7 +76,10 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 Id = parsedMsg.Data.ToGuid(),
             };
 
-            return await mediator.Send(removePropertyCommand);
+            var (response, removed) = await mediator.Send(removePropertyCommand);
+            if (removed != null)
+                parsedMsg.Data = JObject.FromObject(removed, _camelSerializer);
+            return response;
         }
         private async Task<CommandResponse?> UpdateProperty(WebSocketCommand parsedMsg, PlayerDTO player)
         {
@@ -66,7 +89,10 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 Property = parsedMsg.Data.ToObject<PropertyDTO>(),
             };
 
-            return await mediator.Send(updatePropertyCommand);
+            var (response, updated) = await mediator.Send(updatePropertyCommand);
+            if (updated != null)
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            return response;
         }
     }
 }

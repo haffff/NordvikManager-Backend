@@ -1,4 +1,5 @@
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
@@ -8,6 +9,7 @@ using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers;
@@ -39,9 +41,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             SetupPlayer(_mediator, SomePlayer());
             _controller = CreateController(_mediator, contextUser: AnyUser());
-        }
-
-        private static AddonController CreateController(
+        }        private static AddonController CreateController(
             Mock<IMediator> mediatorMock,
             IServiceProvider? serviceProvider = null,
             Mock<ILobbyService>? lobbyMock = null,
@@ -50,7 +50,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
             lobbyMock ??= new Mock<ILobbyService>();
             serviceProvider ??= new ServiceCollection().BuildServiceProvider();
 
-            var controller = new AddonController(mediatorMock.Object, lobbyMock.Object, serviceProvider);
+            var gameEventLogger = new Mock<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>();
+            var controller = new AddonController(mediatorMock.Object, lobbyMock.Object, serviceProvider, gameEventLogger.Object);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -122,10 +123,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetHooks_ReturnsOk_WithAllHooks()
+        public void GetHooks_ReturnsOk_WithAllHooks()
         {
             // Act
-            var result = await _controller.GetHooks();
+            var result = _controller.GetHooks();
 
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
@@ -211,7 +212,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
 
             // Act
             var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
@@ -221,17 +222,15 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task InstallAddon_ReturnsBadRequest_WhenCommandFails()
+        public async Task InstallAddon_ThrowsResourceNotFoundException_WhenGameMissing()
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.WrongArguments, Guid.Empty));
+                     .ThrowsAsync(new ResourceNotFoundException("Game", Guid.NewGuid()));
 
-            // Act
-            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" }));
         }
 
         // =========================================================================
@@ -243,7 +242,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.Is<InstallAddonCommand>(c => c.Reinstall), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
 
             // Act
             var result = await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
@@ -270,8 +269,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
         public async Task UninstallAddon_ReturnsOk_WhenAddonIdProvided()
         {
             // Arrange
+            // UninstallAddon looks up the existing addon first (for the hook call's key) —
+            // must be mocked or the controller short-circuits with "Addon not found."
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
             _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
+                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
 
             // Act
             var result = await _controller.UninstallAddon(Guid.NewGuid(),
@@ -285,8 +288,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         public async Task UninstallAddon_ReturnsOk_WhenKeyProvided()
         {
             // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
             _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
+                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
 
             // Act
             var result = await _controller.UninstallAddon(Guid.NewGuid(),
@@ -338,18 +343,15 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task SetEnabled_ReturnsBadRequest_WhenCommandFails()
+        public async Task SetEnabled_ThrowsResourceNotFoundException_WhenAddonMissing()
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<SetAddonEnabledCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.NoResource);
+                     .ThrowsAsync(new ResourceNotFoundException("Addon", "dnd5e"));
 
-            // Act
-            var result = await _controller.SetEnabled(Guid.NewGuid(),
-                new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = false });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.SetEnabled(Guid.NewGuid(), new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = false }));
         }
 
         // =========================================================================
@@ -383,7 +385,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
             var base64 = Convert.ToBase64String(new byte[] { 1, 2, 3 });
 
             // Act
@@ -399,17 +401,17 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task GetAction_ReturnsBadRequest_WhenCommandResponseIsNotOk()
+        public async Task GetAction_ThrowsResourceNotFoundException_WhenActionMissing()
         {
             // Arrange
+            // GetActionByIdCommandHandler's not-found path throws (Part 2) rather than
+            // returning CommandResponse.NoResource.
             _mediator.Setup(m => m.Send(It.IsAny<GetActionByIdCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.WrongArguments, new ActionDto()));
+                     .ThrowsAsync(new ResourceNotFoundException("Action", Guid.NewGuid()));
 
-            // Act
-            var result = await _controller.GetAction(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.GetAction(Guid.NewGuid(), Guid.NewGuid()));
         }
 
         [Fact]

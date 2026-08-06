@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
@@ -27,15 +28,8 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(GameModel));
-            }
-
-            if (request.TargetId == null && request.TreeEntryId == null)
-            {
-                throw new WrongArgumentsException(nameof(request.TargetId), nameof(request.TreeEntryId));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
+            Guard.Argument(request.TargetId != null || request.TreeEntryId != null, nameof(request.TargetId), nameof(request.TreeEntryId));
 
             var treeEntry = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryId || x.TargetId == request.TargetId);
 
@@ -67,8 +61,12 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
                     nextFromDeleted.Head = true;
             }
 
+            // Flush the predecessor fix-up before the delete — SQLite checks FK constraints
+            // per-statement and will reject DELETE if another row still has Next = treeEntry.Id.
+            await dbContext.SaveChangesAsync(cancellationToken);
+
             game.TreeEntries.Remove(treeEntry);
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync(cancellationToken);
 
             return CommandResponse.Ok;
         }

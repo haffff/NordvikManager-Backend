@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -28,16 +29,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry
                 .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
-            if (game == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
-
-            var treeEntry = game.TreeEntries.Where(x => x.EntryType == request.EntityType);
-            if (treeEntry == null)
-            {
-                return CommandResponse.WrongArguments;
-            }
+            Guard.Argument(game != null, nameof(request.GameID));
 
             var newTreeEntries = game.TreeEntries.Where(x => x.NewItem == true && x.EntryType == request.EntityType);
             if (newTreeEntries.Any())

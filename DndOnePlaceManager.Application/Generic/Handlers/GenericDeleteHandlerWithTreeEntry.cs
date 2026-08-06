@@ -28,19 +28,14 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
                 return result;
             }
 
-            var newResult = await mediator.Send(new RemoveTreeEntryCommand()
+            await mediator.Send(new RemoveTreeEntryCommand()
             {
                 TargetId = request.Id,
                 GameId = request.GameID,
                 PlayerId = request.Player.Id,
             });
 
-            if (newResult == CommandResponse.Ok)
-            {
-                return result;
-            }
-
-            return CommandResponse.WrongArguments;
+            return result;
         }
     }
 }

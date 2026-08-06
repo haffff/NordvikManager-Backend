@@ -142,9 +142,9 @@ namespace DNDOnePlaceManager.WebRTC
 
             pc.onconnectionstatechange += state =>
             {
+                _logger.LogInformation("WebRTC peer connection state → {State} for socket {SocketId} in game {GameId}", state, args.SocketId, args.GameId);
                 if (state == RTCPeerConnectionState.failed || state == RTCPeerConnectionState.disconnected)
                 {
-                    _logger.LogWarning("WebRTC peer connection {State} for socket {SocketId} in game {GameId}", state, args.SocketId, args.GameId);
                     TryNotifyPlayerWebRTCError(args.GameId, args.UserId, $"WebRTC connection {state}");
                     CleanupPeer(args.SocketId);
                     RemoveDataChannelConnection(args.GameId, args.UserId);
@@ -314,11 +314,20 @@ namespace DNDOnePlaceManager.WebRTC
 
             try
             {
-                pc.setRemoteDescription(new RTCSessionDescriptionInit
+                var descResult = pc.setRemoteDescription(new RTCSessionDescriptionInit
                 {
                     type = RTCSdpType.offer,
                     sdp = args.Sdp
                 });
+
+                if (descResult != SetDescriptionResultEnum.OK)
+                {
+                    _logger.LogError("setRemoteDescription failed: {Result} for peer {SocketId} in game {GameId}", descResult, args.FromSocketId, args.GameId);
+                    if (_peerMeta.TryGetValue(args.FromSocketId, out var metaErr))
+                        TryNotifyPlayerWebRTCError(metaErr.GameId, metaErr.UserId, "WebRTC negotiation failed");
+                    CleanupPeer(args.FromSocketId);
+                    return;
+                }
 
                 var answer = pc.createAnswer(null);
 
@@ -359,12 +368,29 @@ namespace DNDOnePlaceManager.WebRTC
                 return;
             }
 
-            pc.addIceCandidate(new RTCIceCandidateInit
+            // Browsers send candidates with the "candidate:" prefix. SIPSorcery expects the raw
+            // candidate string WITHOUT that prefix (it adds its own "a=candidate:" when parsing).
+            var candidateStr = args.Candidate ?? string.Empty;
+            if (candidateStr.StartsWith("candidate:", StringComparison.OrdinalIgnoreCase))
+                candidateStr = candidateStr.Substring("candidate:".Length);
+
+            _logger.LogInformation(
+                "ICE candidate received from peer {SocketId} in game {GameId}: sdpMid={SdpMid} index={SdpMLineIndex} candidate={Candidate}",
+                args.FromSocketId, args.GameId, args.SdpMid, args.SdpMLineIndex, candidateStr);
+
+            try
             {
-                candidate = args.Candidate,
-                sdpMid = args.SdpMid,
-                sdpMLineIndex = args.SdpMLineIndex.HasValue ? (ushort)args.SdpMLineIndex.Value : (ushort)0
-            });
+                pc.addIceCandidate(new RTCIceCandidateInit
+                {
+                    candidate = candidateStr,
+                    sdpMid = args.SdpMid,
+                    sdpMLineIndex = args.SdpMLineIndex.HasValue ? (ushort)args.SdpMLineIndex.Value : (ushort)0
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "addIceCandidate threw for peer {SocketId} in game {GameId}", args.FromSocketId, args.GameId);
+            }
         }
 
         private Task OnPeerLeft(PeerLeftArgs args)

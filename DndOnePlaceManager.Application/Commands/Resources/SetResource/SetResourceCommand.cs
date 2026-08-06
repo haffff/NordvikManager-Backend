@@ -13,5 +13,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
         public string Key { get; set; }
         public string Name { get; set; }
         public byte[] Data { get; set; }
+        /// <summary>MIME type string (e.g. "text/plain"). Defaults to None when absent.</summary>
+        public string? MimeType { get; set; }
+        /// <summary>Tree-entry parent folder ID. Placed at root when null.</summary>
+        public Guid? ParentFolder { get; set; }
     }
 }

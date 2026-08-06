@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Helpers;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -17,10 +18,7 @@ namespace DndOnePlaceManager.Application.Commands.Elements.GetElementDetails
         {
             var element = dbContext.Elements.Include(x => x.Details).FirstOrDefault(x => x.Id == request.ElementId);
 
-            if (element == null)
-            {
-                throw new ResourceNotFoundException(nameof(element));
-            }
+            Guard.NotFound(element, "Element", request.ElementId);
 
             element.ThrowIfNoPermission(request.Player?.Id ?? default);
 
@@ -28,7 +26,7 @@ namespace DndOnePlaceManager.Application.Commands.Elements.GetElementDetails
 
             if (!filteredDetails.Any())
             {
-                throw new ResourceNotFoundException(nameof(filteredDetails));
+                throw new ResourceNotFoundException("ElementDetail", request.Name);
             }
 
             var details = filteredDetails.ToDictionary(x => x.Key, x => DetailsParseHelper.ParseValueType(x.Value, x.Type));

@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
@@ -21,10 +21,7 @@ namespace DndOnePlaceManager.Application.Commands.Security.SetPermissions
             await base.Handle(request, cancellationToken);
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameID);
 
             game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Permission.Edit);
 

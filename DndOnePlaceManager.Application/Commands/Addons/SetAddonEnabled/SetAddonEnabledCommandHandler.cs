@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 
@@ -16,17 +17,14 @@ namespace DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled
             await base.Handle(request, cancellationToken);
 
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
-            if (game == null)
-                return CommandResponse.NoResource;
+            Guard.NotFound(game, "Game", request.GameID);
 
-            if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-                return CommandResponse.NoPermission;
+            game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             var addon = dbContext.Addons.FirstOrDefault(x =>
                 x.Id.ToString() == request.AddonId || x.Key == request.AddonId);
 
-            if (addon == null)
-                return CommandResponse.NoResource;
+            Guard.NotFound(addon, "Addon", request.AddonId);
 
             addon.IsEnabled = request.Enabled;
             await dbContext.SaveChangesAsync();

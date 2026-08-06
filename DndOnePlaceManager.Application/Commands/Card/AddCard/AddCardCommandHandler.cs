@@ -79,7 +79,21 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
             if (request.Dto.Owner.HasValue && request.Dto.Owner != request.Player.Id)
             {
-                model.SetPermissions(request.Dto.Owner.Value, Permission.Edit);
+                // Permission is a bit-flag enum (Read=1, Edit=8, ...) — Edit does not
+                // imply Read. GetAllCardsCommandHandler's visibility filter requires
+                // Read, and a per-player permission row (once one exists for this
+                // player+card) takes priority over the generic "everyone gets Read" row
+                // SetGlobalPermission() already created above — so granting Edit-only
+                // here made the owner unable to see their own card.
+                //
+                // The GM gets full rights (including Remove) on cards they own, since
+                // as GM they can already delete anything — but a non-GM owner only gets
+                // Edit+Read: delete stays a GM-granted decision, not implied by being
+                // handed a card.
+                var ownerPermission = request.Dto.Owner.Value == game.MasterId
+                    ? Permission.All
+                    : Permission.Edit | Permission.Read;
+                model.SetPermissions(request.Dto.Owner.Value, ownerPermission);
             }
         }
 

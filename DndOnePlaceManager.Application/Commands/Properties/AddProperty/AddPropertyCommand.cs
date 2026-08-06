@@ -5,7 +5,7 @@ using MediatR;
 
 namespace DndOnePlaceManager.Application.Commands.Resources
 {
-    public class AddPropertyCommand : CommandBase<(CommandResponse, Guid)>
+    public class AddPropertyCommand : CommandBase<(CommandResponse, PropertyDTO)>
     {
         public PlayerDTO Player { get; set; }
         public PropertyDTO Property { get; set; }

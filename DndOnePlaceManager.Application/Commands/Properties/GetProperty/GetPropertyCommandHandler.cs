@@ -1,6 +1,7 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -32,34 +33,21 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetProperty
                 property = dbContext.Properties.FirstOrDefault(p => p.Id == request.Id);
             }
 
-            if (property == null)
-            {
-                return (CommandResponse.NoResource, null);
-            }
+            Guard.NotFound(property, "Property", (object?)request.Id ?? request.Name);
 
-            var entityType = property?.EntityName?.ToEntityType();
+            var entityType = property.EntityName?.ToEntityType();
+            Guard.Argument(entityType != null, nameof(property.EntityName));
 
-            if (entityType != null)
-            {
-                var entity = dbContext.Find(entityType, property.ParentID);
+            var entity = dbContext.Find(entityType, property.ParentID);
+            Guard.Argument(entity != null, nameof(entity));
 
-                if (entity == null)
-                {
-                    return (CommandResponse.WrongArguments, null);
-                }
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Read);
 
-                if (!(entity as IEntity).HasPermission(request.Player?.Id ?? default, Permission.Read))
-                {
-                    return (CommandResponse.NoPermission, null);
-                }
-                var propertyDto = mapper.Map<PropertyDTO>(property);
-                if (property.IsProtected)
-                    propertyDto.Value = null;
+            var propertyDto = mapper.Map<PropertyDTO>(property);
+            if (property.IsProtected)
+                propertyDto.Value = null;
 
-                return (CommandResponse.Ok, propertyDto);
-            }
-
-            return (CommandResponse.WrongArguments, null);
+            return (CommandResponse.Ok, propertyDto);
         }
     }
 }

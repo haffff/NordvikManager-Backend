@@ -6,6 +6,8 @@ using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
+using DndOnePlaceManager.Application.Interfaces;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Resources;
@@ -19,22 +21,24 @@ using System.Text.Json;
 
 namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 {
-    internal class InstallAddonCommandHandler : HandlerBase<InstallAddonCommand, (CommandResponse, Guid)>
+    internal class InstallAddonCommandHandler : HandlerBase<InstallAddonCommand, (CommandResponse, InstallAddonCommandResponse)>
     {
         private readonly IDbContext dbContext;
         private readonly IMapper mapper;
         private readonly IAddonRepositoryService addonFromUriProvider;
         private readonly IMediator mediator;
+        private readonly IGameEventLogger gameEventLogger;
 
-        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator) : base(dbContext, mapper)
+        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator, IGameEventLogger gameEventLogger) : base(dbContext, mapper)
         {
             this.dbContext = dbContext;
             this.mapper = mapper;
             this.addonFromUriProvider = addonFromUriProvider;
             this.mediator = mediator;
+            this.gameEventLogger = gameEventLogger;
         }
 
-        public override async Task<(CommandResponse, Guid)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
             var game = dbContext.Games
                 .Include(x => x.Addons)
@@ -45,19 +49,21 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 .Include(x => x.Properties)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
-            // Bug fix: was crashing with NullReferenceException when game not found
-            if (game == null)
-                return (CommandResponse.NoResource, Guid.Empty);
+            Guard.NotFound(game, "Game", request.GameID);
 
-            if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-                return (CommandResponse.NoPermission, Guid.Empty);
+            game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             // Bug fix: both null would silently fall through to ZipArchive(null) crash
             if (request.AddonFile == null && request.AddonSourceKey == null)
                 throw new ArgumentException("Either AddonFile or AddonSourceKey must be provided.");
 
+            gameEventLogger.Info("AddonInstall", $"Installing addon for game '{game.Name}' (ID: {game.Id}) by player '{request.Player.Name}' (ID: {request.Player.Id}).");
+            
             if (request.AddonFile == null)
+            {
                 request.AddonFile = await addonFromUriProvider.GetAddonByKey(request.AddonSourceKey!);
+                gameEventLogger.Info("AddonInstall", $"Fetched addon file from source key '{request.AddonSourceKey}");
+            }
 
             using var archive = new ZipArchive(new MemoryStream(request.AddonFile));
 
@@ -100,15 +106,22 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             addon.SetGlobalPermission();
             addon.SetPermissions(game.MasterId, Permission.All);
 
-            return (CommandResponse.Ok, addon.Id);
+            return (CommandResponse.Ok, new InstallAddonCommandResponse
+            {
+                AddonId = addon.Id,
+                AddonKey = addon.Key,
+                AddonName = addon.Name,
+                AddonVersion = addon.Version
+            });
         }
 
         private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
         {
             foreach (var view in GetByFolder(archive, "views/"))
             {
-                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(view), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                var rawDto = JsonSerializer.Deserialize<CardInstallDto>(ReadToBytes(view), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? throw new InvalidOperationException($"Failed to deserialize view '{view.FullName}'.");
+                var dto = ResolveCardDto(rawDto, game, addon.Resources);
 
                 var (_, res) = await mediator.Send(new AddCardCommand
                 {
@@ -135,6 +148,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Views!.Add(card);
+
+                gameEventLogger.Info("AddonInstall", $"Added view '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -142,8 +157,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         {
             foreach (var template in GetByFolder(archive, "templates/"))
             {
-                var dto = JsonSerializer.Deserialize<CardDto>(ReadToBytes(template), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                var rawDto = JsonSerializer.Deserialize<CardInstallDto>(ReadToBytes(template), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                     ?? throw new InvalidOperationException($"Failed to deserialize template '{template.FullName}'.");
+                var dto = ResolveCardDto(rawDto, game, addon.Resources);
 
                 var (_, res) = await mediator.Send(new AddCardCommand
                 {
@@ -169,6 +185,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Templates!.Add(card);
+
+                gameEventLogger.Info("AddonInstall", $"Added template '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -176,8 +194,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         {
             foreach (var action in GetByFolder(archive, "actions/"))
             {
-                var dto = JsonSerializer.Deserialize<ActionDto>(ReadToBytes(action), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                    ?? throw new InvalidOperationException($"Failed to deserialize action '{action.FullName}'.");
+                var dto = DeserializeAction(ReadToBytes(action), action.FullName);
 
                 dto.Prefix = addon.Key;
 
@@ -203,6 +220,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Actions!.Add(actionModel);
+
+                gameEventLogger.Info("AddonInstall", $"Added action '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -232,7 +251,10 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 // Bug fix: was not null-checking dbContext.Find result
                 var model = dbContext.Find<ResourceModel>(resourceID.Value)
                     ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
+
                 addon.Resources!.Add(model);
+                
+                gameEventLogger.Info("AddonInstall", $"Added resource '{resource.Name}' (Key: {addon.Key + "_" + resource.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -263,6 +285,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 var model = dbContext.Find<ResourceModel>(resourceID.Value)
                     ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
                 addon.Resources!.Add(model);
+
+                gameEventLogger.Info("AddonInstall", $"Added script '{script.Name}' (Key: {addon.Key + "_" + script.Name}) to addon '{addon.Name}'.");
             }
         }
 
@@ -327,27 +351,35 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
             foreach (var dependency in addon.Dependencies)
             {
+                gameEventLogger.Info("AddonInstall", $"Checking dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
+
                 // Bug fix: was matching by name which can differ — now matches by key
                 var alreadyInstalled = game.Addons.Any(x => x.Key == dependency.Key && CompareVersions(x, dependency));
                 if (alreadyInstalled)
+                {
+                    gameEventLogger.Info("AddonInstall", $"Dependency '{dependency.Key}' (v{dependency.Version}) is already installed for game '{game.Name}'.");
                     continue;
+                }
 
                 if (request.AutoInstallDeps == false)
                     throw new InvalidOperationException($"Dependency '{dependency.Key}' (v{dependency.Version}) is not installed and auto-install is disabled.");
 
+                gameEventLogger.Info("AddonInstall", $"Auto-installing dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
+
                 // Bug fix: was passing version arg that no longer exists on the interface
                 var depFile = await addonFromUriProvider.GetAddonByKey(dependency.Key);
+                if (depFile == null)
+                    throw new InvalidOperationException($"Failed to fetch addon file for dependency '{dependency.Key}'.");
 
-                var (response, _) = await mediator.Send(new InstallAddonCommand
+                gameEventLogger.Info("AddonInstall", $"Fetched addon file for dependency '{dependency.Key}'.");
+
+                await mediator.Send(new InstallAddonCommand
                 {
                     AddonFile = depFile,
                     AutoInstallDeps = true,
                     GameID = request.GameID,
                     Player = request.Player
                 });
-
-                if (response != CommandResponse.Ok)
-                    throw new InvalidOperationException($"Failed to install dependency '{dependency.Key}'. Response: {response}");
             }
         }
 
@@ -355,12 +387,108 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         private static bool CompareVersions(AddonModel installed, AddonModel required)
             => required.Version == null || installed.Version == required.Version;
 
+        /// <summary>
+        /// Deserializes an action JSON file, accepting <c>content</c> as either a
+        /// pre-serialized JSON string or a raw JSON array — the latter is serialized
+        /// back to a string so addon authors can write human-readable step arrays.
+        /// </summary>
+        private static ActionDto DeserializeAction(byte[] bytes, string fileName)
+        {
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            using var doc = JsonDocument.Parse(bytes);
+
+            // Fast path: content is already a string (or absent) — deserialize directly.
+            if (!doc.RootElement.TryGetProperty("content", out var contentEl)
+                || contentEl.ValueKind == JsonValueKind.String)
+            {
+                return JsonSerializer.Deserialize<ActionDto>(bytes, options)
+                    ?? throw new InvalidOperationException($"Failed to deserialize action '{fileName}'.");
+            }
+
+            // content is a JSON array — rewrite it as a serialized string so it fits
+            // the ActionDto.Content field (which the database stores as a JSON string).
+            using var ms = new MemoryStream();
+            using var writer = new Utf8JsonWriter(ms);
+            writer.WriteStartObject();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Name.Equals("content", StringComparison.OrdinalIgnoreCase))
+                    writer.WriteString(prop.Name, prop.Value.GetRawText());
+                else
+                    prop.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+            writer.Flush();
+
+            return JsonSerializer.Deserialize<ActionDto>(ms.ToArray(), options)
+                ?? throw new InvalidOperationException($"Failed to deserialize action '{fileName}'.");
+        }
+
         private static byte[] ReadToBytes(ZipArchiveEntry entry)
         {
             using var memoryStream = new MemoryStream();
             using var stream = entry.Open();
             stream.CopyTo(memoryStream);
             return memoryStream.ToArray();
+        }
+
+        /// <summary>
+        /// Resolves a resource reference that may be either a GUID string or a resource key.
+        /// Newly installed addon resources (not yet saved) are checked via addonResources;
+        /// pre-existing game resources are checked via game.Resources.
+        /// </summary>
+        private CardDto ResolveCardDto(CardInstallDto raw, GameModel game, IEnumerable<ResourceModel> addonResources)
+        {
+            var allResources = game.Resources.Concat(addonResources);
+            return new CardDto
+            {
+                Id                 = raw.Id,
+                Name               = raw.Name,
+                Description        = raw.Description,
+                Key                = raw.Key,
+                FirstOpen          = raw.FirstOpen,
+                TemplateId         = raw.TemplateId,
+                Owner              = raw.Owner,
+                MainResource       = ResolveResourceRef(raw.MainResource, allResources),
+                AdditionalResources = raw.AdditionalResources?
+                    .Select(r => ResolveResourceRef(r, allResources))
+                    .Where(g => g.HasValue)
+                    .Select(g => g!.Value)
+                    .ToList(),
+                Permission         = raw.Permission,
+                GenericPermission  = raw.GenericPermission,
+                GmPermission       = raw.GmPermission,
+                Properties         = raw.Properties ?? Enumerable.Empty<PropertyDTO>(),
+            };
+        }
+
+        private static Guid? ResolveResourceRef(string? value, IEnumerable<ResourceModel> resources)
+        {
+            if (value == null) return null;
+            if (Guid.TryParse(value, out var guid)) return guid;
+            return resources.FirstOrDefault(r => r.Key == value)?.Id;
+        }
+
+        /// <summary>
+        /// Intermediate DTO used when deserializing card JSON from addon archives.
+        /// MainResource and AdditionalResources accept either a GUID string or a
+        /// resource key — resolved to GUIDs by ResolveCardDto before use.
+        /// </summary>
+        private sealed class CardInstallDto
+        {
+            public Guid? Id { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public string Description { get; set; } = string.Empty;
+            public string? Key { get; set; }
+            public bool? FirstOpen { get; set; }
+            public Guid? TemplateId { get; set; }
+            public Guid? Owner { get; set; }
+            public string? MainResource { get; set; }
+            public List<string>? AdditionalResources { get; set; }
+            public Permission? Permission { get; set; }
+            public Permission? GenericPermission { get; set; }
+            public Permission? GmPermission { get; set; }
+            public IEnumerable<PropertyDTO>? Properties { get; set; }
         }
     }
 }

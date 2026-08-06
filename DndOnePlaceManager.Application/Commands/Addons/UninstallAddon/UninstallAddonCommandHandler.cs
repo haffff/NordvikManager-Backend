@@ -3,6 +3,8 @@ using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Card;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
+using DndOnePlaceManager.Application.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -10,24 +12,24 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
 {
-    internal class UninstallAddonCommandHandler : HandlerBase<UninstallAddonCommand, CommandResponse>
+    internal class UninstallAddonCommandHandler : HandlerBase<UninstallAddonCommand, (CommandResponse, UninstallAddonCommandResponse)>
     {
         private readonly IMediator mediator;
+        private readonly IGameEventLogger gameEventLogger;
 
-        public UninstallAddonCommandHandler(IDbContext dbContext, IMediator mediator, IMapper mapper) : base(dbContext, mapper)
+        public UninstallAddonCommandHandler(IDbContext dbContext, IMediator mediator, IMapper mapper, IGameEventLogger gameEventLogger) : base(dbContext, mapper)
         {
             this.mediator = mediator;
+            this.gameEventLogger = gameEventLogger;
         }
 
-        public override async Task<CommandResponse> Handle(UninstallAddonCommand request, CancellationToken token)
+        public override async Task<(CommandResponse, UninstallAddonCommandResponse)> Handle(UninstallAddonCommand request, CancellationToken token)
         {
             //Get game for futher processing
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
+            Guard.NotFound(game, "Game", request.GameID);
 
-            if (!game.HasPermission(request.Player.Id ?? default, Permission.Edit))
-            {
-                return CommandResponse.NoPermission;
-            }
+            game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             var addon = dbContext.Addons
                 .Include(x => x.Views)
@@ -36,10 +38,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 .Include(x => x.Actions)
                 .FirstOrDefault(x => x.Id == request.AddonId || x.Key == request.AddonKey);
 
-            if (addon == null)
-            {
-                return CommandResponse.NoResource;
-            }
+            Guard.NotFound(addon, "Addon", (object?)request.AddonId ?? request.AddonKey);
+
+            gameEventLogger.Info("AddonUninstall", $"Uninstalling addon '{addon.Name}' (ID: {addon.Id}) for game '{game.Name}' (ID: {game.Id}) by player '{request.Player.Name}' (ID: {request.Player.Id}).");
 
             //Remove all resources
             foreach (var resource in addon.Resources.ToList())
@@ -95,7 +96,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
 
             dbContext.Remove(addon);
             await dbContext.SaveChangesAsync();
-            return CommandResponse.Ok;
+            return (CommandResponse.Ok, new UninstallAddonCommandResponse
+            {
+                AddonId = addon.Id,
+                AddonKey = addon.Key,
+                AddonName = addon.Name,
+                AddonVersion = addon.Version
+            });
         }
     }
 }

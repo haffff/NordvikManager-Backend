@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.Commands.Player.UpdatePlayer;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -19,10 +20,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
         {
             await base.Handle(request, cancellationToken);
             var game = dbContext.Games.Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameId);
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
 
             var playerToChange = game.Players.FirstOrDefault(x => x.Id == request.playerDTO.Id);
 
@@ -35,7 +33,8 @@ namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
             playerToChange.Color = request.playerDTO?.Color ?? playerToChange.Color;
             playerToChange.Image = request.playerDTO?.Image ?? playerToChange.Image;
 
-            return dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.WrongArguments;
+            Guard.Argument(dbContext.SaveChanges() > 0, nameof(request.playerDTO));
+            return CommandResponse.Ok;
         }
     }
 }

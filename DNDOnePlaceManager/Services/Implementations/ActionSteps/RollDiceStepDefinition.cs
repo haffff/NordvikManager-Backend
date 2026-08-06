@@ -54,6 +54,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Message       = stepData.ChatMessage    ?? string.Empty,
                 Color         = stepData.ChatColor,
                 BorderColor   = stepData.ChatBorderColor,
+                Actions       = BuildFollowUpActions(stepData),
             };
 
             var json = JsonConvert.SerializeObject(template, Formatting.None, _camel);
@@ -64,6 +65,42 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data    = JToken.Parse(json),
                 GameId  = gameLobby.GameId,
             });
+        }
+
+        // Mirrors QueryDataStepDefinition's "name=value per line" convention — each line
+        // becomes one baked-in argument the follow-up button sends when clicked.
+        private static ActionItemTemplate[] BuildFollowUpActions(RollDiceStepData stepData)
+        {
+            if (string.IsNullOrWhiteSpace(stepData.FollowUpActionName))
+                return null;
+
+            var args = new Dictionary<string, object>();
+            if (!string.IsNullOrWhiteSpace(stepData.FollowUpActionArgs))
+            {
+                foreach (var line in stepData.FollowUpActionArgs.Split('\n'))
+                {
+                    var trimmed = line.Trim();
+                    if (string.IsNullOrEmpty(trimmed)) continue;
+
+                    var eqIdx = trimmed.IndexOf('=');
+                    if (eqIdx <= 0) continue;
+
+                    var name  = trimmed[..eqIdx].Trim();
+                    var value = trimmed[(eqIdx + 1)..].Trim();
+                    if (!string.IsNullOrEmpty(name))
+                        args[name] = value;
+                }
+            }
+
+            return new[]
+            {
+                new ActionItemTemplate
+                {
+                    Label      = !string.IsNullOrWhiteSpace(stepData.FollowUpActionLabel) ? stepData.FollowUpActionLabel : "Roll",
+                    ActionName = stepData.FollowUpActionName,
+                    Args       = args,
+                },
+            };
         }
     }
 }

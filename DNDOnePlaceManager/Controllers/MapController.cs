@@ -25,7 +25,7 @@ namespace DNDOnePlaceManager.Controllers
         /// Gets a map
         /// </summary>
         /// <returns>map</returns>
-        [Microsoft.AspNetCore.Mvc.HttpGet]
+        [HttpGet]
         [Authorize]
         [Route("Get")]
         public async Task<IActionResult> GetMap(Guid mapId, Guid gameId)
@@ -50,7 +50,7 @@ namespace DNDOnePlaceManager.Controllers
         /// Get Flat maps
         /// </summary>
         /// <returns>map</returns>
-        [Microsoft.AspNetCore.Mvc.HttpGet]
+        [HttpGet]
         [Authorize]
         [Route("GetAllFlat")]
         public async Task<IActionResult> GetAllFlat(Guid gameId)
@@ -60,6 +60,10 @@ namespace DNDOnePlaceManager.Controllers
             GetPlayerCommand playerCmd = new GetPlayerCommand() { User = user, GameID = gameId };
 
             var player = await mediator.Send(playerCmd);
+            if (player?.Player == null)
+            {
+                return Unauthorized(new { error = "You are not a player in this game" });
+            }
 
             GetFlatMapsCommand cmd = new GetFlatMapsCommand()
             {

@@ -4,6 +4,7 @@ using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Generic.Command;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -64,23 +65,12 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
             await base.Handle(request, cancellationToken);
 
             var game = GetGame(request);
+            Guard.Argument(game != null, nameof(request.GameID));
 
-            if (game == null)
-            {
-                return (CommandResponse.WrongArguments, Guid.Empty);
-            }
-
-            if (!CheckPermissions(game, request))
-            {
-                return (CommandResponse.NoPermission, Guid.Empty);
-            }
+            CheckPermissions(game, request);
 
             request.Dto = request.Dto ?? GetDefault();
-
-            if (request.Dto == null)
-            {
-                return (CommandResponse.WrongArguments, Guid.Empty);
-            }
+            Guard.Argument(request.Dto != null, nameof(request.Dto));
 
             var model = CreateModel(game, request);
 

@@ -17,10 +17,6 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetAllCards
         public async override Task<(CommandResponse, List<CardDto>)> Handle(GetAllCardsCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            if (request.Player == null)
-            {
-                return (CommandResponse.WrongArguments, null);
-            }
 
             var game = await dbContext.Games.Include(x => x.Cards).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
 

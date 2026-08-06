@@ -7,7 +7,8 @@
       "Bash(xargs wc:*)",
       "Bash(wc:*)",
       "Bash(xargs grep:*)",
-      "Bash(grep -h \"case WebSocketCommandNames\\\\|WebSocketCommandNames\\\\.\" /e/Projects/NordvikManager/NordvikManager-Backend/DNDOnePlaceManager/WebSockets/Handlers/*.cs)"
+      "Bash(grep -h \"case WebSocketCommandNames\\\\|WebSocketCommandNames\\\\.\" /e/Projects/NordvikManager/NordvikManager-Backend/DNDOnePlaceManager/WebSockets/Handlers/*.cs)",
+      "Bash(dotnet sln *)"
     ]
   }
 }

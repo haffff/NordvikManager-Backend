@@ -4,7 +4,7 @@ using MediatR;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
 {
-    public class RemovePropertyCommand : CommandBase<CommandResponse>
+    public class RemovePropertyCommand : CommandBase<(CommandResponse, PropertyDTO)>
     {
         public PlayerDTO Player { get; set; }
         public Guid Id { get; set; }

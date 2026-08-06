@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -25,7 +26,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             if (playerId == Guid.Empty)
             {
-                throw new ResourceNotFoundException(nameof(PlayerModel));
+                throw new ResourceNotFoundException("Player", playerId);
             }
 
             var treeEntry = mapper.Map<TreeEntryModel>(request.TreeEntryDto);
@@ -36,29 +37,23 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
                 .Include(x => x.TreeEntries).ThenInclude(y => y.Next)
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
-            if (game == null)
-            {
-                throw new ResourceNotFoundException(nameof(game));
-            }
+            Guard.NotFound(game, "Game", request.GameId);
 
             if (treeEntry.IsFolder)
             {
                 game.ThrowIfNoPermission(playerId, Permission.Edit);
             }
 
-            if (treeEntry.TargetId.HasValue &&
-                game.TreeEntries.Any(x => x.TargetId == treeEntry.TargetId && x.EntryType == treeEntry.EntryType))
-            {
-                throw new WrongArgumentsException(nameof(treeEntry.TargetId), "Duplicate tree entry for this target.");
-            }
+            Guard.Argument(
+                !treeEntry.TargetId.HasValue || !game.TreeEntries.Any(x => x.TargetId == treeEntry.TargetId && x.EntryType == treeEntry.EntryType),
+                nameof(treeEntry.TargetId), "Duplicate tree entry for this target.");
 
             game.TreeEntries.Add(treeEntry);
 
             if (request.TreeEntryDto.ParentId == null && request.TreeEntryDto.Next != null)
             {
                 var next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
-                if (next == null)
-                    throw new ResourceNotFoundException(nameof(request.TreeEntryDto.Next));
+                Guard.NotFound(next, "TreeEntry", request.TreeEntryDto.Next);
                 treeEntry.Parent = next.Parent;
             }
 
@@ -67,11 +62,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
             {
                 var parent = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.ParentId);
 
-                if (parent == null)
-                {
-                    throw new ResourceNotFoundException(nameof(parent));
-                }
-
+                Guard.NotFound(parent, "TreeEntry", request.TreeEntryDto.ParentId);
 
                 treeEntry.Parent = parent;
             }
@@ -97,10 +88,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             if (!treeEntries.Any(x => x.Parent == treeEntry.Parent))
             {
-                if (request.TreeEntryDto.Next != null)
-                {
-                    throw new WrongArgumentsException(nameof(request.TreeEntryDto.Next), nameof(request.TreeEntryDto.ParentId));
-                }
+                Guard.Argument(request.TreeEntryDto.Next == null, nameof(request.TreeEntryDto.Next), nameof(request.TreeEntryDto.ParentId));
                 treeEntry.Head = true;
             }
 
@@ -110,10 +98,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
                 //Find next entry
                 var next = await dbContext.TreeEntries.FirstOrDefaultAsync(x => x.Id == request.TreeEntryDto.Next);
 
-                if (next == null)
-                {
-                    throw new ResourceNotFoundException(nameof(request.TreeEntryDto.Next));
-                }
+                Guard.NotFound(next, "TreeEntry", request.TreeEntryDto.Next);
 
                 //Find entry before
                 entryWithNext = treeEntries.FirstOrDefault(x => x.Next?.Id == request.TreeEntryDto.Next);

@@ -41,19 +41,14 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
                 TargetId = result.Item2
             };
 
-            var (newResult, affectedDtos) = await mediator.Send(new AddTreeEntryCommand()
+            await mediator.Send(new AddTreeEntryCommand()
             {
                 TreeEntryDto = treeEntry,
                 GameId = request.GameID,
                 Player = request.Player
             });
 
-            if (newResult == CommandResponse.Ok)
-            {
-                return result;
-            }
-
-            return (CommandResponse.WrongArguments, default);
+            return result;
         }
     }
 }

@@ -2,6 +2,7 @@ using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -27,9 +28,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
             var existing = await dbContext.Resources.FirstOrDefaultAsync(r =>
                 r.GameId == request.GameId && r.Key == request.Key, cancellationToken);
 
+            var mimeType = request.MimeType?.ToEnumUsingDescriptionAttribute<MimeType>() ?? MimeType.None;
+
             if (existing != null)
             {
                 existing.Data = request.Data;
+                if (mimeType != MimeType.None)
+                    existing.MimeType = mimeType;
                 dbContext.SaveChanges();
                 return existing.Id;
             }
@@ -42,7 +47,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
                 Name     = request.Name ?? request.Key,
                 Key      = request.Key,
                 Data     = request.Data,
-                MimeType = MimeType.None,
+                MimeType = mimeType,
                 GameId   = request.GameId,
                 PlayerId = player.Id,
                 Player   = player,
@@ -61,7 +66,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
                     EntryType = typeof(ResourceModel).Name,
                     IsFolder  = false,
                     TargetId  = model.Id,
-                    ParentId  = null,
+                    ParentId  = request.ParentFolder,
                 },
             }, cancellationToken);
 

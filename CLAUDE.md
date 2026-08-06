@@ -30,6 +30,11 @@ DNDOnePlaceManager (API/Presentation)
 
 Two test projects: `DNDOnePlaceManager.Tests` (controller/integration) and `DndOnePlaceManager.Application.UnitTests` (handler unit tests).
 
+**Layer rules — strictly enforced:**
+- `IDbContext` and EF Core queries belong ONLY in `DndOnePlaceManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `DNDOnePlaceManager` (controllers, WebRTC dispatchers, WebSocket handlers, services).
+- The UI/Presentation layer (`DNDOnePlaceManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
+- When you need a new DB operation in a dispatcher or controller, create a Command + Handler pair in `Application/Commands/` and call `mediator.Send()`.
+
 ## CQRS with MediatR
 
 All business logic lives in command handlers. Every command/handler pair follows this structure:

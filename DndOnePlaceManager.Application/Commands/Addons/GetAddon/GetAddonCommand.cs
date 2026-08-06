@@ -6,6 +6,6 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddon
 {
     public class GetAddonCommand : GenericGetCommand<AddonDto>
     {
-
+        public string AddonKey { get; set; } = string.Empty;
     }
 }

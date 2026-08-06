@@ -1,7 +1,7 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
-using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
@@ -11,44 +11,37 @@ using MediatR;
 
 namespace DndOnePlaceManager.Application.Commands.Properties
 {
-    public class RemovePropertyCommandHandler : HandlerBase<RemovePropertyCommand, CommandResponse>
+    public class RemovePropertyCommandHandler : HandlerBase<RemovePropertyCommand, (CommandResponse, PropertyDTO)>
     {
         public RemovePropertyCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
 
-        public override async Task<CommandResponse> Handle(RemovePropertyCommand request, CancellationToken cancellationToken)
+        public override async Task<(CommandResponse, PropertyDTO)> Handle(RemovePropertyCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
             // Retrieve the property from the database
             var property = dbContext.Properties.Find(request.Id);
 
             // Check if the property exists
-            if (property == null)
-            {
-                throw new ResourceNotFoundException(nameof(property));
-            }
+            Guard.NotFound(property, "Property", request.Id);
 
             var entityType = property?.EntityName?.ToEntityType();
-            if (entityType != null)
-            {
-                var entity = dbContext.Find(entityType, property.ParentID);
+            Guard.Argument(entityType != null, nameof(entityType));
 
-                if (entity == null)
-                {
-                    throw new ResourceNotFoundException(nameof(entity));
-                }
+            var entity = dbContext.Find(entityType, property.ParentID);
+            Guard.NotFound(entity, entityType.Name, property.ParentID);
 
-                (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
+            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-                // Remove the property from the database
-                dbContext.Properties.Remove(property);
-                dbContext.SaveChanges();
+            // Capture the DTO before deletion — the broadcast needs to describe what was removed.
+            var dto = mapper.Map<PropertyDTO>(property);
 
-                return CommandResponse.Ok;
-            }
+            // Remove the property from the database
+            dbContext.Properties.Remove(property);
+            dbContext.SaveChanges();
 
-            throw new WrongArgumentsException(nameof(entityType));
+            return (CommandResponse.Ok, dto);
         }
     }
 }

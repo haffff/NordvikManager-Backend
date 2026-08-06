@@ -7,7 +7,9 @@ using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using DNDOnePlaceManager.Services.Interfaces;
 using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets.Handlers;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -61,6 +63,8 @@ namespace DNDOnePlaceManager
             });
 
             services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
+            services.AddScoped<DndOnePlaceManager.Application.Interfaces.IGameEventLogger,
+                               DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger>();
             services.AddSingleton<IMaterialsService, MaterialsService>();
             services.AddScoped<ILobbyService, LobbyService>();
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
@@ -69,7 +73,9 @@ namespace DNDOnePlaceManager
             services.AddSingleton<ICentralServerService, CentralServerService>();
             services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
             services.AddSingleton<ISignalingService, SignalingService>();
-            services.AddSingleton<IWebRTCApiDispatcher, WebRTCApiDispatcher>();
+            services.AddSingleton<RequestDelegateHolder>();
+            services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
+            services.AddHttpContextAccessor();
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
 
@@ -121,6 +127,7 @@ namespace DNDOnePlaceManager
                 options.AddPolicy("ApiPolicy", policy =>
                 {
                     policy.AuthenticationSchemes.Add(JwtBearerDefaults.AuthenticationScheme);
+                    policy.AuthenticationSchemes.Add("WebRTCInProcess");
                     policy.RequireAuthenticatedUser();
                 });
                 options.DefaultPolicy = options.GetPolicy("ApiPolicy");
@@ -130,6 +137,7 @@ namespace DNDOnePlaceManager
                 options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                 options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
             })
+            .AddScheme<AuthenticationSchemeOptions, WebRTCInProcessAuthHandler>("WebRTCInProcess", _ => { })
             .AddJwtBearer(options =>
             {
                 options.MapInboundClaims = false;
@@ -204,6 +212,12 @@ namespace DNDOnePlaceManager
                     o.SwaggerEndpoint("/swagger/v1/swagger.json", "V1 Docs");
                 });
             }
+
+            // Capture the fully-built middleware pipeline for WebRTCInProcessDispatcher.
+            // Must be called after all app.Use* / app.UseEndpoints calls.
+            app.ApplicationServices
+               .GetRequiredService<RequestDelegateHolder>()
+               .Pipeline = app.Build();
 
             ApplicationLayerModule.AfterBuild(app.ApplicationServices);
         }
