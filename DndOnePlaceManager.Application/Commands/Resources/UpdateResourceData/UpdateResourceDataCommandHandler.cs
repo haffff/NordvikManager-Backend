@@ -11,8 +11,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
     internal class UpdateResourceDataCommandHandler
         : HandlerBase<UpdateResourceDataCommand, (CommandResponse, Guid?)>
     {
-        public UpdateResourceDataCommandHandler(IDbContext dbContext, IMapper mapper)
-            : base(dbContext, mapper) { }
+        private readonly IFileStorageProvider storage;
+
+        public UpdateResourceDataCommandHandler(IDbContext dbContext, IMapper mapper, IFileStorageProvider storage)
+            : base(dbContext, mapper)
+        {
+            this.storage = storage;
+        }
 
         public override async Task<(CommandResponse, Guid?)> Handle(
             UpdateResourceDataCommand request, CancellationToken cancellationToken)
@@ -38,6 +43,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
             if (!canWrite)
                 throw new PermissionException(Permission.Edit);
 
+            if (resource.Storage == ResourceStorageKind.Linked)
+                throw new WrongArgumentsException(nameof(request.Content));
+
             byte[] data;
             try
             {
@@ -50,7 +58,10 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
                 throw new WrongArgumentsException(nameof(request.Content));
             }
 
-            resource.Data = data;
+            if (resource.Storage == ResourceStorageKind.ManagedFile)
+                resource.Path = await storage.SaveAsync(resource.GameId, resource.Id, data, null);
+            else
+                resource.Data = data;
 
             if (!string.IsNullOrWhiteSpace(request.MimeType))
                 resource.MimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();

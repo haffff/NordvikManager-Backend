@@ -10,7 +10,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
     {
         private readonly Mock<IMediator> _mediator = new();
 
-        private SetResourceCommandHandler Handler() => new(Db, Mapper, _mediator.Object);
+        private SetResourceCommandHandler Handler() => new(Db, Mapper, _mediator.Object, Storage);
 
         [Fact]
         public async Task Handle_ExistingKey_UpdatesDataAndReturnsExistingId()

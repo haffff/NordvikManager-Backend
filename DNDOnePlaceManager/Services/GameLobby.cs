@@ -65,6 +65,10 @@ namespace DNDOnePlaceManager.Services.Implementations
         // Delegates to the private field so external callers still work
         public IServiceScopeFactory ServiceScopeFactory => serviceScopeFactory;        public bool Debug { get; internal set; }
 
+        // Ephemeral playback state, keyed by playlist id — multiple playlists can play
+        // concurrently. Never persisted; lost if the lobby is torn down.
+        public Dictionary<Guid, PlaylistPlaybackState> ActivePlaylistPlaybacks { get; } = new();
+
         public Implementations.GameEventLog EventLog { get; } = new();
 
         /// <summary>

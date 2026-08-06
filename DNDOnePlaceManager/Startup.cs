@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application;
 using DndOnePlaceManager.Infrastructure;
+using DNDOnePlaceManager.Data.Contexts;
 using DNDOnePlaceManager.Engine.Middlewares;
 using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Implementations;
@@ -187,9 +188,6 @@ namespace DNDOnePlaceManager
             app.UseMiddleware<HandleExceptionMiddleWare>();
             app.UseMiddleware<GetUserIntoItemsMiddleWare>();
 
-            app.UseMiddleware<HandleExceptionMiddleWare>();
-            app.UseMiddleware<GetUserIntoItemsMiddleWare>();
-
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapGet("/", async context =>
@@ -220,6 +218,15 @@ namespace DNDOnePlaceManager
                .Pipeline = app.Build();
 
             ApplicationLayerModule.AfterBuild(app.ApplicationServices);
+
+            // One-time schema bootstrap for columns added after this table already existed for
+            // earlier users (no EF migrations pipeline here — see EnsureResourceStorageColumns'
+            // own comment for why this must run once at startup, not from DndOneContext's
+            // constructor, which fires on every scoped resolution).
+            using (var scope = app.ApplicationServices.CreateScope())
+            {
+                scope.ServiceProvider.GetRequiredService<DndOneContext>().EnsureResourceStorageColumns();
+            }
         }
     }
 }

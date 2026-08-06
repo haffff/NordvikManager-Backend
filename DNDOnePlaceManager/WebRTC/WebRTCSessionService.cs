@@ -199,7 +199,10 @@ namespace DNDOnePlaceManager.WebRTC
                         if (response.Player == null)
                         {
                             // Auto-create the player — same path as joining a game for the first time.
-                            await mediator.Send(new AddPlayerCommand { GameID = gameId, User = user });
+                            // The password gate is skipped here: reaching this point already required
+                            // passing the Central Server's join check for this session, and this
+                            // fallback has no channel to prompt the player for a password anyway.
+                            await mediator.Send(new AddPlayerCommand { GameID = gameId, User = user, SkipPasswordCheck = true });
                             response = await mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });
                         }
 

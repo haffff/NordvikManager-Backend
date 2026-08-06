@@ -15,7 +15,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
     // false "not found" even though the right row existed.
     public class GetResourceDataCommandHandlerTests : HandlerTestBase
     {
-        private GetResourceDataCommandHandler Handler() => new(Mapper, Db);
+        private GetResourceDataCommandHandler Handler() => new(Mapper, Db, Storage);
 
         // BuildGame() always seeds a PlayerModel with the same shared PlayerId, so calling
         // it twice in one test throws an EF identity conflict. The handler under test never

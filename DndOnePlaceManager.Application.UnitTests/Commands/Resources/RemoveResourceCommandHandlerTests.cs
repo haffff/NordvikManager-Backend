@@ -14,7 +14,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
     {
         private readonly Mock<IMediator> _mediator = new();
 
-        private RemoveResourceCommandHandler Handler() => new(Db, Mapper, _mediator.Object);
+        private RemoveResourceCommandHandler Handler() => new(Db, Mapper, _mediator.Object, Storage);
 
         [Fact]
         public async Task Handle_FoundById_RemovesResourceAndReturnsOk()

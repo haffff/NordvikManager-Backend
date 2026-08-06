@@ -50,6 +50,22 @@
         public const string ResourceDelete = "resource_delete";
         public const string ResourceAdd = "resource_add";
 
+        //Resource linking
+        public const string ResourceLinkProgress = "resource_link_progress";
+        public const string ResourceLinkComplete = "resource_link_complete";
+        public const string ResourceLinkFailed = "resource_link_failed";
+
+        //Sound
+        public const string SoundPlay = "sound_play";
+        public const string SoundStop = "sound_stop";
+
+        //Playlist
+        public const string PlaylistNotify = "playlist_notify";
+        public const string PlaylistPlay = "playlist_play";
+        public const string PlaylistPause = "playlist_pause";
+        public const string PlaylistStop = "playlist_stop";
+        public const string PlaylistTrackChange = "playlist_track_change";
+
         //Settings
         public const string SettingsGame = "settings_game";
         public const string SettingsMap = "settings_map";

@@ -17,7 +17,12 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             var game = (await dbContext.Games.Include(x => x.Players)?.FirstOrDefaultAsync(x => x.Id == request.GameID));
 
-            if (game == null || (game.Password != request.Password && !string.IsNullOrWhiteSpace(game.Password)))
+            if (game == null)
+            {
+                return null;
+            }
+
+            if (!request.SkipPasswordCheck && game.Password != request.Password && !string.IsNullOrWhiteSpace(game.Password))
             {
                 return null;
             }

@@ -13,6 +13,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
     {
         public string Name { get; set; }
         public string? Path { get; set; }
+        public ResourceStorageKind Storage { get; set; }
         public Guid? Id { get; set; }
         public byte[]? Data { get; set; }
         public string MimeType { get; set; }

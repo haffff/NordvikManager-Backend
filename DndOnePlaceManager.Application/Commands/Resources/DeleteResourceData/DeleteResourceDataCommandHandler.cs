@@ -10,8 +10,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData
     internal class DeleteResourceDataCommandHandler
         : HandlerBase<DeleteResourceDataCommand, CommandResponse>
     {
-        public DeleteResourceDataCommandHandler(IDbContext dbContext, IMapper mapper)
-            : base(dbContext, mapper) { }
+        private readonly IFileStorageProvider storage;
+
+        public DeleteResourceDataCommandHandler(IDbContext dbContext, IMapper mapper, IFileStorageProvider storage)
+            : base(dbContext, mapper)
+        {
+            this.storage = storage;
+        }
 
         public override async Task<CommandResponse> Handle(
             DeleteResourceDataCommand request, CancellationToken cancellationToken)
@@ -43,8 +48,17 @@ namespace DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData
             if (treeEntries.Count > 0)
                 dbContext.TreeEntries.RemoveRange(treeEntries);
 
+            // Only a managed file is ours to delete — after the DB row is gone (not before, so
+            // a failed SaveChanges doesn't leave an orphaned DB row pointing at nothing).
+            // A linked resource's real file is never touched: this is "unlink," not "delete."
+            var pathToDelete = resource.Storage == ResourceStorageKind.ManagedFile ? resource.Path : null;
+
             dbContext.Resources.Remove(resource);
             dbContext.SaveChanges();
+
+            if (pathToDelete != null)
+                await storage.DeleteAsync(pathToDelete);
+
             return CommandResponse.Ok;
         }
     }

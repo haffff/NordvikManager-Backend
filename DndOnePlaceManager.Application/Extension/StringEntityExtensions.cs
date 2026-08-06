@@ -43,6 +43,9 @@ namespace DndOnePlaceManager.Application.Extension
                 ".json" => MimeType.JSON,
                 ".js" => MimeType.JavaScript,
                 ".txt" => MimeType.PlainText,
+                ".webp" => MimeType.WEBP,
+                ".mp4" => MimeType.MP4,
+                ".webm" => MimeType.WebM,
                 _ => MimeType.None,
             };
         }

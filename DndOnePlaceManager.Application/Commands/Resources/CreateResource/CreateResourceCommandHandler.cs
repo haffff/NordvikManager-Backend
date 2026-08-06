@@ -15,11 +15,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
     internal class CreateResourceCommandHandler : HandlerBase<CreateResourceCommand, (CommandResponse, Guid?)>
     {
         private readonly IMediator _mediator;
+        private readonly IFileStorageProvider storage;
 
-        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator)
+        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage)
             : base(dbContext, mapper)
         {
             _mediator = mediator;
+            this.storage = storage;
         }
 
         public override async Task<(CommandResponse, Guid?)> Handle(CreateResourceCommand request, CancellationToken cancellationToken)
@@ -45,14 +47,29 @@ namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
 
             var model = new ResourceModel
             {
+                Id       = Guid.NewGuid(),
                 Name     = request.Name,
                 Key      = string.IsNullOrWhiteSpace(request.Key) ? null : request.Key,
-                Data     = request.Data,
                 MimeType = mimeType,
                 GameId   = request.GameId,
                 PlayerId = player.Id,
                 Player   = player,
             };
+
+            if (request.StorageKind == ResourceStorageKind.ManagedFile)
+            {
+                var isGM = player.System || dbContext.Games.Any(g => g.Id == request.GameId && g.MasterId == player.Id);
+                if (!isGM)
+                    throw new PermissionException(Permission.Edit);
+
+                model.Path = await storage.SaveAsync(model.GameId, model.Id, request.Data, null);
+                model.Storage = ResourceStorageKind.ManagedFile;
+            }
+            else
+            {
+                model.Data = request.Data;
+                model.Storage = ResourceStorageKind.Blob;
+            }
 
             await dbContext.Resources.AddAsync(model, cancellationToken);
             dbContext.SaveChanges();

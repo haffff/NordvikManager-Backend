@@ -3,7 +3,6 @@ using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Card.UpdateCard;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperties;
-using DndOnePlaceManager.Application.Commands.Security.SetPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Extensions;
@@ -88,20 +87,12 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
                 if (owner.HasValue)
                 {
-                    SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand()
-                    {
-                        EntityId = id,
-                        EntityType = "EntityModel",
-                        GameID = parsedMsg.GameId ?? default,
-                        Player = player,
-                        Permissions = new System.Collections.Generic.Dictionary<Guid, Permission?>()
-                        {
-                            { owner.Value, Permission.Edit }
-                        }
-                    };
-
-                    await mediator.Send(setPermissionsCommand);
-
+                    // Permission is granted by AddCardCommandHandler.SetPermissions (via
+                    // CardDto.Owner, populated from this same "owner" field above) —
+                    // it grants Edit+Read there. Do NOT also call SetPermissionsCommand
+                    // here: SetPermissions() *replaces* the permission row rather than
+                    // OR-ing into it, so a second Edit-only grant would strip the Read
+                    // bit the owner needs to see their own card.
                     props.Add(new PropertyDTO()
                     {
                         Id = default,

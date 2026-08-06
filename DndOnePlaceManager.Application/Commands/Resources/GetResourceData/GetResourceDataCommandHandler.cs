@@ -9,8 +9,11 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 {
     public class GetResourceDataCommandHandler : HandlerBase<GetResourceDataCommand, (byte[], MimeType)>
     {
-        public GetResourceDataCommandHandler(IMapper mapper, IDbContext ctx) : base(ctx, mapper)
+        private readonly IFileStorageProvider storage;
+
+        public GetResourceDataCommandHandler(IMapper mapper, IDbContext ctx, IFileStorageProvider storage) : base(ctx, mapper)
         {
+            this.storage = storage;
         }
 
         public async override Task<(byte[], MimeType)> Handle(GetResourceDataCommand request, CancellationToken cancellationToken)
@@ -39,7 +42,16 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             //if (image != null && (image.PlayerId == request.Player.Id || player.System))
             if (image != null)
             {
-                return (image.Data, image.MimeType);
+                // Blob bytes are always available; a file-backed resource (managed or linked)
+                // can go missing out from under us (moved, deleted, drive unplugged for a linked
+                // path) — ReadAsync returns null rather than throwing, and that's treated exactly
+                // like "resource not found" rather than surfacing a 500.
+                var data = image.Storage == ResourceStorageKind.Blob
+                    ? image.Data
+                    : await storage.ReadAsync(image.Path);
+
+                if (data != null)
+                    return (data, image.MimeType);
             }
 
             return (null, MimeType.None);

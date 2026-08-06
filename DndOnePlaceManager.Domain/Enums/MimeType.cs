@@ -33,6 +33,12 @@ namespace DndOnePlaceManager.Domain.Enums
         JavaScript,
         [Description("text/plain")]
         PlainText,
+        [Description("image/webp")]
+        WEBP,
+        [Description("video/mp4")]
+        MP4,
+        [Description("video/webm")]
+        WebM,
         None
     }
 }

@@ -17,5 +17,6 @@ namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
         public string? MimeType { get; set; }
         /// <summary>Tree-entry parent folder ID. Placed at root when null.</summary>
         public Guid? ParentFolder { get; set; }
+        public ResourceStorageKind StorageKind { get; set; } = ResourceStorageKind.Blob;
     }
 }

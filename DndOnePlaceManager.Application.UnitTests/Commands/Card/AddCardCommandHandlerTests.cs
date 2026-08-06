@@ -168,5 +168,51 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
 
             PermissionsMock.Verify(p => p.SetPermissions(masterId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), Permission.All), Times.Once);
         }
+
+        [Fact]
+        public async Task Handle_DtoOwnerDifferentFromPlayer_DoesNotGrantGlobalReadToEveryone()
+        {
+            // Regression test: GenericAddHandler.SetPermissions() unconditionally calls
+            // SetGlobalPermission() (-> IPermissionService.SetGenericPermissions), which
+            // creates a PlayerID=Guid.Empty/All=true row that GetPermissionFromDB falls
+            // back to for ANY player with no permission row of their own. That row is
+            // independent of the per-owner row, so every other player in the game could
+            // still read a card that had an explicit, different owner — defeating the
+            // purpose of setting an owner at all. A card with an explicit non-creator
+            // owner must skip that global grant entirely.
+            var game = SeedGameWithCards();
+            var ownerId = Guid.NewGuid();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Owner = ownerId, Properties = new List<PropertyDTO>() },
+            };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            PermissionsMock.Verify(p => p.SetGenericPermissions(It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_NoOwner_DoesNotGrantGlobalReadToEveryone()
+        {
+            // Verified against a live DB: an ownerless card ("Janusz") had an
+            // All=1/PlayerID=Empty/Permission=1(Read) row and was visible to a player it
+            // was never meant for. Cards are private by default — the creator and
+            // GM/system can always see them; sharing with a specific player requires
+            // setting Owner explicitly. No implicit "everyone" grant, owner or not.
+            var game = SeedGameWithCards();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Properties = new List<PropertyDTO>() },
+            };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            PermissionsMock.Verify(p => p.SetGenericPermissions(It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission>()), Times.Never);
+        }
     }
 }

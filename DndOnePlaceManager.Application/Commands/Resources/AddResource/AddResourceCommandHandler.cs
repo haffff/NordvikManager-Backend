@@ -3,6 +3,7 @@ using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
@@ -17,9 +18,11 @@ namespace DndOnePlaceManager.Application.Commands.Resources
     public class AddImageCommandHandler : HandlerBase<AddResourceCommand, (CommandResponse, Guid?)>
     {
         private readonly IMediator mediator;
-        public AddImageCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator) : base(battleMapContext, mapper)
+        private readonly IFileStorageProvider storage;
+        public AddImageCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
+            this.storage = storage;
         }
 
         public async override Task<(CommandResponse, Guid?)> Handle(AddResourceCommand request, CancellationToken cancellationToken)
@@ -37,13 +40,29 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 
             var model = new ResourceModel()
             {
+                Id = Guid.NewGuid(),
                 Name = request.Name,
-                Data = data,
                 Player = player,
                 PlayerId = player.Id,
                 MimeType = mimeType ?? MimeType.None,
-                Key = request.Key
+                Key = request.Key,
+                GameId = request.GameID ?? Guid.Empty,
             };
+
+            if (request.StorageKind == ResourceStorageKind.ManagedFile)
+            {
+                var isGM = player.System || (game != null && game.MasterId == player.Id);
+                if (!isGM)
+                    throw new PermissionException(Permission.Edit);
+
+                model.Path = await storage.SaveAsync(model.GameId, model.Id, data, null);
+                model.Storage = ResourceStorageKind.ManagedFile;
+            }
+            else
+            {
+                model.Data = data;
+                model.Storage = ResourceStorageKind.Blob;
+            }
 
             var entry = await dbContext.Resources.AddAsync(model);
             game?.Resources.Add(entry.Entity);

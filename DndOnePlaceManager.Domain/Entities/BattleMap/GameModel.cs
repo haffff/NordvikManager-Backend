@@ -30,6 +30,7 @@ namespace DNDOnePlaceManager.Domain.Entities.BattleMap
         public List<AddonModel> Addons { get; set; }
         public List<ResourceModel> Resources { get; set; }
         public List<TreeEntryModel> TreeEntries { get; set; }
+        public List<PlaylistModel> Playlists { get; set; }
         /// <summary>ID of the session registered on the Central Server for this game's WebRTC signaling.</summary>
         public string? CentralSessionId { get; set; }
     }

@@ -47,12 +47,13 @@ namespace DNDOnePlaceManager.WebRTC
                 ?? throw new InvalidOperationException("ASP.NET Core pipeline not yet built");
 
             // Merge gameId into query so controller [FromQuery] params are satisfied.
-            // The WebRTC client may or may not include it — inject it if absent.
+            // Always override with the WebRTC session's own gameId — it's the authoritative
+            // value for this data channel. The client's "gameid" is a different id space
+            // (e.g. the Central Server's session id) and must never be trusted here.
             var query = new Dictionary<string, string>(
                 request.Query ?? new Dictionary<string, string>(),
                 StringComparer.OrdinalIgnoreCase);
-            if (!query.ContainsKey("gameId"))
-                query["gameId"] = gameId.ToString();
+            query["gameId"] = gameId.ToString();
 
             var qs = QueryString.Create(query).Value ?? string.Empty;
 
