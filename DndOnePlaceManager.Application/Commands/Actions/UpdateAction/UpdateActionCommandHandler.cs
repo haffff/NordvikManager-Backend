@@ -18,8 +18,10 @@ namespace DndOnePlaceManager.Application.Commands.Actions
         {
             await base.Handle(request, cancellationToken);
             // Retrieve the action from the database
-            var game = await dbContext.Games.Include(x => x.Actions).FirstOrDefaultAsync(x => x.Id == request.GameId);
-            ArgumentNullException.ThrowIfNull(game);
+            var game = await dbContext.Games
+                .Include(x => x.Actions)
+                .FirstOrDefaultAsync(x => x.Id == request.GameId, cancellationToken);
+            Guard.NotFound(game, "Game", request.GameId);
             var action = game.Actions.FirstOrDefault(x => x.Id == request.Action.Id);
             Guard.NotFound(action, "Action", request.Action.Id);
 
