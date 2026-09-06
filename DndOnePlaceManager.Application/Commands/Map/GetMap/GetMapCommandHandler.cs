@@ -33,10 +33,15 @@ namespace DndOnePlaceManager.Application.Commands.Map.GetMap
 
         public override MapModel GetEntity(GetMapCommand request)
         {
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk. A battle map's own Properties x Elements
+            // join grows with token/drawing count, and this runs every map open.
             var map = dbContext.Maps
                 .Include(x => x.Properties)
                 .Include(x => x.Elements).ThenInclude(x => x.Details)
                 .Include(x => x.Elements).ThenInclude(x => x.Properties)
+                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.Id);
 
             if (map == null || request.Player == null || !map.HasPermission(request.Player.Id ?? Guid.Empty))

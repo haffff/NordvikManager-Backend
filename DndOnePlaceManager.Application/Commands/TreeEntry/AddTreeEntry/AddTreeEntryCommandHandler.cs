@@ -31,10 +31,17 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
 
             var treeEntry = mapper.Map<TreeEntryModel>(request.TreeEntryDto);
 
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk. This one is especially hot: it runs once
+            // per resource during an addon install (via AddResourceCommand), so
+            // the Players x TreeEntries join cost was being paid dozens of times
+            // per install, growing every call as TreeEntries accumulated.
             var game = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.TreeEntries).ThenInclude(y => y.Parent)
                 .Include(x => x.TreeEntries).ThenInclude(y => y.Next)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
             Guard.NotFound(game, "Game", request.GameId);

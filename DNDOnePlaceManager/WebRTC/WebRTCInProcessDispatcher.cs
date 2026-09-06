@@ -50,9 +50,15 @@ namespace DNDOnePlaceManager.WebRTC
             // Always override with the WebRTC session's own gameId — it's the authoritative
             // value for this data channel. The client's "gameid" is a different id space
             // (e.g. the Central Server's session id) and must never be trusted here.
-            var query = new Dictionary<string, string>(
-                request.Query ?? new Dictionary<string, string>(),
-                StringComparer.OrdinalIgnoreCase);
+            // Built by assignment (not the Dictionary copy-constructor) because the client
+            // query can legitimately contain the same key in different casing (e.g. a path's
+            // own "?gameId=" alongside the helper's auto-injected "gameid") — the copy
+            // constructor throws ArgumentException on a case-insensitive collision, which
+            // (thrown before this method's try block, on a fire-and-forget dispatch) used to
+            // kill the request with no response and no logged error.
+            var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in request.Query ?? new Dictionary<string, string>())
+                query[kvp.Key] = kvp.Value;
             query["gameId"] = gameId.ToString();
 
             var qs = QueryString.Create(query).Value ?? string.Empty;

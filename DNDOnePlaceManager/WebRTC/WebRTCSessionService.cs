@@ -159,6 +159,29 @@ namespace DNDOnePlaceManager.WebRTC
                 // chunkId → string slots; lives for the lifetime of this data channel.
                 var chunkBuffers = new Dictionary<string, string?[]>();
 
+                // onmessage below dispatches lobby.HandleCommand fire-and-forget, so back-to-back
+                // commands from this connection (e.g. a tree "Delete All" sending many tree_remove
+                // commands in a tight loop) can run concurrently, each reading DB state before the
+                // other's write commits. This gate forces HandleCommand calls from THIS connection
+                // to run one at a time, in arrival order, without blocking other connections.
+                var commandGate = new SemaphoreSlim(1, 1);
+                async Task HandleCommandInOrderAsync(GameLobby lobby, PlayerDTO player, string message)
+                {
+                    await commandGate.WaitAsync();
+                    try
+                    {
+                        await lobby.HandleCommand(player, message);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error handling WebRTC command for player {PlayerId}", player.Id);
+                    }
+                    finally
+                    {
+                        commandGate.Release();
+                    }
+                }
+
                 // SIPSorcery fires onopen as a plain Action exactly once.
                 // We fire-and-forget an async method so we can hit the DB if needed.
                 // The Interlocked guard defends against the rare race where the channel transitions
@@ -268,7 +291,7 @@ namespace DNDOnePlaceManager.WebRTC
 
                     // Otherwise route as a real-time game command
                     if (_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
-                        _ = lobby.HandleCommand(playerEntry, text);
+                        _ = HandleCommandInOrderAsync(lobby, playerEntry, text);
                 };
             };
 

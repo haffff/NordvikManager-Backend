@@ -64,7 +64,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
                 resource.Data = data;
 
             if (!string.IsNullOrWhiteSpace(request.MimeType))
-                resource.MimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();
+                // Matches SetResourceCommandHandler/CreateResourceCommandHandler's
+                // own fallback convention for an unrecognized MimeType string.
+                resource.MimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>() ?? MimeType.None;
 
             dbContext.SaveChanges();
             return (CommandResponse.Ok, resource.Id);

@@ -31,11 +31,16 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
 
             game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk, same shape here for a single addon's own
+            // Views/Resources/Templates/Actions counts.
             var addon = dbContext.Addons
                 .Include(x => x.Views)
                 .Include(x => x.Resources)
                 .Include(x => x.Templates)
                 .Include(x => x.Actions)
+                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.AddonId || x.Key == request.AddonKey);
 
             Guard.NotFound(addon, "Addon", (object?)request.AddonId ?? request.AddonKey);

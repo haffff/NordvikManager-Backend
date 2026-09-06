@@ -212,17 +212,37 @@ namespace DNDOnePlaceManager.Controllers
             return Ok(bindings);
         }
 
+        // Key order must match the frontend's CreateActionName emission order
+        // (Ctrl, Shift, Alt) — Ctrl+Alt+Shift ordering here would silently
+        // reject triple-modifier combos. Anchored at both ends: the previous
+        // regex had no leading '^', so it matched any string merely ending in
+        // a valid-looking combo rather than requiring the whole string to be one.
+        private static readonly System.Text.RegularExpressions.Regex KeyboardBindingKeyRegex = new(
+            @"^(Ctrl\+)?(Shift\+)?(Alt\+)?(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
+        // "panel.command" — a ClientMediator command reference. Empty string is a
+        // valid tombstone value (unbinds a built-in default's key client-side).
+        private static readonly System.Text.RegularExpressions.Regex KeyboardBindingCommandRegex = new(
+            @"^[A-Za-z_][\w-]*\.[A-Za-z_][\w-]*$");
+        private const int MaxKeyboardBindings = 200;
+        private const int MaxKeyboardBindingStringLength = 64;
+
         [HttpPost]
         [Authorize]
         [Route("KeyboardBindings")]
         public async Task<IActionResult> SaveKeyboardBindings([FromBody] Dictionary<string, string> bindings)
         {
-            var regex = new System.Text.RegularExpressions.Regex(
-                @"(Ctrl\+)*(Alt\+)*(Shift\+)*(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
+            if (bindings.Count > MaxKeyboardBindings)
+                return BadRequest();
 
-            foreach (var key in bindings.Keys)
+            foreach (var (key, value) in bindings)
             {
-                if (!regex.IsMatch(key))
+                if (key.Length > MaxKeyboardBindingStringLength || !KeyboardBindingKeyRegex.IsMatch(key))
+                    return BadRequest();
+
+                if (value == null || value.Length > MaxKeyboardBindingStringLength)
+                    return BadRequest();
+
+                if (value != "" && !KeyboardBindingCommandRegex.IsMatch(value))
                     return BadRequest();
             }
 

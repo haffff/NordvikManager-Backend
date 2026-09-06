@@ -1,12 +1,10 @@
 
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
-using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
-using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;

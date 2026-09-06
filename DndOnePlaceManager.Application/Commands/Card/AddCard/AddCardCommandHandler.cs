@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Generic.Handlers;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -110,6 +111,12 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
         public override async Task<(CommandResponse, Guid)> Handle(AddCardCommand request, CancellationToken cancellationToken)
         {
+            // CardModel.Name is NOT NULL at the DB level. Catching an empty name here
+            // gives a clean, catchable error instead of an unhandled DbUpdateException —
+            // this has been reached in practice by an addon action whose "%name%"
+            // placeholder resolved to an empty string.
+            Guard.Argument(!string.IsNullOrWhiteSpace(request.Dto?.Name), nameof(request.Dto.Name));
+
             var (result, id) = await base.Handle(request, cancellationToken);
 
             if (request.IsTemplate)

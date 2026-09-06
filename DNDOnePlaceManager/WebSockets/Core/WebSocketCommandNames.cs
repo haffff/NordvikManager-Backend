@@ -81,6 +81,25 @@
         public const string PropertyRemove = "property_remove";
         public const string PropertyAdd = "property_add";
 
+        //Property lists — repeating-row data stored as a JSON array inside a
+        //single PropertyModel.Value (see PropertyList command handlers). All four
+        //re-broadcast as PropertyUpdate so existing property_update listeners need
+        //no changes to pick up list mutations.
+        public const string PropertyListItemAdd = "property_list_item_add";
+        public const string PropertyListItemRemove = "property_list_item_remove";
+        public const string PropertyListItemUpdate = "property_list_item_update";
+        public const string PropertyListReorder = "property_list_reorder";
+
+        // Custom battle-map layers — a thin, game-scoped wrapper around the same
+        // "customLayers" property list. Add/Move allocate numeric layer ids
+        // server-side by fitting them between the reserved Map/Grid/Token/TokenUi
+        // anchors (see CustomLayerLayout); Remove atomically reassigns any elements
+        // on the deleted layer back to the Map layer. All three re-broadcast as
+        // PropertyUpdate, same as the four PropertyList commands above.
+        public const string CustomLayerAdd = "custom_layer_add";
+        public const string CustomLayerRemove = "custom_layer_remove";
+        public const string CustomLayerMove = "custom_layer_move";
+
         // Connection / handshake
         public const string HandshakeOk = "OK";
         public const string LogCommand = "log";

@@ -40,6 +40,19 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
+            // AsSplitQuery(): six chained .Include()s for separate one-to-many
+            // collections (Addons/Resources/TreeEntries/Actions/Cards/Properties)
+            // on a single query, EF Core's default SingleQuery behavior joins all
+            // six into one SQL statement — the result row count is the CARTESIAN
+            // PRODUCT of every collection's size. Confirmed live: on a game with
+            // enough accumulated content (46+ resources from repeated addon
+            // installs), this query ran for 276 seconds and then failed with
+            // SQLite Error 13 ('disk or disk full') — not literal disk exhaustion
+            // (61GB/14GB free on both drives at the time), but SQLite's temp
+            // b-tree materialization for the exploded joined result set
+            // overflowing available temp space. AsSplitQuery() issues one query
+            // per collection instead (linear cost, not multiplicative) — the
+            // fix EF Core's own "MultipleCollectionIncludeWarning" recommends.
             var game = dbContext.Games
                 .Include(x => x.Addons)
                 .Include(x => x.Resources)
@@ -47,6 +60,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 .Include(x => x.Actions)
                 .Include(x => x.Cards)
                 .Include(x => x.Properties)
+                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             Guard.NotFound(game, "Game", request.GameID);
@@ -313,7 +327,19 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             return archive.Entries.Where(x =>
             {
                 var name = x.FullName.ToLowerInvariant().Trim();
-                return name.StartsWith(folderLower) && name != folderLower;
+                if (!name.StartsWith(folderLower) || name == folderLower) return false;
+
+                // Directory entries (x.Name is empty — the entry IS the folder marker,
+                // e.g. "resources/subfolder/") and dotfile housekeeping entries
+                // (.gitkeep, .DS_Store, ...) are not real payload — every addon
+                // author's zip is likely to contain some of these (git/OS tooling
+                // adds them automatically), and none of the downstream processing
+                // (mimetype inference, JSON deserialization) is meant to handle
+                // them. Filtered here, once, rather than trusting every caller of
+                // GetByFolder to defend against non-payload entries individually.
+                if (string.IsNullOrEmpty(x.Name) || x.Name.StartsWith('.')) return false;
+
+                return true;
             });
         }
 
