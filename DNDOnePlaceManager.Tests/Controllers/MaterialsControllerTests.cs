@@ -16,6 +16,7 @@ using DNDOnePlaceManager.Services;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -42,7 +43,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
         private static MaterialsController CreateController(Mock<IMediator> mediatorMock, User? contextUser = null)
         {
             var lobbyService = new Mock<ILobbyService>().Object;
-            var controller = new MaterialsController(mediatorMock.Object, lobbyService);
+            var scopeFactory = new Mock<IServiceScopeFactory>().Object;
+            var controller = new MaterialsController(mediatorMock.Object, lobbyService, scopeFactory);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;

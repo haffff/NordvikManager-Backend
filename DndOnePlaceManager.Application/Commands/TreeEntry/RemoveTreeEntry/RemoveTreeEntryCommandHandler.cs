@@ -21,10 +21,15 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
 
             var playerId = request.PlayerId ?? Guid.Empty;
 
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk (confirmed live: a 6-collection version of
+            // this pattern took 276s and failed with a disk-full error).
             var game = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.TreeEntries).ThenInclude(x => x.Parent)
                 .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
 
@@ -50,10 +55,16 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
             }
 
             var nextFromDeleted = treeEntry?.Next;
-            var entryWithNext = game.TreeEntries.FirstOrDefault(x => (x.Next?.Id == treeEntry.Id));
-            if (entryWithNext != null)
+            // Re-point EVERY predecessor, not just the first — a corrupted tree can have
+            // more than one row with Next == treeEntry.Id (e.g. left over from a botched
+            // move), and SQLite's FK check rejects the DELETE if even one is missed.
+            var entriesWithNext = game.TreeEntries.Where(x => x.Next?.Id == treeEntry.Id).ToList();
+            if (entriesWithNext.Count > 0)
             {
-                entryWithNext.Next = nextFromDeleted;
+                foreach (var entryWithNext in entriesWithNext)
+                {
+                    entryWithNext.Next = nextFromDeleted;
+                }
             }
             else
             {

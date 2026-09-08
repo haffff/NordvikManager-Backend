@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Generic.Handlers;
+using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -75,7 +76,18 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
         public override void SetPermissions(GameModel game, CardModel model, AddCardCommand request)
         {
-            base.SetPermissions(game, model, request);
+            // Deliberately NOT calling base.SetPermissions() — it unconditionally grants
+            // a global "everyone gets Read" row via SetGlobalPermission(). That row sits
+            // in the DB independently of the per-owner row below (GetPermissionFromDB
+            // falls back to it whenever a player has no row of their own), so ANY card —
+            // even one with an explicit, different owner, and even one with no owner at
+            // all — was readable by every player in the game. Verified against a live DB:
+            // an ownerless card had exactly this All=1/Permission=1(Read) row and was
+            // visible to a player it was never meant for. Cards are private by default —
+            // only the creator, the GM/system, and an explicitly granted owner can read
+            // them; sharing a card with everyone requires an explicit grant, not silence.
+            model.SetPermissions(request.Player.Id ?? Guid.Empty, Permission.All);
+            model.SetPermissions(game.SystemPlayerId, Permission.All);
 
             if (request.Dto.Owner.HasValue && request.Dto.Owner != request.Player.Id)
             {
@@ -83,8 +95,8 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
                 // imply Read. GetAllCardsCommandHandler's visibility filter requires
                 // Read, and a per-player permission row (once one exists for this
                 // player+card) takes priority over the generic "everyone gets Read" row
-                // SetGlobalPermission() already created above — so granting Edit-only
-                // here made the owner unable to see their own card.
+                // — so granting Edit-only here made the owner unable to see their own
+                // card.
                 //
                 // The GM gets full rights (including Remove) on cards they own, since
                 // as GM they can already delete anything — but a non-GM owner only gets
@@ -99,6 +111,12 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
         public override async Task<(CommandResponse, Guid)> Handle(AddCardCommand request, CancellationToken cancellationToken)
         {
+            // CardModel.Name is NOT NULL at the DB level. Catching an empty name here
+            // gives a clean, catchable error instead of an unhandled DbUpdateException —
+            // this has been reached in practice by an addon action whose "%name%"
+            // placeholder resolved to an empty string.
+            Guard.Argument(!string.IsNullOrWhiteSpace(request.Dto?.Name), nameof(request.Dto.Name));
+
             var (result, id) = await base.Handle(request, cancellationToken);
 
             if (request.IsTemplate)

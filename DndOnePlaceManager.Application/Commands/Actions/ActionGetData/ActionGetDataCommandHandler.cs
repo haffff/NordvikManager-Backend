@@ -34,6 +34,11 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
                 return FindByProperty(request, type);
             }
 
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk. Six collections here (same shape as the
+            // 276s/disk-full failure), and this runs on every action/macro
+            // execution that resolves data by name — a hot gameplay path.
             var game = dbContext.Games
                 .Include(x => x.Maps).ThenInclude(x => x.Elements)
                 .Include(x => x.Actions)
@@ -41,6 +46,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
                 .Include(x => x.Cards)
                 .Include(x => x.Layouts)
                 .Include(x => x.Properties)
+                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             if (request.Name != null)

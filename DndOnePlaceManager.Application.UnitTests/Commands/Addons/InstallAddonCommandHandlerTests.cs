@@ -305,6 +305,30 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             await Assert.ThrowsAsync<InvalidOperationException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
+        // Regression: a leftover .gitkeep (or any dotfile — .DS_Store, editor
+        // backups, etc.) inside resources/ used to reach AddResourceCommand,
+        // whose extension isn't in ToMimeType()'s switch and used to crash the
+        // whole install with a NullReferenceException (see
+        // AddResourceCommandHandlerTests.Handle_UnrecognizedMimeType_...).
+        // GetByFolder now filters these out entirely, for every folder
+        // (resources/scripts/actions/templates/views), not just resources/.
+        [Fact]
+        public async Task Handle_DotfileInResourcesFolder_IsSkippedEntirely()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson,
+                ("resources/.gitkeep", ""),
+                ("resources/icon.png", "fake-binary"));
+            var cmd = ValidCommand(game, Player(), archive);
+
+            var (response, result) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            var addon = Db.Addons.Include(a => a.Resources).First(a => a.Id == result.AddonId);
+            Assert.Single(addon.Resources!); // only icon.png, .gitkeep never reached AddResourceCommand
+            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task Handle_ViewWithUnknownCardId_ThrowsInvalidOperationException()
         {

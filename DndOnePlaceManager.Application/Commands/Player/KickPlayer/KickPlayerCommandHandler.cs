@@ -19,6 +19,7 @@ namespace DndOnePlaceManager.Application.Commands.Player.KickPlayer
             var player = await dbContext.Players.FirstOrDefaultAsync(p => p.Id == request.PlayerId, cancellationToken);
 
             Guard.Argument(player != null, nameof(request.PlayerId));
+            Guard.Argument(!player.System, nameof(request.PlayerId));
 
             dbContext.Players.Remove(player);
             dbContext.SaveChanges();

@@ -1,16 +1,19 @@
-﻿using DndOnePlaceManager.Application.Exceptions;
+﻿using DndOnePlaceManager.Application.Services.Dice;
 using DndOnePlaceManager.Application.Services.Implementations.ChatTemplates;
 using DndOnePlaceManager.Application.Services.Interfaces;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using System.Data;
-using System.Text.RegularExpressions;
 
 namespace DndOnePlaceManager.Application.Services.Implementations
 {
     public class ChatService : IChatService
     {
-        private Regex exRoll = new Regex(@"(?<times>\d+)?d(?<dice>\d+)");
+        private readonly IDiceEngine diceEngine;
+
+        public ChatService(IDiceEngine diceEngine)
+        {
+            this.diceEngine = diceEngine;
+        }
 
         public string ParseRollFromUser(string roll, string template)
         {
@@ -53,73 +56,6 @@ namespace DndOnePlaceManager.Application.Services.Implementations
             }
         }
 
-        private int CalculateDice(int diceValue)
-        {
-            var result = new Random().Next(1, diceValue + 1);
-            return result;
-        }
-
-        public RollDefinition HandleRoll(string roll)
-        {
-            List<DiceDefinition> rolls = new List<DiceDefinition>();
-            RollDefinition rollDefinition = new RollDefinition();
-            int diceIndex = 0;
-
-            var rolled = exRoll.Replace(roll, v =>
-            {
-                int diceValue = int.Parse(v.Groups["dice"].Value);
-                int diceTimes = 1;
-
-                if (v.Groups.TryGetValue("times", out Group val) && val.Success)
-                {
-                    diceTimes = int.Parse(val.Value);
-                }
-
-                for (int i = 0; i < diceTimes; i++)
-                {
-                    var resultValue = CalculateDice(diceValue);
-                    rolls.Add(new DiceDefinition(diceValue, diceTimes, resultValue, diceIndex));
-                }
-
-                var diceIndexStr = $"{{{diceIndex}}}";
-
-                diceIndex++;
-
-                return diceIndexStr;
-            });
-
-            rollDefinition.Dices = rolls.ToArray();
-            rollDefinition.Rolled = rolled;
-            rollDefinition.Result = CalculateTotal(rollDefinition);
-
-            return rollDefinition;
-        }
-
-        private int CalculateTotal(RollDefinition rollDefinition)
-        {
-            try
-            {
-                string equation = rollDefinition.Rolled;
-
-                var groupedDices = rollDefinition.Dices.GroupBy(x => x.Index);
-                foreach (var dice in groupedDices)
-                {
-                    var sum = dice.Sum(x => x.Result);
-                    equation = equation.Replace($"{{{dice.Key}}}", sum.ToString());
-                }
-
-                var dataTable = new DataTable();
-                var result = dataTable.Compute(equation, string.Empty);
-                if (result is DBNull)
-                {
-                    return 0;
-                }
-                return Convert.ToInt32(result);
-            }
-            catch (Exception e)
-            {
-                throw new WrongArgumentsException("Roll");
-            }
-        }
+        public RollDefinition HandleRoll(string roll) => diceEngine.Evaluate(roll);
     }
 }

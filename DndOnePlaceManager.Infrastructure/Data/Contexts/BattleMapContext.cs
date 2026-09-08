@@ -6,6 +6,8 @@ using DndOnePlaceManager.Domain.Entities.Security;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Data.Contexts
 {
@@ -14,6 +16,70 @@ namespace DNDOnePlaceManager.Data.Contexts
         public DndOneContext(DbContextOptions<DndOneContext> options) : base(options)
         {
             Database.EnsureCreated();
+        }
+
+        // EnsureCreated() only creates tables that don't exist yet — it never alters an
+        // existing table, and this project has no EF migrations pipeline. Resources.Path/
+        // Storage are new columns on a table that already existed for earlier users, so they
+        // need an explicit ADD COLUMN instead of a DB wipe (existing Data blobs must survive
+        // this). Deliberately NOT called from the constructor — DndOneContext is a scoped DI
+        // service, so a new instance (and a fresh constructor call) is created per request/WS
+        // message; running a migration check there means it fires constantly instead of once.
+        // Call this once at app startup instead (see Startup.Configure). Column existence is
+        // checked via schema introspection first (a query, not a failing command) so the ALTER
+        // — and any resulting log noise — only ever runs on the one real upgrade, not on every
+        // subsequent process start.
+        public void EnsureResourceStorageColumns()
+        {
+            var existingColumns = GetResourceColumnNames();
+
+            if (!existingColumns.Contains("Path"))
+                TryExecuteSql("ALTER TABLE Resources ADD COLUMN Path TEXT NULL;");
+
+            if (!existingColumns.Contains("Storage"))
+                TryExecuteSql("ALTER TABLE Resources ADD COLUMN Storage INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        private HashSet<string> GetResourceColumnNames()
+        {
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var isSqlite = Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ?? false;
+                var sql = isSqlite
+                    ? "PRAGMA table_info(Resources);"
+                    : "SELECT COLUMN_NAME AS name FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Resources';";
+
+                var connection = Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    connection.Open();
+
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                using var reader = command.ExecuteReader();
+                var nameOrdinal = reader.GetOrdinal("name");
+                while (reader.Read())
+                    columns.Add(reader.GetString(nameOrdinal));
+            }
+            catch
+            {
+                // Introspection itself failing is unexpected — fall through with an empty set so
+                // EnsureResourceStorageColumns still attempts the ALTERs (safe: TryExecuteSql
+                // swallows the "already exists" case either way).
+            }
+            return columns;
+        }
+
+        private void TryExecuteSql(string sql)
+        {
+            try
+            {
+                Database.ExecuteSqlRaw(sql);
+            }
+            catch
+            {
+                // Column already exists.
+            }
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -137,6 +203,16 @@ namespace DNDOnePlaceManager.Data.Contexts
 
             modelBuilder.Entity<ElementDetailModel>().HasOne(e => e.Element).WithMany(e => e.Details).OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<ElementDetailModel>().HasIndex(e => new { e.ElementId, e.Key });
+
+            modelBuilder.Entity<PlaylistModel>()
+                .HasOne(p => p.Game)
+                .WithMany(g => g.Playlists)
+                .HasForeignKey(p => p.GameId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<PlaylistModel>()
+                .HasMany(p => p.Resources)
+                .WithMany(r => r.Playlists);
         }
 
         public DbSet<GameModel>? Games { get; set; }
@@ -155,5 +231,6 @@ namespace DNDOnePlaceManager.Data.Contexts
         public DbSet<TreeEntryModel>? TreeEntries { get; set; }
         public DbSet<ElementDetailModel>? ElementsDetail { get; set; }
         public DbSet<BannedUserModel> BannedUsers { get; set; }
+        public DbSet<PlaylistModel>? Playlists { get; set; }
     }
 }

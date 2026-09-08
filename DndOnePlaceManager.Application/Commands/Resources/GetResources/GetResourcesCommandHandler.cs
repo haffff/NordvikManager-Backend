@@ -36,6 +36,11 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
             {
                 var dto = mapper.Map<ResourceDTO>(x);
                 dto.Data = null;
+                // Path can reveal absolute local filesystem layout (usernames, directory
+                // structure) for ManagedFile/Linked resources — GM-only; everyone still gets
+                // Storage so the frontend can render the per-resource storage icon.
+                if (!canSeeAll)
+                    dto.Path = null;
                 dto.PlayerId = x.PlayerId;
                 dto.PlayerName = playerNames.TryGetValue(x.PlayerId, out var n) ? n : null;
                 return dto;

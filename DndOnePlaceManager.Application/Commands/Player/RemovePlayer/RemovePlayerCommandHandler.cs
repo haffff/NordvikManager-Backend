@@ -25,6 +25,7 @@ namespace DndOnePlaceManager.Application.Commands.Player.RemovePlayer
 
             var playerToDelete = game.Players?.FirstOrDefault(x => x.Id == request.PlayerID);
             Guard.Argument(playerToDelete != null, nameof(request.PlayerID));
+            Guard.Argument(!playerToDelete.System, nameof(request.PlayerID));
 
             game.Players.Remove(playerToDelete);
             dbContext.SaveChanges();

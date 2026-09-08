@@ -40,6 +40,19 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
+            // AsSplitQuery(): six chained .Include()s for separate one-to-many
+            // collections (Addons/Resources/TreeEntries/Actions/Cards/Properties)
+            // on a single query, EF Core's default SingleQuery behavior joins all
+            // six into one SQL statement — the result row count is the CARTESIAN
+            // PRODUCT of every collection's size. Confirmed live: on a game with
+            // enough accumulated content (46+ resources from repeated addon
+            // installs), this query ran for 276 seconds and then failed with
+            // SQLite Error 13 ('disk or disk full') — not literal disk exhaustion
+            // (61GB/14GB free on both drives at the time), but SQLite's temp
+            // b-tree materialization for the exploded joined result set
+            // overflowing available temp space. AsSplitQuery() issues one query
+            // per collection instead (linear cost, not multiplicative) — the
+            // fix EF Core's own "MultipleCollectionIncludeWarning" recommends.
             var game = dbContext.Games
                 .Include(x => x.Addons)
                 .Include(x => x.Resources)
@@ -47,6 +60,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 .Include(x => x.Actions)
                 .Include(x => x.Cards)
                 .Include(x => x.Properties)
+                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             Guard.NotFound(game, "Game", request.GameID);
@@ -84,7 +98,23 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             addon.Templates = new List<CardModel>();
             addon.Views = new List<CardModel>();
 
-            await FindAndInstallDependencies(request, game, addon);
+            // Upfront total for progress reporting — a rough estimate, not byte-exact: entries
+            // skipped later by CheckIfAlreadyExists() won't call ReportProgress, so Current may
+            // not always reach Total. Good enough for a UX progress bar.
+            var total = (addon.Dependencies?.Count ?? 0)
+                + GetByFolder(archive, "scripts/").Count()
+                + GetByFolder(archive, "resources/").Count()
+                + GetByFolder(archive, "actions/").Count()
+                + GetByFolder(archive, "templates/").Count()
+                + GetByFolder(archive, "views/").Count();
+            var current = 0;
+            void ReportProgress(string phase, string? message = null)
+            {
+                current++;
+                request.OnProgress?.Invoke(new InstallAddonProgress { Phase = phase, Current = current, Total = total, Message = message });
+            }
+
+            await FindAndInstallDependencies(request, game, addon, ReportProgress);
 
             // Clear deps — dependencies are installed separately, not stored on the addon entity
             addon.Dependencies = null;
@@ -92,11 +122,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             var addonsFolderId = await CreateFolder(request, game, "Addons");
             var addonFolderId = await CreateFolder(request, game, addon.Name, addonsFolderId);
 
-            await AddScripts(request, archive, addon, addonFolderId, game);
-            await AddResources(request, archive, addon, addonFolderId, game);
-            await AddActions(request, archive, addon, game);
-            await AddTemplates(request, archive, addon, game);
-            await AddViews(request, archive, addon, game);
+            await AddScripts(request, archive, addon, addonFolderId, game, ReportProgress);
+            await AddResources(request, archive, addon, addonFolderId, game, ReportProgress);
+            await AddActions(request, archive, addon, game, ReportProgress);
+            await AddTemplates(request, archive, addon, game, ReportProgress);
+            await AddViews(request, archive, addon, game, ReportProgress);
 
             game.Addons.Add(addon);
 
@@ -115,7 +145,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             });
         }
 
-        private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
+        private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game, Action<string, string?> reportProgress)
         {
             foreach (var view in GetByFolder(archive, "views/"))
             {
@@ -150,10 +180,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 addon.Views!.Add(card);
 
                 gameEventLogger.Info("AddonInstall", $"Added view '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
+                reportProgress("views", $"Added view '{dto.Name}'");
             }
         }
 
-        private async Task AddTemplates(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
+        private async Task AddTemplates(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game, Action<string, string?> reportProgress)
         {
             foreach (var template in GetByFolder(archive, "templates/"))
             {
@@ -187,10 +218,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 addon.Templates!.Add(card);
 
                 gameEventLogger.Info("AddonInstall", $"Added template '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
+                reportProgress("templates", $"Added template '{dto.Name}'");
             }
         }
 
-        private async Task AddActions(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game)
+        private async Task AddActions(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game, Action<string, string?> reportProgress)
         {
             foreach (var action in GetByFolder(archive, "actions/"))
             {
@@ -222,10 +254,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 addon.Actions!.Add(actionModel);
 
                 gameEventLogger.Info("AddonInstall", $"Added action '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
+                reportProgress("actions", $"Added action '{dto.Name}'");
             }
         }
 
-        private async Task AddResources(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game)
+        private async Task AddResources(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game, Action<string, string?> reportProgress)
         {
             var resourcesFolder = await CreateFolder(request, game, "Resources", addonFolderId);
 
@@ -253,12 +286,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                     ?? throw new InvalidOperationException($"Resource '{resourceID}' not found in DB after adding.");
 
                 addon.Resources!.Add(model);
-                
+
                 gameEventLogger.Info("AddonInstall", $"Added resource '{resource.Name}' (Key: {addon.Key + "_" + resource.Name}) to addon '{addon.Name}'.");
+                reportProgress("resources", $"Added resource '{resource.Name}'");
             }
         }
 
-        private async Task AddScripts(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game)
+        private async Task AddScripts(InstallAddonCommand request, ZipArchive archive, AddonModel addon, Guid? addonFolderId, GameModel game, Action<string, string?> reportProgress)
         {
             var scriptsFolder = await CreateFolder(request, game, "Scripts", addonFolderId);
 
@@ -287,6 +321,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 addon.Resources!.Add(model);
 
                 gameEventLogger.Info("AddonInstall", $"Added script '{script.Name}' (Key: {addon.Key + "_" + script.Name}) to addon '{addon.Name}'.");
+                reportProgress("scripts", $"Added script '{script.Name}'");
             }
         }
 
@@ -313,7 +348,19 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             return archive.Entries.Where(x =>
             {
                 var name = x.FullName.ToLowerInvariant().Trim();
-                return name.StartsWith(folderLower) && name != folderLower;
+                if (!name.StartsWith(folderLower) || name == folderLower) return false;
+
+                // Directory entries (x.Name is empty — the entry IS the folder marker,
+                // e.g. "resources/subfolder/") and dotfile housekeeping entries
+                // (.gitkeep, .DS_Store, ...) are not real payload — every addon
+                // author's zip is likely to contain some of these (git/OS tooling
+                // adds them automatically), and none of the downstream processing
+                // (mimetype inference, JSON deserialization) is meant to handle
+                // them. Filtered here, once, rather than trusting every caller of
+                // GetByFolder to defend against non-payload entries individually.
+                if (string.IsNullOrEmpty(x.Name) || x.Name.StartsWith('.')) return false;
+
+                return true;
             });
         }
 
@@ -344,7 +391,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             return result.Item2.FirstOrDefault(x => x.Name == name)?.Id;
         }
 
-        private async Task FindAndInstallDependencies(InstallAddonCommand request, GameModel game, AddonModel addon)
+        private async Task FindAndInstallDependencies(InstallAddonCommand request, GameModel game, AddonModel addon, Action<string, string?> reportProgress)
         {
             if (addon.Dependencies == null || addon.Dependencies.Count == 0)
                 return;
@@ -358,6 +405,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 if (alreadyInstalled)
                 {
                     gameEventLogger.Info("AddonInstall", $"Dependency '{dependency.Key}' (v{dependency.Version}) is already installed for game '{game.Name}'.");
+                    reportProgress("dependencies", $"Dependency '{dependency.Key}' already installed");
                     continue;
                 }
 
@@ -380,6 +428,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                     GameID = request.GameID,
                     Player = request.Player
                 });
+
+                reportProgress("dependencies", $"Installed dependency '{dependency.Key}'");
             }
         }
 

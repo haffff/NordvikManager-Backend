@@ -41,7 +41,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
     // =========================================================================
     public class DeleteResourceDataCommandHandlerTests : ResourceDataHandlerTestBase
     {
-        private DeleteResourceDataCommandHandler Handler() => new(Db, Mapper);
+        private DeleteResourceDataCommandHandler Handler() => new(Db, Mapper, Storage);
 
         [Fact]
         public async Task Handle_FoundByKey_RemovesResourceAndReturnsOk()
@@ -154,7 +154,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
     // =========================================================================
     public class UpdateResourceDataCommandHandlerTests : ResourceDataHandlerTestBase
     {
-        private UpdateResourceDataCommandHandler Handler() => new(Db, Mapper);
+        private UpdateResourceDataCommandHandler Handler() => new(Db, Mapper, Storage);
 
         [Fact]
         public async Task Handle_ValidBase64Content_UpdatesDataAndReturnsOk()

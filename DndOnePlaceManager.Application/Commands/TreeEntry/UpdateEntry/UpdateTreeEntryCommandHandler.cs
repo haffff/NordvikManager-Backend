@@ -23,10 +23,16 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
             var playerId = request.PlayerId ?? Guid.Empty;
 
+            // AsSplitQuery(): Players + TreeEntries are separate collection navigations
+            // on one query — EF Core's default SingleQuery joins them into one
+            // cartesian-product result set. See InstallAddonCommandHandler.Handle's
+            // own comment for the full story (a 6-collection version of this same
+            // pattern took 276s and failed with a disk-full error on a loaded game).
             var game = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Parent)
                 .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Next)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
             Guard.NotFound(game, "Game", request.GameId);
@@ -154,10 +160,13 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
 
         private void DisconnectOldReferences(UpdateTreeEntryCommand request, GameModel game, TreeEntryModel? treeEntry, List<TreeEntryDto> affectedTreeEntries)
         {
-            var oldBefore = game.TreeEntries.FirstOrDefault(x => x.Next?.Id == request.TreeEntryDto.Id);
+            // Re-point EVERY predecessor, not just the first — mirrors the same fix in
+            // RemoveTreeEntryCommandHandler for the case where more than one row ends up
+            // with Next == treeEntry.Id.
+            var oldBefores = game.TreeEntries.Where(x => x.Next?.Id == request.TreeEntryDto.Id).ToList();
             var oldNext = treeEntry.Next;
 
-            if (oldBefore == null)
+            if (oldBefores.Count == 0)
             {
                 if (oldNext != null)
                     oldNext.Head = true;
@@ -165,13 +174,16 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
             }
             else
             {
-                oldBefore.Next = oldNext;
+                foreach (var oldBefore in oldBefores)
+                {
+                    oldBefore.Next = oldNext;
+                    affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldBefore));
+                }
             }
 
             treeEntry.Next = null;
 
-            if (oldBefore != null) affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldBefore));
-            if (oldNext != null)   affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldNext));
+            if (oldNext != null) affectedTreeEntries.Add(mapper.Map<TreeEntryDto>(oldNext));
         }
     }
 }

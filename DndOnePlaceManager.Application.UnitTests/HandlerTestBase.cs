@@ -22,6 +22,10 @@ namespace DndOnePlaceManager.Application.UnitTests
         protected readonly DndOneContext Db;
         protected readonly IMapper Mapper;
         protected readonly Mock<IPermissionService> PermissionsMock;
+        // Unconfigured (Loose) — every Blob-storage test path never touches this; only
+        // ManagedFile/Linked-storage tests need to Setup specific calls on it.
+        protected readonly Mock<IFileStorageProvider> StorageMock = new();
+        protected IFileStorageProvider Storage => StorageMock.Object;
         protected readonly Guid PlayerId = Guid.NewGuid();
         private readonly string _dbName = Guid.NewGuid().ToString();
         protected IServiceProvider TestServiceProvider { get; private set; }

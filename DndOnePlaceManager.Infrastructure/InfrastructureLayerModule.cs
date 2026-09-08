@@ -1,6 +1,7 @@
 using DNDOnePlaceManager.Data.Contexts;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services;
+using DndOnePlaceManager.Infrastructure.Services.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,7 @@ namespace DndOnePlaceManager.Infrastructure
             else
                 services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString));
 
+            services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
             services.AddHttpClient();

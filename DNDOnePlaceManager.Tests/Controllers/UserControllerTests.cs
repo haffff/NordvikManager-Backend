@@ -413,7 +413,47 @@ namespace DNDOnePlaceManager.Tests.Controllers
             central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
                 .ReturnsAsync(true);
             var controller = CreateController(central, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string> { { "Ctrl+S", "save" }, { "Alt+F4", "close" } };
+            var validBindings = new Dictionary<string, string> { { "Ctrl+S", "game.Save" }, { "Alt+C", "game.Close" } };
+
+            var result = await controller.SaveKeyboardBindings(validBindings);
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task SaveKeyboardBindings_ReturnsOk_WhenValueIsEmptyTombstone()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+                .ReturnsAsync(true);
+            var controller = CreateController(central, contextUser: RegularUser());
+            var bindingsWithTombstone = new Dictionary<string, string> { { "Shift+G", "" } };
+
+            var result = await controller.SaveKeyboardBindings(bindingsWithTombstone);
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenValueIsNotPanelDotCommand()
+        {
+            var controller = CreateController(contextUser: RegularUser());
+            var invalidBindings = new Dictionary<string, string> { { "Ctrl+S", "save" } };
+
+            var result = await controller.SaveKeyboardBindings(invalidBindings);
+
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task SaveKeyboardBindings_ReturnsOk_WhenAllThreeModifiersPressed()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+                .ReturnsAsync(true);
+            var controller = CreateController(central, contextUser: RegularUser());
+            // Order must match CreateActionName's emission order (Ctrl, Shift, Alt).
+            var validBindings = new Dictionary<string, string> { { "Ctrl+Shift+Alt+G", "battlemap.GroupSelected" } };
 
             var result = await controller.SaveKeyboardBindings(validBindings);
 
@@ -427,7 +467,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
             central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
                 .ReturnsAsync(false);
             var controller = CreateController(central, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string> { { "Ctrl+Z", "undo" } };
+            var validBindings = new Dictionary<string, string> { { "Ctrl+Z", "game.Undo" } };
 
             var result = await controller.SaveKeyboardBindings(validBindings);
 

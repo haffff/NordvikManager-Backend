@@ -1,5 +1,6 @@
 ﻿using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
+using DndOnePlaceManager.Application.Services.Dice;
 using DndOnePlaceManager.Application.Services.Implementations;
 using DndOnePlaceManager.Application.Services.Interfaces;
 using MediatR;
@@ -14,6 +15,8 @@ namespace DndOnePlaceManager.Application
         {
             services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
             services.AddScoped<IPermissionService, PermissionsService>();
+            services.AddSingleton<IDiceRandomSource, DiceRandomSource>();
+            services.AddSingleton<IDiceEngine, DiceEngine>();
             services.AddScoped<IChatService, ChatService>();
 
             services.AddMediatR(Assembly.GetExecutingAssembly());

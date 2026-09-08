@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.WebSockets.Handlers
@@ -41,6 +42,20 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                     return await RemoveProperty(parsedMsg, player);
                 case WebSocketCommandNames.PropertyAdd:
                     return await AddProperty(parsedMsg, player);
+                case WebSocketCommandNames.PropertyListItemAdd:
+                    return await AddPropertyListItem(parsedMsg, player);
+                case WebSocketCommandNames.PropertyListItemRemove:
+                    return await RemovePropertyListItem(parsedMsg, player);
+                case WebSocketCommandNames.PropertyListItemUpdate:
+                    return await UpdatePropertyListItem(parsedMsg, player);
+                case WebSocketCommandNames.PropertyListReorder:
+                    return await ReorderPropertyList(parsedMsg, player);
+                case WebSocketCommandNames.CustomLayerAdd:
+                    return await AddCustomLayer(parsedMsg, player);
+                case WebSocketCommandNames.CustomLayerRemove:
+                    return await RemoveCustomLayer(parsedMsg, player);
+                case WebSocketCommandNames.CustomLayerMove:
+                    return await MoveCustomLayer(parsedMsg, player);
             }
             return null;
         }
@@ -92,6 +107,149 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             var (response, updated) = await mediator.Send(updatePropertyCommand);
             if (updated != null)
                 parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            return response;
+        }
+
+        // The four list-op cases below all rewrite parsedMsg.Command to PropertyUpdate
+        // before returning, in addition to replacing Data with the canonical PropertyDTO —
+        // so every connected client's existing property_update handling (cache refresh,
+        // CardAPI subscriptions) picks up list mutations with zero new listening code.
+
+        // Fields are pulled off parsedMsg.Data individually (rather than
+        // parsedMsg.Data.ToObject<TCommand>()) so client JSON never binds directly onto
+        // a CommandBase-derived type — CommandBase.Scope is server-only and must never
+        // be settable from client-controlled input.
+
+        private async Task<CommandResponse?> AddPropertyListItem(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new AddPropertyListItemCommand
+            {
+                Player = player,
+                PropertyId = parsedMsg.Data["propertyId"].ToGuid(),
+                Fields = parsedMsg.Data["fields"]?.ToObject<Dictionary<string, string?>>() ?? new(),
+                ItemId = parsedMsg.Data["itemId"]?.ToString(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        private async Task<CommandResponse?> RemovePropertyListItem(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new RemovePropertyListItemCommand
+            {
+                Player = player,
+                PropertyId = parsedMsg.Data["propertyId"].ToGuid(),
+                ItemId = parsedMsg.Data["itemId"]?.ToString(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        private async Task<CommandResponse?> UpdatePropertyListItem(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new UpdatePropertyListItemCommand
+            {
+                Player = player,
+                PropertyId = parsedMsg.Data["propertyId"].ToGuid(),
+                ItemId = parsedMsg.Data["itemId"]?.ToString(),
+                Fields = parsedMsg.Data["fields"]?.ToObject<Dictionary<string, string?>>() ?? new(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        private async Task<CommandResponse?> ReorderPropertyList(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new ReorderPropertyListCommand
+            {
+                Player = player,
+                PropertyId = parsedMsg.Data["propertyId"].ToGuid(),
+                OrderedItemIds = parsedMsg.Data["orderedItemIds"]?.ToObject<List<string>>() ?? new(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        // GameId is taken from parsedMsg.GameId (server-attached to every WS message
+        // on receipt), never from client-supplied Data — same rule as every other
+        // game-scoped command in this handler family.
+        private async Task<CommandResponse?> AddCustomLayer(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new AddCustomLayerCommand
+            {
+                Player = player,
+                GameId = parsedMsg.GameId ?? default,
+                Name = parsedMsg.Data["name"]?.ToString(),
+                AfterLayerId = parsedMsg.Data["afterLayerId"]?.ToObject<int?>(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        private async Task<CommandResponse?> RemoveCustomLayer(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new RemoveCustomLayerCommand
+            {
+                Player = player,
+                GameId = parsedMsg.GameId ?? default,
+                ItemId = parsedMsg.Data["itemId"]?.ToString(),
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
+            return response;
+        }
+
+        private async Task<CommandResponse?> MoveCustomLayer(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            var command = new MoveCustomLayerCommand
+            {
+                Player = player,
+                GameId = parsedMsg.GameId ?? default,
+                ItemId = parsedMsg.Data["itemId"]?.ToString(),
+                Direction = parsedMsg.Data["direction"]?.ToObject<int>() ?? 0,
+            };
+
+            var (response, updated) = await mediator.Send(command);
+            if (updated != null)
+            {
+                parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
+                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+            }
             return response;
         }
     }

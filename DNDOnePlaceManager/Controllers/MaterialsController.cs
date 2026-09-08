@@ -5,6 +5,8 @@ using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
+using DndOnePlaceManager.Application.Commands.Resources.Link;
+using DndOnePlaceManager.Application.Commands.Resources.Transfer;
 using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Enums;
@@ -16,6 +18,7 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -28,11 +31,13 @@ namespace DNDOnePlaceManager.Controllers
     {
         private IMediator mediator;
         private readonly ILobbyService _lobbyService;
+        private readonly IServiceScopeFactory _scopeFactory;
 
-        public MaterialsController(IMediator mediator, ILobbyService lobbyService)
+        public MaterialsController(IMediator mediator, ILobbyService lobbyService, IServiceScopeFactory scopeFactory)
         {
             this.mediator = mediator;
             _lobbyService = lobbyService;
+            _scopeFactory = scopeFactory;
         }
 
         /// <summary>
@@ -242,7 +247,8 @@ namespace DNDOnePlaceManager.Controllers
                 Key = request.Key,
                 ParentFolder = request.ParentFolder,
                 GameID = gameId,
-                Data = request.Data
+                Data = request.Data,
+                StorageKind = request.StorageKind,
             };
 
             //TODO, this should be form multipart with IFormFile
@@ -346,6 +352,7 @@ namespace DNDOnePlaceManager.Controllers
                 Name     = request.Name ?? request.Key ?? string.Empty,
                 Data     = data,
                 MimeType = request.MimeType,
+                StorageKind = request.StorageKind,
             });
 
             if (resp == CommandResponse.AlreadyExists)
@@ -429,6 +436,166 @@ namespace DNDOnePlaceManager.Controllers
             });
 
             return Ok();
+        }
+
+        /// <summary>
+        /// Registers a reference to a file already on the local disk of whoever runs this
+        /// backend — zero bytes copied. GM-only (enforced in the handler).
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("LinkResource")]
+        public async Task<IActionResult> LinkResource([FromQuery] Guid gameId, [FromBody] LinkResourceRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var (_, id) = await mediator.Send(new LinkResourceCommand
+            {
+                GameId       = gameId,
+                Player       = playerResult.Player,
+                Name         = request.Name,
+                LocalPath    = request.LocalPath,
+                MimeType     = request.MimeType,
+                ParentFolder = request.ParentFolder,
+            });
+
+            var lobby = _lobbyService.GetLobby(gameId);
+            if (lobby != null)
+            {
+                await lobby.HandlePostCommand(playerResult.Player, new WebSockets.WebSocketCommand
+                {
+                    Command = WebSockets.Core.WebSocketCommandNames.ResourceAdd,
+                    Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
+                    Data    = Newtonsoft.Json.Linq.JToken.FromObject(new
+                    {
+                        id,
+                        name       = request.Name,
+                        storage    = ResourceStorageKind.Linked.ToString(),
+                        mimeType   = request.MimeType,
+                        playerId   = playerResult.Player.Id,
+                        playerName = playerResult.Player.Name,
+                    }),
+                });
+            }
+
+            return Ok(new { id });
+        }
+
+        /// <summary>
+        /// Recursively links every file found under a local directory (GM-only). Large folders
+        /// can take a while to walk, so the actual linking runs in a background task and this
+        /// returns as soon as it's scheduled — progress/completion/failure are broadcast over
+        /// the lobby's WS/WebRTC channel (operation_progress/complete/failed, keyed by the
+        /// returned operationId) instead of being returned in this response.
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("LinkDirectory")]
+        public async Task<IActionResult> LinkDirectory([FromQuery] Guid gameId, [FromBody] LinkDirectoryRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var player = playerResult.Player;
+            var operationId = Guid.NewGuid();
+
+            // Fire-and-forget: the request's own DI scope (and its IDbContext) is disposed the
+            // moment this action returns, so the background walk resolves its own IMediator/
+            // ILobbyService from a fresh scope rather than reusing the controller's fields.
+            _ = Task.Run(async () =>
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
+                var lobby = scopedLobbyService.GetLobby(gameId);
+
+                try
+                {
+                    var (_, linkedCount) = await scopedMediator.Send(new LinkDirectoryCommand
+                    {
+                        GameId             = gameId,
+                        Player             = player,
+                        LocalDirectoryPath = request.LocalDirectoryPath,
+                        ParentFolder       = request.ParentFolder,
+                        OnProgress         = count => OperationProgressPublisher.Update(lobby, player, operationId, count).GetAwaiter().GetResult(),
+                    });
+
+                    await OperationProgressPublisher.Complete(lobby, player, operationId, description: $"Linked {linkedCount} file(s)");
+                }
+                catch (Exception ex)
+                {
+                    await OperationProgressPublisher.Fail(lobby, player, operationId, "Failed to link folder", ex.Message);
+                }
+            });
+
+            return Ok(new { started = true, operationId });
+        }
+
+        /// <summary>
+        /// Lists a local directory's contents (GM-only) — omit path to list drive roots.
+        /// </summary>
+        [HttpGet]
+        [Authorize]
+        [Route("BrowseLocalDirectory")]
+        public async Task<IActionResult> BrowseLocalDirectory([FromQuery] Guid gameId, [FromQuery] string? path)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var entries = await mediator.Send(new BrowseLocalDirectoryCommand
+            {
+                GameId = gameId,
+                Player = playerResult.Player,
+                Path   = path,
+            });
+
+            return Ok(entries);
+        }
+
+        /// <summary>
+        /// Moves an existing resource's bytes between storage modes (GM-only).
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("TransferResourceStorage")]
+        public async Task<IActionResult> TransferResourceStorage([FromQuery] Guid gameId, [FromBody] TransferResourceStorageRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var result = await mediator.Send(new TransferResourceStorageCommand
+            {
+                GameId        = gameId,
+                Player        = playerResult.Player,
+                ResourceId    = request.ResourceId,
+                TargetStorage = request.TargetStorage,
+            });
+
+            var lobby = _lobbyService.GetLobby(gameId);
+            if (result == CommandResponse.Ok && lobby != null)
+            {
+                await lobby.HandlePostCommand(playerResult.Player, new WebSockets.WebSocketCommand
+                {
+                    Command = WebSockets.Core.WebSocketCommandNames.ResourceUpdate,
+                    Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
+                    Data    = Newtonsoft.Json.Linq.JToken.FromObject(new
+                    {
+                        id      = request.ResourceId,
+                        storage = request.TargetStorage.ToString(),
+                    }),
+                });
+            }
+
+            return Ok(new { response = result });
         }
 
         /// <summary>

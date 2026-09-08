@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Domain.Enums;
 using System;
 
 namespace DNDOnePlaceManager.Controllers.Requests
@@ -10,5 +11,6 @@ namespace DNDOnePlaceManager.Controllers.Requests
         public string? Key { get; set; }
         public Guid? ParentFolder { get; set; }
         public string Data { get; set; } //To delete, this should be IFormFile
+        public ResourceStorageKind StorageKind { get; set; } = ResourceStorageKind.Blob;
     }
 }

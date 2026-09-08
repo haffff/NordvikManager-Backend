@@ -36,7 +36,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Player = gameLobby.SystemPlayer,
                 GameID = gameLobby.GameId,
                 IsCustomUi = false,
-                IsTemplate = false,
+                IsTemplate = stepData.IsTemplate,
             });
 
             if (!string.IsNullOrWhiteSpace(stepData.Output))

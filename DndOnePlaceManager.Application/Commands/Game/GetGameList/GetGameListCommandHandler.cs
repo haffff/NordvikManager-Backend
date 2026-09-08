@@ -15,10 +15,16 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         public async override Task<GetGameListCommandResponse> Handle(GetGameListCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
+            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
+            // for why chaining multiple collection .Include()s without it is a
+            // cartesian-explosion risk. This one runs on every game-list load
+            // (e.g. every login), across every one of the user's games at once.
             var result = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.Properties)
-                .Where(x => x.Players.Any(y => y.CentralServerUserId == request.UserId)).ToListAsync();
+                .Where(x => x.Players.Any(y => y.CentralServerUserId == request.UserId))
+                .AsSplitQuery()
+                .ToListAsync();
 
             var mapped = result.Select(x =>
             {

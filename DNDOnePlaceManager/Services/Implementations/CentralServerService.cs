@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Services.Interfaces;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -7,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -16,12 +18,56 @@ namespace DNDOnePlaceManager.Services.Implementations
     public class CentralServerService : ICentralServerService
     {
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly string _centralServerUrl;
 
-        public CentralServerService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+        public CentralServerService(
+            IHttpClientFactory httpClientFactory,
+            IHttpContextAccessor httpContextAccessor,
+            IConfiguration configuration)
         {
             _httpClientFactory = httpClientFactory;
+            _httpContextAccessor = httpContextAccessor;
             _centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
+        }
+
+        /// <summary>
+        /// Sends an authenticated request against the Central Server. The CentralToken JWT is
+        /// short-lived (15 min) and nothing proactively refreshes it, so long-running GM sessions
+        /// eventually start getting 401s on every Central-proxied call. On a 401 here, this
+        /// transparently refreshes via the CentralRefreshToken cookie (same flow as the
+        /// RefreshCentralToken endpoint), persists the new CentralToken cookie for subsequent
+        /// requests, and retries once.
+        /// </summary>
+        private async Task<HttpResponseMessage> SendAuthenticatedAsync(
+            string accessToken,
+            Func<HttpClient, Task<HttpResponseMessage>> send)
+        {
+            var response = await send(CreateAuthenticatedClient(accessToken));
+            if (response.StatusCode != HttpStatusCode.Unauthorized)
+                return response;
+
+            var httpContext = _httpContextAccessor.HttpContext;
+            var refreshToken = httpContext?.Request.Cookies["CentralRefreshToken"];
+            if (string.IsNullOrEmpty(refreshToken))
+                return response;
+
+            var newAccessToken = await RefreshTokenAsync(refreshToken);
+            if (newAccessToken == null)
+                return response;
+
+            if (httpContext != null)
+            {
+                httpContext.Response.Cookies.Append("CentralToken", newAccessToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    IsEssential = true,
+                    SameSite = SameSiteMode.None,
+                    Secure = true
+                });
+            }
+
+            return await send(CreateAuthenticatedClient(newAccessToken));
         }
 
         public async Task<CentralServerMeta?> GetMetaAsync()
@@ -43,7 +89,6 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session)
         {
-            var client = CreateAuthenticatedClient(centralToken);
             var body = JsonConvert.SerializeObject(new
             {
                 name = session.Name,
@@ -57,7 +102,8 @@ namespace DNDOnePlaceManager.Services.Implementations
             var content = new StringContent(body, Encoding.UTF8, "application/json");
             try
             {
-                var response = await client.PostAsync($"{_centralServerUrl}/api/gamelist/addgame", content);
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/addgame", content));
                 if (!response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -186,10 +232,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<string?> GetUserNameAsync(string accessToken, string userId)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             try
             {
-                var response = await client.GetAsync($"{_centralServerUrl}/api/user/GetUserNameById?id={Uri.EscapeDataString(userId)}");
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.GetAsync($"{_centralServerUrl}/api/user/GetUserNameById?id={Uri.EscapeDataString(userId)}"));
                 if (!response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -204,10 +250,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<object?> GetInvitesAsync(string accessToken, int page)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             try
             {
-                var response = await client.GetAsync($"{_centralServerUrl}/api/user/invites?page={page}");
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.GetAsync($"{_centralServerUrl}/api/user/invites?page={page}"));
                 if (!response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -221,10 +267,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<string?> GenerateInviteAsync(string accessToken, int hours)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             try
             {
-                var response = await client.GetAsync($"{_centralServerUrl}/api/user/GenerateInvite?hours={hours}");
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.GetAsync($"{_centralServerUrl}/api/user/GenerateInvite?hours={hours}"));
                 if (!response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -239,10 +285,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<bool> DeleteInviteAsync(string accessToken, string key)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             try
             {
-                var response = await client.DeleteAsync($"{_centralServerUrl}/api/user/deleteinvite?key={Uri.EscapeDataString(key)}");
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.DeleteAsync($"{_centralServerUrl}/api/user/deleteinvite?key={Uri.EscapeDataString(key)}"));
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -253,10 +299,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<Dictionary<string, string>?> GetKeyboardBindingsAsync(string accessToken)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             try
             {
-                var response = await client.GetAsync($"{_centralServerUrl}/api/user/KeyboardBindings");
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.GetAsync($"{_centralServerUrl}/api/user/KeyboardBindings"));
                 if (!response.IsSuccessStatusCode) return null;
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -270,12 +316,12 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task<bool> SetKeyboardBindingsAsync(string accessToken, Dictionary<string, string> bindings)
         {
-            var client = CreateAuthenticatedClient(accessToken);
             var body = JsonConvert.SerializeObject(bindings);
             var content = new StringContent(body, Encoding.UTF8, "application/json");
             try
             {
-                var response = await client.PostAsync($"{_centralServerUrl}/api/user/KeyboardBindings", content);
+                var response = await SendAuthenticatedAsync(accessToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/user/KeyboardBindings", content));
                 return response.IsSuccessStatusCode;
             }
             catch

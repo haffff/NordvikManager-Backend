@@ -15,5 +15,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("Name of the variable where the new card's id will be stored.")]
         public string Output { get; set; }
+
+        [Description("If true, the new card is created as a reusable Template (IsTemplate=true) instead of a regular Instance — e.g. for an addon that imports/generates a new card blueprint at runtime. Defaults to false (a normal instance).")]
+        public bool IsTemplate { get; set; }
     }
 }

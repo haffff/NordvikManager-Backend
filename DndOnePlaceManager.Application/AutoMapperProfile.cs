@@ -55,6 +55,9 @@ namespace DndOnePlaceManager.Application
             CreateMap<ResourceDTO, ResourceModel>()
                 .ForMember(x => x.MimeType, (opt) => opt.MapFrom((dto, model) => dto.MimeType.ToEnumUsingDescriptionAttribute<MimeType>()));
 
+            CreateMap<PlaylistModel, PlaylistDTO>()
+                .ForMember(x => x.Resources, (opt) => opt.Ignore());
+
             CreateMap<TreeEntryDto, TreeEntryModel>()
                 .ForMember(x => x.Parent, (opt) => opt.MapFrom((dto, model) => model.Parent))
                 .ForMember(x => x.Next, (opt) => opt.MapFrom((dto, model) => model.Next));

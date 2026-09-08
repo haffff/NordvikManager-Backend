@@ -50,6 +50,24 @@
         public const string ResourceDelete = "resource_delete";
         public const string ResourceAdd = "resource_add";
 
+        //Long-running operation progress (addon install, resource linking, ...)
+        //Data payloads: OperationProgress = { id, current, total, message }
+        //               OperationComplete/OperationFailed = { id, title, description }
+        public const string OperationProgress = "operation_progress";
+        public const string OperationComplete = "operation_complete";
+        public const string OperationFailed = "operation_failed";
+
+        //Sound
+        public const string SoundPlay = "sound_play";
+        public const string SoundStop = "sound_stop";
+
+        //Playlist
+        public const string PlaylistNotify = "playlist_notify";
+        public const string PlaylistPlay = "playlist_play";
+        public const string PlaylistPause = "playlist_pause";
+        public const string PlaylistStop = "playlist_stop";
+        public const string PlaylistTrackChange = "playlist_track_change";
+
         //Settings
         public const string SettingsGame = "settings_game";
         public const string SettingsMap = "settings_map";
@@ -64,6 +82,25 @@
         public const string PropertyUpdate = "property_update";
         public const string PropertyRemove = "property_remove";
         public const string PropertyAdd = "property_add";
+
+        //Property lists — repeating-row data stored as a JSON array inside a
+        //single PropertyModel.Value (see PropertyList command handlers). All four
+        //re-broadcast as PropertyUpdate so existing property_update listeners need
+        //no changes to pick up list mutations.
+        public const string PropertyListItemAdd = "property_list_item_add";
+        public const string PropertyListItemRemove = "property_list_item_remove";
+        public const string PropertyListItemUpdate = "property_list_item_update";
+        public const string PropertyListReorder = "property_list_reorder";
+
+        // Custom battle-map layers — a thin, game-scoped wrapper around the same
+        // "customLayers" property list. Add/Move allocate numeric layer ids
+        // server-side by fitting them between the reserved Map/Grid/Token/TokenUi
+        // anchors (see CustomLayerLayout); Remove atomically reassigns any elements
+        // on the deleted layer back to the Map layer. All three re-broadcast as
+        // PropertyUpdate, same as the four PropertyList commands above.
+        public const string CustomLayerAdd = "custom_layer_add";
+        public const string CustomLayerRemove = "custom_layer_remove";
+        public const string CustomLayerMove = "custom_layer_move";
 
         // Connection / handshake
         public const string HandshakeOk = "OK";

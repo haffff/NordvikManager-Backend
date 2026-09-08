@@ -17,6 +17,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         [JsonProperty("id")]
         public Guid? Id { get; set; }
         public bool? IsOwner { get; set; }
+        public bool? System { get; set; }
         public string? Color { get; set; }
         public string? Image { get; set; }
         public Permission? Permission { get; set; }

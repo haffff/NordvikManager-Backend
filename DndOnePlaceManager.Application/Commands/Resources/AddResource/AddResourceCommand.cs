@@ -27,6 +27,8 @@ namespace DndOnePlaceManager.Application.Commands.Resources
         public string? Key { get; set; }
 
         public Guid? ParentFolder { get; set; }
+
+        public ResourceStorageKind StorageKind { get; set; } = ResourceStorageKind.Blob;
     }
 }
 
