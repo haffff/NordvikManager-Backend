@@ -446,6 +446,35 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
+        public async Task SaveKeyboardBindings_ReturnsOk_WhenValueHasArgumentTail()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+                .ReturnsAsync(true);
+            var controller = CreateController(central, contextUser: RegularUser());
+            var validBindings = new Dictionary<string, string>
+            {
+                { "Ctrl+Shift+S", "Playlist.PlaySound --resourceId=abc-123-def-456" },
+            };
+
+            var result = await controller.SaveKeyboardBindings(validBindings);
+
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenValueExceedsMaxLength()
+        {
+            var controller = CreateController(contextUser: RegularUser());
+            var tooLong = "game.Do --value=" + new string('x', 300);
+            var invalidBindings = new Dictionary<string, string> { { "Ctrl+S", tooLong } };
+
+            var result = await controller.SaveKeyboardBindings(invalidBindings);
+
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
         public async Task SaveKeyboardBindings_ReturnsOk_WhenAllThreeModifiersPressed()
         {
             var central = new Mock<ICentralServerService>();

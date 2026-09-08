@@ -219,12 +219,17 @@ namespace DNDOnePlaceManager.Controllers
         // a valid-looking combo rather than requiring the whole string to be one.
         private static readonly System.Text.RegularExpressions.Regex KeyboardBindingKeyRegex = new(
             @"^(Ctrl\+)?(Shift\+)?(Alt\+)?(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
-        // "panel.command" — a ClientMediator command reference. Empty string is a
+        // "panel.command" optionally followed by whitespace and an argument tail
+        // (e.g. "Playlist.PlaySound --resourceId=abc-123") — a ClientMediator
+        // command reference the frontend parses and dispatches. Empty string is a
         // valid tombstone value (unbinds a built-in default's key client-side).
+        // Must stay in sync with COMMAND_REGEX (frontend KeyBoardEventsManager.js)
+        // and KEYBOARD_BINDING_COMMAND_REGEX (Central routes/user.js).
         private static readonly System.Text.RegularExpressions.Regex KeyboardBindingCommandRegex = new(
-            @"^[A-Za-z_][\w-]*\.[A-Za-z_][\w-]*$");
+            @"^[A-Za-z_][\w-]*\.[A-Za-z_][\w-]*(\s+\S.*)?$");
         private const int MaxKeyboardBindings = 200;
-        private const int MaxKeyboardBindingStringLength = 64;
+        // Room for a command plus a GUID-valued argument or two.
+        private const int MaxKeyboardBindingStringLength = 256;
 
         [HttpPost]
         [Authorize]

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DNDOnePlaceManager.Models;
+using System;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -8,7 +9,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Username of the player to request input from. Supports %variable% substitution (e.g. %playerId%).")]
         public string? UserName { get; set; }
 
-        [Description("ID of the player to request input from. Supports %variable% substitution. Takes precedence over UserName if both are set.")]
+        [UIType("playerid")]
+        [Description("Player to request input from. Pick one, or type an ID / %variable%. Takes precedence over UserName if both are set.")]
         public string? UserID { get; set; }
 
         [Description("Message or prompt displayed to the user when requesting input. Supports %variable% substitution.")]

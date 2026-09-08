@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -10,7 +11,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Id of the template card to create from (e.g. resolved via %qn:card-\"Template Name\".id%). Determines the card's bundle (MainResource/AdditionalResources) and seeds its initial properties.")]
         public string TemplateId { get; set; }
 
-        [Description("Player id to grant Edit permission on the new card. Leave empty to skip.")]
+        [UIType("playerid")]
+        [Description("Player to grant Edit permission on the new card. Pick one, or type an ID / %variable%. Leave empty to skip.")]
         public string Owner { get; set; }
 
         [Description("Name of the variable where the new card's id will be stored.")]
