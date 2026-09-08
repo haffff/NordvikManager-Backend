@@ -488,8 +488,8 @@ namespace DNDOnePlaceManager.Controllers
         /// Recursively links every file found under a local directory (GM-only). Large folders
         /// can take a while to walk, so the actual linking runs in a background task and this
         /// returns as soon as it's scheduled — progress/completion/failure are broadcast over
-        /// the lobby's WS/WebRTC channel (resource_link_progress/complete/failed) instead of
-        /// being returned in this response.
+        /// the lobby's WS/WebRTC channel (operation_progress/complete/failed, keyed by the
+        /// returned operationId) instead of being returned in this response.
         /// </summary>
         [HttpPost]
         [Authorize]
@@ -502,6 +502,7 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest();
 
             var player = playerResult.Player;
+            var operationId = Guid.NewGuid();
 
             // Fire-and-forget: the request's own DI scope (and its IDbContext) is disposed the
             // moment this action returns, so the background walk resolves its own IMediator/
@@ -521,39 +522,18 @@ namespace DNDOnePlaceManager.Controllers
                         Player             = player,
                         LocalDirectoryPath = request.LocalDirectoryPath,
                         ParentFolder       = request.ParentFolder,
-                        OnProgress         = count => lobby?.HandlePostCommand(player, new WebSockets.WebSocketCommand
-                        {
-                            Command = WebSockets.Core.WebSocketCommandNames.ResourceLinkProgress,
-                            Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
-                            Data    = Newtonsoft.Json.Linq.JToken.FromObject(new { linkedCount = count }),
-                        }).GetAwaiter().GetResult(),
+                        OnProgress         = count => OperationProgressPublisher.Update(lobby, player, operationId, count).GetAwaiter().GetResult(),
                     });
 
-                    if (lobby != null)
-                    {
-                        await lobby.HandlePostCommand(player, new WebSockets.WebSocketCommand
-                        {
-                            Command = WebSockets.Core.WebSocketCommandNames.ResourceLinkComplete,
-                            Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
-                            Data    = Newtonsoft.Json.Linq.JToken.FromObject(new { linkedCount }),
-                        });
-                    }
+                    await OperationProgressPublisher.Complete(lobby, player, operationId, description: $"Linked {linkedCount} file(s)");
                 }
                 catch (Exception ex)
                 {
-                    if (lobby != null)
-                    {
-                        await lobby.HandlePostCommand(player, new WebSockets.WebSocketCommand
-                        {
-                            Command = WebSockets.Core.WebSocketCommandNames.ResourceLinkFailed,
-                            Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
-                            Data    = Newtonsoft.Json.Linq.JToken.FromObject(new { error = ex.Message }),
-                        });
-                    }
+                    await OperationProgressPublisher.Fail(lobby, player, operationId, "Failed to link folder", ex.Message);
                 }
             });
 
-            return Ok(new { started = true });
+            return Ok(new { started = true, operationId });
         }
 
         /// <summary>

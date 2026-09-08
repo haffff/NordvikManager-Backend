@@ -50,10 +50,12 @@
         public const string ResourceDelete = "resource_delete";
         public const string ResourceAdd = "resource_add";
 
-        //Resource linking
-        public const string ResourceLinkProgress = "resource_link_progress";
-        public const string ResourceLinkComplete = "resource_link_complete";
-        public const string ResourceLinkFailed = "resource_link_failed";
+        //Long-running operation progress (addon install, resource linking, ...)
+        //Data payloads: OperationProgress = { id, current, total, message }
+        //               OperationComplete/OperationFailed = { id, title, description }
+        public const string OperationProgress = "operation_progress";
+        public const string OperationComplete = "operation_complete";
+        public const string OperationFailed = "operation_failed";
 
         //Sound
         public const string SoundPlay = "sound_play";

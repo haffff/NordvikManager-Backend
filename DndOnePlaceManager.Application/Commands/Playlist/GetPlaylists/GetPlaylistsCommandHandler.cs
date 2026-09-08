@@ -39,16 +39,23 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.GetPlaylists
                 .Where(p => p.GameId == request.GameId && p.Kind == request.Kind)
                 .ToListAsync(cancellationToken);
 
-            return playlists.Select(MapPlaylist).ToList();
+            // Path can reveal the backend host's absolute filesystem layout for
+            // ManagedFile/Linked resources — GM-only, mirrors GetResourcesCommandHandler.
+            // The client doesn't need it to play a track anyway.
+            var canSeeAll = request.Player?.System == true || game.MasterId == playerId;
+
+            return playlists.Select(p => MapPlaylist(p, canSeeAll)).ToList();
         }
 
-        private PlaylistDTO MapPlaylist(Domain.Entities.PlaylistModel playlist)
+        private PlaylistDTO MapPlaylist(Domain.Entities.PlaylistModel playlist, bool canSeeAll)
         {
             var dto = mapper.Map<PlaylistDTO>(playlist);
             dto.Resources = playlist.Resources.Select(r =>
             {
                 var resourceDto = mapper.Map<ResourceDTO>(r);
                 resourceDto.Data = null;
+                if (!canSeeAll)
+                    resourceDto.Path = null;
                 return resourceDto;
             }).ToList();
             return dto;

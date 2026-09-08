@@ -256,7 +256,7 @@ namespace DNDOnePlaceManager.Controllers
             var lobby = _lobbyService.GetLobby(gameId);
             if (result == CommandResponse.Ok && lobby != null)
             {
-                lobby.ActivePlaylistPlaybacks.Remove(request.PlaylistId);
+                lobby.ActivePlaylistPlaybacks.TryRemove(request.PlaylistId, out _);
                 await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistStop,
                     new { playlistId = request.PlaylistId });
             }
@@ -301,7 +301,7 @@ namespace DNDOnePlaceManager.Controllers
 
             if (result.Ended)
             {
-                lobby.ActivePlaylistPlaybacks.Remove(request.PlaylistId);
+                lobby.ActivePlaylistPlaybacks.TryRemove(request.PlaylistId, out _);
                 await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistStop,
                     new { playlistId = request.PlaylistId });
             }

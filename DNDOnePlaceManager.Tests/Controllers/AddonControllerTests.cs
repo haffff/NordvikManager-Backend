@@ -62,6 +62,20 @@ namespace DNDOnePlaceManager.Tests.Controllers
         private static User AnyUser() => new User { Id = "user-id", UserName = "user" };
         private static PlayerDTO SomePlayer() => new PlayerDTO { Id = Guid.NewGuid(), Name = "Player" };
 
+        /// <summary>
+        /// InstallAddon/InstallFromFile now schedule the actual install as a fire-and-forget
+        /// background task (mirrors MaterialsController.LinkDirectory) that resolves its own
+        /// IMediator/ILobbyService from the controller's IServiceProvider rather than the
+        /// directly-injected mocks — this wires the same mock instances into a real DI
+        /// container so the background task observes the same Setup()s.
+        /// </summary>
+        private static IServiceProvider BuildBackgroundServiceProvider(Mock<IMediator> mediatorMock, Mock<ILobbyService> lobbyMock) =>
+            new ServiceCollection()
+                .AddSingleton(mediatorMock.Object)
+                .AddSingleton(lobbyMock.Object)
+                .AddSingleton(new Mock<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>().Object)
+                .BuildServiceProvider();
+
         private void SetupPlayer(Mock<IMediator> mediator, PlayerDTO? player) =>
             mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(new GetPlayerCommandResponse { Player = player });
@@ -208,29 +222,39 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task InstallAddon_ReturnsOk_WhenKeyProvided()
+        public async Task InstallAddon_ReturnsOkWithOperationId_WhenKeyProvided()
         {
-            // Arrange
+            // Arrange — the install itself now runs in the background (fire-and-forget,
+            // mirrors LinkDirectory); this just proves the kick-off response shape.
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
 
             // Act
-            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+            var result = await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
 
             // Assert
-            Assert.IsType<OkResult>(result);
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
         }
 
         [Fact]
-        public async Task InstallAddon_ThrowsResourceNotFoundException_WhenGameMissing()
+        public async Task InstallAddon_ReturnsOkImmediately_EvenWhenInstallFailsInBackground()
         {
-            // Arrange
+            // Arrange — a failure inside the backgrounded install no longer propagates as an
+            // HTTP exception (it's reported via operation_failed instead), so the kick-off
+            // response should still come back Ok.
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new ResourceNotFoundException("Game", Guid.NewGuid()));
 
-            // Act & Assert
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
-                _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" }));
+            // Act
+            var result = await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
         }
 
         // =========================================================================
@@ -381,19 +405,23 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task InstallFromFile_ReturnsOk_WhenValidBase64Provided()
+        public async Task InstallFromFile_ReturnsOkWithOperationId_WhenValidBase64Provided()
         {
-            // Arrange
+            // Arrange — the install itself now runs in the background (fire-and-forget,
+            // mirrors LinkDirectory); this just proves the kick-off response shape.
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
             var base64 = Convert.ToBase64String(new byte[] { 1, 2, 3 });
 
             // Act
-            var result = await _controller.InstallFromFile(Guid.NewGuid(),
+            var result = await controller.InstallFromFile(Guid.NewGuid(),
                 new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = base64 });
 
             // Assert
-            Assert.IsType<OkResult>(result);
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
         }
 
         // =========================================================================

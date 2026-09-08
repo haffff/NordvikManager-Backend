@@ -42,19 +42,24 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Link
             if (!isGM)
                 throw new PermissionException(Permission.Edit);
 
-            if (!storage.Exists(request.LocalPath))
+            // Normalize to an absolute path before persisting — a relative LocalPath would
+            // resolve against the backend process's working directory, which can change
+            // between the link and any later read and silently point at a different file.
+            var normalizedPath = System.IO.Path.GetFullPath(request.LocalPath);
+
+            if (!storage.Exists(normalizedPath))
                 throw new ResourceNotFoundException("LocalPath", request.LocalPath);
 
             MimeType? mimeTypeOrNull = !string.IsNullOrWhiteSpace(request.MimeType)
                 ? request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>()
-                : request.LocalPath.ToMimeType();
+                : normalizedPath.ToMimeType();
             var mimeType = mimeTypeOrNull ?? MimeType.None;
 
             var model = new ResourceModel
             {
                 Id       = Guid.NewGuid(),
                 Name     = request.Name,
-                Path     = request.LocalPath,
+                Path     = normalizedPath,
                 Storage  = ResourceStorageKind.Linked,
                 MimeType = mimeType,
                 Key      = null,

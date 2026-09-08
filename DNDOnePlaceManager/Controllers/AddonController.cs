@@ -260,28 +260,17 @@ namespace DNDOnePlaceManager.Controllers
             if (string.IsNullOrWhiteSpace(body?.Key))
                 return BadRequest(new { error = "key is required." });
 
-            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
+            var operationId = Guid.NewGuid();
 
-            var command = new InstallAddonCommand
+            RunInstallInBackground(gameId, player.Player, operationId, new InstallAddonCommand
             {
                 GameID = gameId,
                 Player = player.Player,
                 AddonSourceKey = body.Key,
-            };
-
-            var (_, addonInfo) = await mediator.Send(command);
-            // get lobby and trigger Install hook
-            var lobby = lobbyService.GetLobby(gameId);
-            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
-            {
-                GameId = gameId,
-                PlayerId = player.Player.Id ?? default,
-                AddonKey = addonInfo.AddonKey,
             });
 
-
-            return Ok();
+            return Ok(new { started = true, operationId });
         }
 
         /// <summary>POST addon/update — re-install latest version from repository.</summary>
@@ -413,31 +402,61 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest(new { error = "data must be a valid base64 string." });
             }
 
-            AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
+            var operationId = Guid.NewGuid();
 
-            var command = new InstallAddonCommand
+            RunInstallInBackground(gameId, player.Player, operationId, new InstallAddonCommand
             {
                 GameID = gameId,
                 Player = player.Player,
                 AddonFile = fileBytes,
                 AddonFileName = body.FileName,
-            };
-
-            var (_, addonInfo) = await mediator.Send(command);
-
-            var lobby = lobbyService.GetLobby(gameId);
-            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
-            {
-                GameId = gameId,
-                PlayerId = player.Player.Id ?? default,
-                AddonKey = addonInfo.AddonKey,
             });
 
+            return Ok(new { started = true, operationId });
+        }
 
+        /// <summary>
+        /// Fire-and-forget: runs an addon install in its own DI scope (mirrors
+        /// MaterialsController.LinkDirectory) and pushes progress/completion/failure over
+        /// the lobby's WS/WebRTC channel via OperationProgressPublisher, keyed by operationId.
+        /// </summary>
+        private void RunInstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, InstallAddonCommand command)
+        {
+            _ = Task.Run(async () =>
+            {
+                using var scope = serviceProvider.CreateScope();
+                var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
+                var lobby = scopedLobbyService.GetLobby(gameId);
 
+                (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                    as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
 
-            return Ok();
+                try
+                {
+                    command.OnProgress = progress => DNDOnePlaceManager.Services.OperationProgressPublisher
+                        .Update(lobby, player, operationId, progress.Current, progress.Total, progress.Message)
+                        .GetAwaiter().GetResult();
+
+                    var (_, addonInfo) = await scopedMediator.Send(command);
+
+                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
+                        lobby, player, operationId, "Addon installed", addonInfo.AddonName);
+
+                    lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                    {
+                        GameId = gameId,
+                        PlayerId = player.Id ?? default,
+                        AddonKey = addonInfo.AddonKey,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
+                        lobby, player, operationId, "Installation failed", ex.Message);
+                }
+            });
         }
 
         // =========================================================================
