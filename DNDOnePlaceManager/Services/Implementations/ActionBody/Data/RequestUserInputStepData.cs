@@ -16,6 +16,16 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Message or prompt displayed to the user when requesting input. Supports %variable% substitution.")]
         public string? Message { get; set; }
 
+        [Description("When enabled, the targeted player is shown a built-in modal with a text box, so " +
+                     "they can answer without a custom addon frontend. When disabled, only addons " +
+                     "subscribed to the 'request_input' command handle this step.")]
+        public bool ShowDialog { get; set; }
+
+        [ShowIf("ShowDialog", "true")]
+        [Description("Pre-fills the built-in dialog's text box. Supports %variable% substitution. " +
+                     "Leave empty for a blank box.")]
+        public string? DefaultInput { get; set; }
+
         [Description("Maximum time to wait for user input before the step times out.")]
         public TimeSpan? Timeout { get; set; }
 

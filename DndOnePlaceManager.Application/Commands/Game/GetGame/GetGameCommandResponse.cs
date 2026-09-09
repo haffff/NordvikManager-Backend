@@ -22,5 +22,9 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap.GetGame
         public int? BaseDistancePerSquare { get; set; }
         public string BaseDistanceUnit { get; set; }
         public string? CentralSessionId { get; set; }
+
+        // Per-game layout toggles (property-backed; absent => false).
+        public bool DisallowPlayerLayouts { get; set; }
+        public bool SaveLayoutOnExit { get; set; }
     }
 }

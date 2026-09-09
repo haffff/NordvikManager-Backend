@@ -36,7 +36,8 @@
         //Layout
         public const string LayoutUpdate = "layout_update";
         public const string LayoutRemove = "layout_remove";
-        public const string LayoutAdd = "layout_add";        //Map
+        public const string LayoutAdd = "layout_add";
+        public const string LayoutForceChange = "layout_forcechange";        //Map
         public const string MapChange = "map_change";
         public const string MapAdd = "map_add";
         public const string MapUpdate = "map_update";

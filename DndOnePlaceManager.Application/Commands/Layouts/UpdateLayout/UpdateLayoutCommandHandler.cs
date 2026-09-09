@@ -29,6 +29,13 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.UpdateLayout
 
             layout.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 
+            // Only one layout per game may be the default — clear the flag on the others.
+            if (request.Dto.Default == true && !layout.Default)
+            {
+                foreach (var other in game.Layouts.Where(x => x.Id != layout.Id && x.Default))
+                    other.Default = false;
+            }
+
             layout.Default = request.Dto.Default ?? layout.Default;
             layout.Value = request.Dto.Value ?? layout.Value;
             layout.Name = request.Dto.Name ?? layout.Name;

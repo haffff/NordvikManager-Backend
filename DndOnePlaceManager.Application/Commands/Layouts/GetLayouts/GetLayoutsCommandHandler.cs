@@ -33,6 +33,7 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.GetLayouts
                     Id = x.Id,
                     Name = x.Name,
                     Default = x.Default,
+                    GameModelId = x.GameModelId,
                 }).ToList();
             }
             else

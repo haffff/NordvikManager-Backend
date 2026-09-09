@@ -35,7 +35,16 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var tcs = new TaskCompletionSource<WebSocketCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
             gameLobby.ActionProcessingService.InputHandler[token] = tcs;
 
-            gameLobby.SendToPlayer(new WebSocketCommand { Command = "request_input", Data = stepData.Message, InputToken = token }, player);
+            // Always an object so clients can tell whether to show the built-in dialog
+            // (ShowDialog) and with what prefill (DefaultInput); addons read `.message`.
+            var data = JToken.FromObject(new
+            {
+                message = stepData.Message,
+                showDialog = stepData.ShowDialog,
+                defaultValue = stepData.DefaultInput ?? string.Empty,
+            });
+
+            gameLobby.SendToPlayer(new WebSocketCommand { Command = "request_input", Data = data, InputToken = token }, player);
 
             var timeout = stepData.Timeout ?? TimeSpan.FromMinutes(1);
             using var cts = new CancellationTokenSource(timeout);
