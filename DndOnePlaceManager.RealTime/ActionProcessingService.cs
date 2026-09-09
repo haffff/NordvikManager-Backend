@@ -31,7 +31,7 @@ using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services.Implementations
 {
-    internal class ActionProcessingService : IActionProcessingService
+    public class ActionProcessingService : IActionProcessingService
     {
         private IServiceScopeFactory serviceScopeFactory;
 

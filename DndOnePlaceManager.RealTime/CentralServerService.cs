@@ -109,11 +109,22 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             if (!response.IsSuccessStatusCode) return null;
 
-            string? centralToken = ExtractCookieValue(response, "Authorization");
-            if (centralToken == null) return null;
-
             var json = await response.Content.ReadAsStringAsync();
             var body2 = JObject.Parse(json);
+
+            // The Central Server's /login response already includes accessToken in the
+            // JSON body (routes/user.js: `res.json({ refreshToken, accessToken })`),
+            // alongside setting it as an HttpOnly Set-Cookie header. Read the body value —
+            // it's what the server already sends regardless of caller, and unlike the
+            // cookie it's actually readable everywhere: browser-wasm's HttpClient is
+            // fetch()-backed, and the Fetch API never exposes Set-Cookie to script at all
+            // (a deliberate, unbypassable browser security restriction, not a bug) — so
+            // cookie-based extraction silently fails on every login under wasm. The plain
+            // desktop backend's HttpClient can read either; the body is simpler and correct
+            // for both, so use it as the primary source with the cookie only as a fallback.
+            string? centralToken = body2["accessToken"]?.Value<string>()
+                ?? ExtractCookieValue(response, "Authorization");
+            if (centralToken == null) return null;
 
             // Decode (not validate) the Central Server JWT to extract user identity.
             // We trust the claims because we just received this token directly from the Central Server
@@ -287,7 +298,13 @@ namespace DNDOnePlaceManager.Services.Implementations
         private HttpClient CreateAuthenticatedClient(string accessToken)
         {
             var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Cookie", $"Authorization={accessToken}");
+            // A manually-set Cookie request header is a browser-forbidden header name —
+            // fetch() silently strips it, so this never actually reached the server under
+            // wasm (same class of restriction as Set-Cookie being unreadable on responses).
+            // The Central Server's auth middleware accepts a standard Authorization: Bearer
+            // header as an equivalent alternative to the cookie; use that instead.
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             return client;
         }
 

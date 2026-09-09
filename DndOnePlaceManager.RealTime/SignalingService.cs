@@ -29,6 +29,16 @@ namespace DNDOnePlaceManager.WebRTC
     {
         private readonly string _centralServerUrl;
         private readonly ILogger<SignalingService> _logger;
+        // SocketIOClient's default transport does an HTTP-polling handshake before
+        // upgrading to WebSocket. Under browser-wasm that handshake's GET request
+        // illegally carries a body (the Fetch API rejects GET/HEAD requests with a
+        // body), so the connection hangs/fails outright — confirmed against a real
+        // Central Server. Forcing WebSocket-only transport skips that handshake
+        // entirely and connects fine. Left off by default so the normal
+        // Kestrel-hosted backend keeps its existing polling-then-upgrade behavior
+        // (useful as a fallback in restrictive network environments) — only the
+        // wasm host opts in, via the "Signaling:ForceWebSocketTransport" config key.
+        private readonly bool _forceWebSocketTransport;
         private readonly ConcurrentDictionary<string, SioClient> _clients = new();
         // gameId → centralSessionId (needed to authenticate)
         private readonly ConcurrentDictionary<string, string> _sessionIds = new();
@@ -44,6 +54,7 @@ namespace DNDOnePlaceManager.WebRTC
         {
             _centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
             _logger = logger;
+            _forceWebSocketTransport = configuration.GetValue<bool>("Signaling:ForceWebSocketTransport");
         }
 
         public bool IsConnected(string gameId)
@@ -69,13 +80,22 @@ namespace DNDOnePlaceManager.WebRTC
             // This lets StartSession wait until the GM is actually registered before responding to the client.
             var authTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions
-            {
-                ExtraHeaders = new Dictionary<string, string>
+            // The Central Server's socket.io layer never reads this Cookie header — auth
+            // happens entirely via the "authenticate" emit below, which already carries
+            // centralToken in its payload. The header is harmless for the real backend
+            // but under browser-wasm there is no browser API surface at all for setting
+            // custom headers on a WebSocket handshake, so ClientWebSocket fails to
+            // connect if asked to send one — omit it under the same wasm opt-in flag.
+            var sioOptions = new SioOptions();
+            if (!_forceWebSocketTransport)
+                sioOptions.ExtraHeaders = new Dictionary<string, string>
                 {
                     ["Cookie"] = $"Authorization={centralToken}"
-                }
-            });
+                };
+            if (_forceWebSocketTransport)
+                sioOptions.Transport = SocketIOClient.Common.TransportProtocol.WebSocket;
+
+            var client = new SioClient(new System.Uri(_centralServerUrl), sioOptions);
 
             // On connected, authenticate as GM for the session
             client.OnConnected += async (sender, e) =>

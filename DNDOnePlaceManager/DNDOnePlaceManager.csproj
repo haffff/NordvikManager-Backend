@@ -10,6 +10,9 @@
     <PackageReference Include="AutoMapper" Version="16.1.1" />
     <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
+    <!-- Relational EF Core providers live here, not in DndOnePlaceManager.Infrastructure,
+         so they stay out of the browser-wasm asset graph. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
     <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.7" />
@@ -29,6 +32,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DndOnePlaceManager.Application\DndOnePlaceManager.Application.csproj" />
     <ProjectReference Include="..\DndOnePlaceManager.Infrastructure\DndOnePlaceManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\DndOnePlaceManager.RealTime\DndOnePlaceManager.RealTime.csproj" />
   </ItemGroup>
 
 </Project>

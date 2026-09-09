@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The real-time/lobby layer (GameLobby, ActionProcessingService, WebSocket command
+    handlers, the WebRTC session/lobby plumbing minus the transport itself) — extracted
+    out of DNDOnePlaceManager (Microsoft.NET.Sdk.Web) so it can be referenced from
+    NordvikManager.Wasm.Host (browser-wasm), which cannot reference a Web-SDK project
+    at all. Every file here was confirmed to have zero Microsoft.AspNetCore.* references
+    before moving (see the extraction plan). WebRTCSessionService.cs/WebRTCPlayerConnection.cs
+    stay out of this project — they're ported separately, against NordvikManager.Wasm.SipWrapper.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="SocketIOClient" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DndOnePlaceManager.Application\DndOnePlaceManager.Application.csproj" />
+    <ProjectReference Include="..\DndOnePlaceManager.Domain\DndOnePlaceManager.Domain.csproj" />
+    <ProjectReference Include="..\DndOnePlaceManager.Infrastructure\DndOnePlaceManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

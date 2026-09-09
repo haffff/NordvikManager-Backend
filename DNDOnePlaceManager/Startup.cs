@@ -1,6 +1,8 @@
 using DndOnePlaceManager.Application;
 using DndOnePlaceManager.Infrastructure;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Data.Contexts;
+using Microsoft.EntityFrameworkCore;
 using DNDOnePlaceManager.Engine.Middlewares;
 using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Implementations;
@@ -80,14 +82,18 @@ namespace DNDOnePlaceManager
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
 
-            var handlers = Assembly.GetExecutingAssembly().GetTypes();
+            // IWebSocketHandler/IActionStepDefinition implementations live in
+            // DndOnePlaceManager.RealTime now, not this assembly — scan the interface's
+            // own assembly rather than GetExecutingAssembly(), same fix already needed
+            // (and proven) for MediatR's own assembly-scan registration.
+            var handlers = typeof(IWebSocketHandler).Assembly.GetTypes();
             foreach (var handler in handlers)
             {
                 if (handler.GetInterface("IWebSocketHandler") != null)
                     services.AddScoped(typeof(IWebSocketHandler), handler);
             }
 
-            var definitions = Assembly.GetExecutingAssembly().GetTypes();
+            var definitions = typeof(IActionStepDefinition).Assembly.GetTypes();
             foreach (var definition in definitions)
             {
                 if (definition.GetInterface("IActionStepDefinition") != null)
@@ -119,6 +125,15 @@ namespace DNDOnePlaceManager
                     policy.WithOrigins(origins).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
                 });
             });
+
+            // IDbContext + its relational provider is registered here (not in
+            // InfrastructureLayerModule) so the SQLite/MySQL packages stay in this
+            // Web-SDK project and out of the browser-wasm asset graph.
+            var connectionString = Configuration.GetSection("ConnectionStrings")["DBData"];
+            if (Configuration.GetValue<bool>("UseSqlite"))
+                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseSqlite(connectionString));
+            else
+                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString));
 
             InfrastructureLayerModule.Register(services, Configuration);
             ApplicationLayerModule.Register(services, Configuration);

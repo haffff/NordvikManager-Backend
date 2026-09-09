@@ -6,12 +6,21 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!--
+    The relational EF Core providers (SQLite native e_sqlite3, MySQL raw TCP) live in
+    DNDOnePlaceManager (the only non-test host that opens a real database), NOT here.
+    Keeping them out of this assembly keeps them out of the browser-wasm asset graph
+    that reaches this project transitively (RealTime -> Infrastructure) — MySql.Data
+    alone drags in BouncyCastle, Google.Protobuf and System.Private.Xml (~9 MB). The
+    wasm host and the unit tests register IDbContext against EF Core InMemory instead;
+    InfrastructureLayerModule.Register no longer touches the DbContext at all.
+  -->
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
+    <!-- Relational (GetDbConnection / ExecuteSqlRaw / HasFilter in DndOneContext) is
+         provider-agnostic — it does NOT pull SQLite/MySQL native or BouncyCastle. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.5" />
-    <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.1" />
-    <PackageReference Include="MySqlConnector" Version="2.5.0" />
   </ItemGroup>
 
   <ItemGroup>
