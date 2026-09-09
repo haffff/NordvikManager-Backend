@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Browser-wasm executable that validates NordvikManager.Wasm.SipWrapper
+    (SessionServiceHarness) and, now, the extracted real-time layer
+    (DndOnePlaceManager.RealTime — GameLobby, ActionProcessingService, WebSocket
+    handlers). Deliberately does NOT reference DNDOnePlaceManager (the real API
+    project) — Microsoft.NET.Sdk.Web pulls in Microsoft.AspNetCore.App for the whole
+    project regardless of which individual files use ASP.NET Core types, and that
+    framework isn't available for the browser-wasm RID. WebRTCSessionService.cs itself
+    stays in DNDOnePlaceManager and is not referenced here — only its already-ported
+    counterpart (WebRTCPlayerConnection.cs, above) and the real-time layer it talks to.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmMainJSPath>main.js</WasmMainJSPath>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- POC/validation only: keep the linker out of the way. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <WasmBuildNative>true</WasmBuildNative>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <WasmExtraFilesToDeploy Include="index.html" />
+    <WasmExtraFilesToDeploy Include="gm.html" />
+    <WasmExtraFilesToDeploy Include="RealSession\hostMode.js" Link="hostMode.js" />
+    <WasmExtraFilesToDeploy Include="Harness\testSignaling.js" Link="testSignaling.js" />
+    <!-- Owned by the wrapper project, deployed alongside this host's own bundle. -->
+    <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.SipWrapper\Interop\webrtcInterop.js" Link="webrtcInterop.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Wasm.SipWrapper\NordvikManager.Wasm.SipWrapper.csproj" />
+    <ProjectReference Include="..\DndOnePlaceManager.RealTime\DndOnePlaceManager.RealTime.csproj" />
+  </ItemGroup>
+
+</Project>

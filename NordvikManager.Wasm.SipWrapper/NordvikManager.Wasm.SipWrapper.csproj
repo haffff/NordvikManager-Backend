@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SIPSorcery-compatible WebRTC surface for the browser-wasm host: same type/member
+    names WebRTCSessionService.cs / WebRTCPlayerConnection.cs already call, backed by
+    the browser's native RTCPeerConnection/RTCDataChannel via JS interop instead of
+    SIPSorcery's raw-socket ICE/DTLS/SCTP stack (which browser-wasm cannot do at all).
+    See NordvikManager.Wasm.Host for the executable that references this.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Owns both sides of the interop — consumers deploy this alongside their own
+         wasm bundle via WasmExtraFilesToDeploy (see NordvikManager.Wasm.Host.csproj). -->
+    <None Include="Interop\webrtcInterop.js" />
+  </ItemGroup>
+
+</Project>
