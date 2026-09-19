@@ -8,6 +8,8 @@ This is the "GM Local Server" part of the Nordvik Manager VTT application — it
 2. If you want to use PostgreSQL instead of the SQLite default, change `UseSqlite` and the `ConnectionStrings` fields.
 3. `dotnet run --project DNDOnePlaceManager` — serves the API on `http://localhost:8213` / `https://localhost:8214` by default.
 
+To run this alongside Central and both Frontend roles in one command instead, use `pnpm run dev` from the [main repo](https://github.com/haffff/NordvikManager#development-setup).
+
 ### Frontend
 Frontend repository can be found [here](https://github.com/haffff/NordvikManagerFrontEnd). Run it in development mode (`pnpm start`) or build it (`pnpm build`) and drop the output into this project's `wwwroot` directory.
 
