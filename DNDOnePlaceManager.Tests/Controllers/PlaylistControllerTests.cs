@@ -41,7 +41,12 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
         private static PlaylistController CreateController(Mock<IMediator> mediatorMock, User? contextUser = null, ILobbyService? lobbyService = null)
         {
-            var controller = new PlaylistController(mediatorMock.Object, lobbyService ?? new Mock<ILobbyService>().Object);
+            // Real PlaybackService (dependency-free) so these tests still exercise the
+            // playback orchestration end-to-end after it moved out of the controller.
+            var controller = new PlaylistController(
+                mediatorMock.Object,
+                lobbyService ?? new Mock<ILobbyService>().Object,
+                new PlaybackService());
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;
@@ -251,6 +256,20 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
+        public async Task PausePlaylist_RunsCommandAndReturnsOk_WhenLobbyMissing()
+        {
+            // Lenient legacy behaviour: no in-memory lobby, but the permission-checking
+            // command still runs and the endpoint returns Ok rather than 400.
+            _mediator.Setup(m => m.Send(It.IsAny<PausePlaylistCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            var result = await _controller.PausePlaylist(Guid.NewGuid(), new PlaylistIdRequest { PlaylistId = Guid.NewGuid() });
+
+            Assert.IsType<OkObjectResult>(result);
+            _mediator.Verify(m => m.Send(It.IsAny<PausePlaylistCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
         public async Task PausePlaylist_SetsIsPaused_WhenCommandSucceeds()
         {
             var lobby = MakeLobby(_mediator);
@@ -269,6 +288,18 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
         // StopPlaylist
         // =========================================================================
+
+        [Fact]
+        public async Task StopPlaylist_RunsCommandAndReturnsOk_WhenLobbyMissing()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<StopPlaylistCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            var result = await _controller.StopPlaylist(Guid.NewGuid(), new PlaylistIdRequest { PlaylistId = Guid.NewGuid() });
+
+            Assert.IsType<OkObjectResult>(result);
+            _mediator.Verify(m => m.Send(It.IsAny<StopPlaylistCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
 
         [Fact]
         public async Task StopPlaylist_RemovesActiveEntry_WhenCommandSucceeds()

@@ -68,6 +68,7 @@ namespace DNDOnePlaceManager
                                DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger>();
             services.AddSingleton<IMaterialsService, MaterialsService>();
             services.AddScoped<ILobbyService, LobbyService>();
+            services.AddSingleton<IPlaybackService, PlaybackService>();
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();

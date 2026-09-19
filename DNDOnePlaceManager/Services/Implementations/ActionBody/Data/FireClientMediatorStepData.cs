@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -10,7 +11,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("JSON payload to pass with the event. Supports %variable% substitution.")]
         public string Payload { get; set; }
 
-        [Description("Player name or ID to target. Supports %variable% substitution (e.g. %playerId%). Leave empty to broadcast to all.")]
+        [UIType("playerid")]
+        [Description("Player to target. Pick one, or type a name / ID / %variable%. Leave empty to broadcast to all.")]
         public string Player { get; set; }
     }
 }

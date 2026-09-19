@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -7,7 +8,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Key of the resource to update. Takes priority over ResourceId when both are set.")]
         public string Key { get; set; }
 
-        [Description("GUID of the resource to update. Used when Key is not set.")]
+        [UIType("resourceid")]
+        [Description("Resource to update. Pick one, or type a GUID / %variable%. Used when Key is not set.")]
         public string ResourceId { get; set; }
 
         [Description("New text content to store. Supports %variable% substitution.")]

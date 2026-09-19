@@ -33,11 +33,15 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                  .Include(maps => maps.Maps).ThenInclude(e => e.Elements).ThenInclude(e => e.Properties)
                  .Include(maps => maps.Layouts)
                  .Include(bms => bms.BattleMaps)
+                 .Include(g => g.Properties)
                  .FirstOrDefaultAsync(x => x.Id == request.GameID);
                 return GetGameMap(fullGame, player);
             }
             return null;
         }
+
+        private static bool PropIsTrue(GameModel game, string name) =>
+            string.Equals(game.Properties?.FirstOrDefault(p => p.Name == name)?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
         private GetGameCommandResponse GetGameMap(GameModel fullGame, PlayerModel player)
         {
@@ -47,6 +51,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 Name = fullGame.Name,
                 RequirePassword = !String.IsNullOrEmpty(fullGame.Password),
                 CentralSessionId = fullGame.CentralSessionId,
+                DisallowPlayerLayouts = PropIsTrue(fullGame, "disallowPlayerLayouts"),
+                SaveLayoutOnExit = PropIsTrue(fullGame, "saveLayoutOnExit"),
                 Master = mapper.Map<PlayerDTO>(fullGame.Players.First(x => x.Id == fullGame.MasterId)),
                 Players = fullGame.Players.Select(x => mapper.Map<PlayerDTO>(x)).ToList(),
                 DefaultLayout = mapper.Map<LayoutDTO>(fullGame.Layouts.FirstOrDefault(x => x.Default)),

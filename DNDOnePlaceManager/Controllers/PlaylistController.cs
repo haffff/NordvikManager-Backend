@@ -4,13 +4,13 @@ using DndOnePlaceManager.Application.Commands.Playlist.AdvancePlaylistTrack;
 using DndOnePlaceManager.Application.Commands.Playlist.DeletePlaylist;
 using DndOnePlaceManager.Application.Commands.Playlist.GetPlaylists;
 using DndOnePlaceManager.Application.Commands.Playlist.PausePlaylist;
-using DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist;
 using DndOnePlaceManager.Application.Commands.Playlist.StopPlaylist;
 using DndOnePlaceManager.Application.Commands.Playlist.UpdatePlaylist;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Services;
+using DNDOnePlaceManager.Services.Interfaces;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,11 +27,13 @@ namespace DNDOnePlaceManager.Controllers
     {
         private readonly IMediator mediator;
         private readonly ILobbyService _lobbyService;
+        private readonly IPlaybackService _playbackService;
 
-        public PlaylistController(IMediator mediator, ILobbyService lobbyService)
+        public PlaylistController(IMediator mediator, ILobbyService lobbyService, IPlaybackService playbackService)
         {
             this.mediator = mediator;
             _lobbyService = lobbyService;
+            _playbackService = playbackService;
         }
 
         [HttpGet]
@@ -147,64 +149,8 @@ namespace DNDOnePlaceManager.Controllers
             if (lobby == null)
                 return BadRequest();
 
-            // Resume-in-place: if a paused entry already exists for this playlist, unpause it
-            // rather than restarting from track 0 / re-shuffling.
-            if (lobby.ActivePlaylistPlaybacks.TryGetValue(request.PlaylistId, out var existing) && existing.IsPaused)
-            {
-                existing.IsPaused = false;
-                existing.CurrentTrackStartedAtUtc = DateTime.UtcNow;
-
-                await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistPlay, new
-                {
-                    playlistId = existing.PlaylistId,
-                    mode = existing.Mode,
-                    shuffle = existing.Shuffle,
-                    repeat = existing.Repeat,
-                    trackOrder = existing.TrackOrder,
-                    currentTrackIndex = existing.CurrentTrackIndex,
-                    currentTrackStartedAtUtc = existing.CurrentTrackStartedAtUtc,
-                    isPaused = false,
-                });
-
-                return Ok(new { response = CommandResponse.Ok });
-            }
-
-            var result = await mediator.Send(new PlayPlaylistCommand
-            {
-                GameId = gameId,
-                Player = playerResult.Player,
-                PlaylistId = request.PlaylistId,
-            });
-
-            if (result.Response == CommandResponse.Ok && result.TrackOrder.Count > 0)
-            {
-                var state = new Services.Implementations.PlaylistPlaybackState
-                {
-                    PlaylistId = request.PlaylistId,
-                    Mode = result.Mode,
-                    Shuffle = result.Shuffle,
-                    Repeat = result.Repeat,
-                    TrackOrder = result.TrackOrder,
-                    CurrentTrackIndex = 0,
-                    IsPaused = false,
-                    CurrentTrackStartedAtUtc = DateTime.UtcNow,
-                };
-                lobby.ActivePlaylistPlaybacks[request.PlaylistId] = state;
-
-                await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistPlay, new
-                {
-                    playlistId = state.PlaylistId,
-                    mode = state.Mode,
-                    shuffle = state.Shuffle,
-                    repeat = state.Repeat,
-                    trackOrder = state.TrackOrder,
-                    currentTrackIndex = state.CurrentTrackIndex,
-                    currentTrackStartedAtUtc = state.CurrentTrackStartedAtUtc,
-                    isPaused = false,
-                });
-            }
-
-            return Ok(new { response = result.Response });
+            var response = await _playbackService.PlayPlaylistAsync(mediator, lobby, playerResult.Player, request.PlaylistId);
+            return Ok(new { response });
         }
 
         [HttpPost]
@@ -217,23 +163,22 @@ namespace DNDOnePlaceManager.Controllers
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var result = await mediator.Send(new PausePlaylistCommand
-            {
-                GameId = gameId,
-                Player = playerResult.Player,
-                PlaylistId = request.PlaylistId,
-            });
-
             var lobby = _lobbyService.GetLobby(gameId);
-            if (result == CommandResponse.Ok && lobby != null &&
-                lobby.ActivePlaylistPlaybacks.TryGetValue(request.PlaylistId, out var state))
+            if (lobby == null)
             {
-                state.IsPaused = true;
-                await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistPause,
-                    new { playlistId = request.PlaylistId });
+                // No in-memory playback to touch — still run the command for its
+                // permission check, matching the pre-refactor lenient behaviour.
+                var r = await mediator.Send(new PausePlaylistCommand
+                {
+                    GameId = gameId,
+                    Player = playerResult.Player,
+                    PlaylistId = request.PlaylistId,
+                });
+                return Ok(new { response = r });
             }
 
-            return Ok(new { response = result });
+            var response = await _playbackService.PausePlaylistAsync(mediator, lobby, playerResult.Player, request.PlaylistId);
+            return Ok(new { response });
         }
 
         [HttpPost]
@@ -246,22 +191,22 @@ namespace DNDOnePlaceManager.Controllers
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var result = await mediator.Send(new StopPlaylistCommand
-            {
-                GameId = gameId,
-                Player = playerResult.Player,
-                PlaylistId = request.PlaylistId,
-            });
-
             var lobby = _lobbyService.GetLobby(gameId);
-            if (result == CommandResponse.Ok && lobby != null)
+            if (lobby == null)
             {
-                lobby.ActivePlaylistPlaybacks.TryRemove(request.PlaylistId, out _);
-                await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistStop,
-                    new { playlistId = request.PlaylistId });
+                // No in-memory playback to touch — still run the command for its
+                // permission check, matching the pre-refactor lenient behaviour.
+                var r = await mediator.Send(new StopPlaylistCommand
+                {
+                    GameId = gameId,
+                    Player = playerResult.Player,
+                    PlaylistId = request.PlaylistId,
+                });
+                return Ok(new { response = r });
             }
 
-            return Ok(new { response = result });
+            var response = await _playbackService.StopPlaylistAsync(mediator, lobby, playerResult.Player, request.PlaylistId);
+            return Ok(new { response });
         }
 
         [HttpPost]

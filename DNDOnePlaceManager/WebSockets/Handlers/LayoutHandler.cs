@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Commands.Layouts.AddLayout;
+using DndOnePlaceManager.Application.Commands.Layouts.ForceLayout;
 using DndOnePlaceManager.Application.Commands.Layouts.RemoveLayout;
 using DndOnePlaceManager.Application.Commands.Layouts.UpdateLayout;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -26,8 +27,19 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 WebSocketCommandNames.LayoutAdd => (CommandResponse?)await AddNewLayout(parsedMsg, player),
                 WebSocketCommandNames.LayoutUpdate => (CommandResponse?)await UpdateLayout(parsedMsg, player),
                 WebSocketCommandNames.LayoutRemove => (CommandResponse?)await RemoveLayout(parsedMsg, player),
+                WebSocketCommandNames.LayoutForceChange => (CommandResponse?)await ForceLayout(parsedMsg, player),
                 _ => null,
             };
+        }
+
+        private async Task<CommandResponse> ForceLayout(WebSocketCommand parsedMsg, PlayerDTO player)
+        {
+            ForceLayoutCommand cmd = new ForceLayoutCommand();
+            cmd.Player = player;
+            cmd.GameID = (Guid)parsedMsg.GameId;
+            cmd.LayoutId = Guid.Parse(parsedMsg.Data.ToString());
+
+            return await mediator.Send(cmd);
         }
 
         private async Task<CommandResponse> RemoveLayout(WebSocketCommand parsedMsg, PlayerDTO player)
