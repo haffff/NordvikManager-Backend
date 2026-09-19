@@ -32,14 +32,12 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             Hook = Hook.Install,
         };
 
-        // Known pre-existing quirk: unlike its siblings, this handler uses ArgumentNullException.ThrowIfNull(game)
-        // instead of Guard.NotFound — pinning down current behavior, not the ideal one.
         [Fact]
-        public async Task Handle_GameNotFound_ThrowsArgumentNullException()
+        public async Task Handle_GameNotFound_ThrowsResourceNotFoundException()
         {
             var cmd = new UpdateActionCommand { GameId = Guid.NewGuid(), Player = Player(), Action = UpdateDto(Guid.NewGuid()) };
 
-            await Assert.ThrowsAsync<ArgumentNullException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
         [Fact]
