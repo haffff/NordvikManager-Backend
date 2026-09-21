@@ -103,12 +103,24 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 ## Database
 
-Controlled by `"UseSqlite": true` in appsettings. SQLite (two files: `data.db`, `usersdata.db`) is the default; PostgreSQL is available for production. Two DbContexts: `DndOneContext` (app data) and `AuthContext` (ASP.NET Identity). Both call `Database.EnsureCreated()` on construction.
+Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `DndOnePlaceManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
+
+**SQLite uses real EF Core Migrations** (`DndOnePlaceManager.Infrastructure/Migrations/`), applied automatically via `Database.Migrate()` once at startup (`Startup.Configure`). **Any change to an entity in `DndOnePlaceManager.Domain` needs a new migration before it reaches anyone's database** — schema changes no longer get picked up by just editing the model:
+
+```bash
+# from the repo root — dotnet-ef is a local tool (dotnet-tools.json), no global install needed
+dotnet ef migrations add <DescriptiveName> --project DndOnePlaceManager.Infrastructure/DndOnePlaceManager.Infrastructure.csproj --startup-project DNDOnePlaceManager/DNDOnePlaceManager.csproj --context DndOneContext
+```
+Commit the generated files under `Migrations/`. Never hand-edit the database schema directly (no more ad-hoc `ALTER TABLE` shims) — always go through a migration.
+
+**MySQL does not have migrations yet** — it still uses `Database.EnsureCreated()` (schema-from-model, never alters an existing table). Giving two relational providers real migrations in one assembly needs a separate migrations assembly/history table per provider, and that couldn't be verified without a live MySQL server. If MySQL sees real production use, that's the next piece to build — don't add MySQL migrations into the same `Migrations/` folder as SQLite's (a single migration-history scan can't tell which provider a migration belongs to).
+
+The InMemory provider (unit tests, see `HandlerTestBase`) has no migrations support at all and keeps using `EnsureCreated()` — this is intentional and doesn't need touching when adding migrations.
 
 Key appsettings entries:
 - `FrontUrls:Client` — CORS origin (default `http://localhost:3000`)
 - `JWT:ValidIssuer`, `JWT:ValidAudience`, `JWT:ExpireTime`
-- `ConnectionStrings:DBData` / `ConnectionStrings:AuthData`
+- `ConnectionStrings:DBData`
 - `InitialAdminPassword` — seeded admin password on first run
 - `AddonsConfiguration:MainRepository` — addon registry URL
 
