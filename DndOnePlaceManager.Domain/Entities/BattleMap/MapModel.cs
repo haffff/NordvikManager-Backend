@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Domain.Entities.BattleMap
         public int GridSize { get; set; }
         public bool GridVisible { get; set; }
         public int GridUnitSize { get; set; }
+        public string? GridColor { get; set; }
         public List<PropertyModel>? Properties { get; set; }
         public GameModel Game { get; set; }
     }

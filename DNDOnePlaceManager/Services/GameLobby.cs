@@ -156,22 +156,26 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             catch (PermissionException e)
             {
-                EventLog.Log("Error", "Permission", e.Message, player.Name);
+                EventLog.Log("Error", "Permission", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player);
             }
             catch (WrongArgumentsException e)
             {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player);
             }
             catch (ResourceNotFoundException e)
             {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player);
             }
             catch (Exception e)
             {
-                EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
+                EventLog.Log("Error", "System", e.Message, player.Name,
+                    new { exceptionType = e.GetType().Name, command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player);
             }
         }
@@ -265,7 +269,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                         ? webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId] ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId]
                         : null;
 
-                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.CmdPermissionsUpdate, StringComparison.Ordinal))
+                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.PermissionsUpdate, StringComparison.Ordinal))
                     {
                         var permissionsCommand = new GetPermissionsCommand()
                         {

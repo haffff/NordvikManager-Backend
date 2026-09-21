@@ -125,7 +125,6 @@
 
         // Special / system commands
         public const string CmdClientScriptExecute = "clientscript_execute";
-        public const string CmdPermissionsUpdate = "permissions_update";
         public const string CmdPlayerList = "player_list";
         public const string CmdClientLoaded = "client_loaded";
         public const string CmdClientLayoutReady = "client_layout_ready";

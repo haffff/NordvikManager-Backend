@@ -18,6 +18,10 @@ namespace DndOnePlaceManager.Domain.Entities.Resources
         [ForeignKey("Game")]
         public Guid GameId { get; set; }
         public byte[]? Data { get; set; }
+        // Generated lazily on first thumbnail request and cached here so a large
+        // linked/blob image is only ever decoded+resized once, not on every request.
+        // Null means "not generated yet" (or not an image type at all).
+        public byte[]? ThumbnailData { get; set; }
         public MimeType MimeType { get; set; }
         public string Name { get; set; }
         public string? Key { get; set; }

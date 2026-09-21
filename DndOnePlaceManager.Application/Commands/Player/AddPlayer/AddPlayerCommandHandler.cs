@@ -1,6 +1,8 @@
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
@@ -58,6 +60,13 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 game.Players.Add(newPlayer);
 
                 await dbContext.SaveChangesAsync();
+
+                // Read-only, deliberately not Edit — players must never be able to
+                // edit game-level settings (see the Edit-gated check below). Without
+                // even Read here, a player can't see game-scoped shared data at all
+                // (e.g. an addon's game-wide config Property), because permission
+                // checks apply uniformly regardless of entity type.
+                game.SetPermissions(newPlayer.Id, Permission.Read);
 
                 await CreateDefaultCharacterSheetAsync(game, newPlayer, cancellationToken);
 

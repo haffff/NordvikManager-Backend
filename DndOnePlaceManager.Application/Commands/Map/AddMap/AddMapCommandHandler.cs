@@ -25,6 +25,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.AddMap
             {
                 GridSize = 50,
                 GridVisible = true,
+                GridColor = "#aaaaaa",
                 Width = 1200,
                 Height = 700,
                 Name = "New map",
