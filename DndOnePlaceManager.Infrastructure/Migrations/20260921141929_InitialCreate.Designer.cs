@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DndOnePlaceManager.Infrastructure.Migrations
 {
     [DbContext(typeof(DndOneContext))]
-    [Migration("20260921111951_InitialCreate")]
+    [Migration("20260921141929_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -222,6 +222,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
 
                     b.Property<Guid?>("GameModelId")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("InstallHookFired")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");

@@ -141,6 +141,60 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             RepositoryService.Verify(r => r.GetAddonByKey("dnd5e"), Times.Once);
         }
 
+        // ---- Already-installed guard ----
+        // Regression coverage: installing an addon that's already present for this game (e.g.
+        // it arrived as another addon's dependency, then got selected directly too) used to
+        // create a second AddonModel row and blindly re-run AddActions/AddTemplates/AddViews,
+        // which have no existence check of their own — duplicating every action and card.
+
+        [Fact]
+        public async Task Handle_AlreadyInstalled_WithoutReinstall_ReturnsAlreadyExistsAndDoesNotDuplicate()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+
+            var (firstResponse, firstResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var (secondResponse, secondResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, firstResponse);
+            Assert.Equal(CommandResponse.AlreadyExists, secondResponse);
+            Assert.Equal(firstResult.AddonId, secondResult.AddonId);
+
+            Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
+            Mediator.Verify(m => m.Send(It.IsAny<AddActionCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_AlreadyInstalled_WithReinstall_UninstallsExistingFirstThenInstallsOnce()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+            var (_, firstResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            // Mirrors UninstallAddonCommandHandler's real effect (remove the addon and its
+            // actions) against the same InMemory Db the rest of this test class already shares —
+            // Mediator is a full mock here, so this call needs its own real side effect wired up.
+            Mediator.Setup(m => m.Send(It.Is<DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == firstResult.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Actions).First(a => a.Id == cmd.AddonId);
+                    Db.Actions.RemoveRange(addon.Actions);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+
+            var reinstallCmd = ValidCommand(game, Player(), archive);
+            reinstallCmd.Reinstall = true;
+            var (response, result) = await Handler().Handle(reinstallCmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.NotEqual(firstResult.AddonId, result.AddonId);
+            Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
+            Assert.Single(Db.Actions.Where(a => a.Prefix == "dnd5e"));
+        }
+
         // ---- Archive / info.json parsing ----
 
         [Fact]
@@ -243,6 +297,24 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             await Handler().Handle(cmd, CancellationToken.None);
 
             Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        // Regression test: ActionDto.IsEnabled has no explicit default (unlike
+        // AddonDto/AddonModel, which default to true), so it deserializes to false
+        // unless the addon's own JSON happens to say "isEnabled": true. Addon authors
+        // have no reason to write that — an addon's actions are meant to work
+        // immediately after install — so without forcing it here, every hook the
+        // addon declares (Install included) would silently never run.
+        [Fact]
+        public async Task Handle_InstalledActionIsEnabledByDefault_EvenWhenJsonOmitsTheField()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+            var cmd = ValidCommand(game, Player(), archive);
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

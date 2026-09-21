@@ -27,6 +27,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 
 namespace DNDOnePlaceManager.Controllers
 {
@@ -439,17 +440,37 @@ namespace DNDOnePlaceManager.Controllers
                         .Update(lobby, player, operationId, progress.Current, progress.Total, progress.Message)
                         .GetAwaiter().GetResult();
 
-                    var (_, addonInfo) = await scopedMediator.Send(command);
+                    var (installResponse, addonInfo) = await scopedMediator.Send(command);
+                    var alreadyInstalled = installResponse == DndOnePlaceManager.Domain.Enums.CommandResponse.AlreadyExists;
 
                     await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
-                        lobby, player, operationId, "Addon installed", addonInfo.AddonName);
+                        lobby, player, operationId,
+                        alreadyInstalled ? "Addon already installed" : "Addon installed",
+                        addonInfo.AddonName);
 
-                    lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                    // AlreadyExists means InstallAddonCommandHandler found this addon already
+                    // installed and skipped re-processing it entirely (see its own guard) — its
+                    // Install hook already ran the first time. Firing it again here would re-run
+                    // the addon's install action a second time for no reason.
+                    if (lobby != null && !alreadyInstalled)
                     {
-                        GameId = gameId,
-                        PlayerId = player.Id ?? default,
-                        AddonKey = addonInfo.AddonKey,
-                    });
+                        await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                        {
+                            GameId = gameId,
+                            PlayerId = player.Id ?? default,
+                            AddonKey = addonInfo.AddonKey,
+                        });
+
+                        // Mark it fired so RunPendingAddonInstallHooksAsync (run on the next
+                        // player join) doesn't fire Install a second time for this addon.
+                        var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                        var installedAddon = await dbContext.Addons.FindAsync(addonInfo.AddonId);
+                        if (installedAddon != null)
+                        {
+                            installedAddon.InstallHookFired = true;
+                            await dbContext.SaveChangesAsync();
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

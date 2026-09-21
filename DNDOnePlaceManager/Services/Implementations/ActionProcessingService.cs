@@ -6,6 +6,7 @@ using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
 using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Enums;
@@ -18,6 +19,7 @@ using DNDOnePlaceManager.Services.Interfaces;
 using DNDOnePlaceManager.WebSockets;
 using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -93,6 +95,49 @@ namespace DNDOnePlaceManager.Services.Implementations
             {
                 GameLobby?.EventLog?.Log("Error", "Action", $"Hook '{hook}' failed: {e.Message}",
                     details: new { hook, exceptionType = e.GetType().Name });
+            }
+        }
+
+        /// <summary>
+        /// Fires Hook.Install for any of this game's addons that never got it — e.g. a
+        /// featured addon auto-installed at game creation (AddGameCommandHandler), which
+        /// happens before any GameLobby/ActionProcessingService exists to fire the hook
+        /// through. Called whenever a player joins (see LobbyConnectionHelper) so a newly
+        /// created game's addons finish "installing" as soon as the lobby is actually up,
+        /// instead of never running their Install hook at all. Safe to call repeatedly —
+        /// AddonModel.InstallHookFired makes it a no-op once an addon has already run it,
+        /// whether that happened here or via the addon-menu install path.
+        /// </summary>
+        public async Task RunPendingAddonInstallHooksAsync()
+        {
+            try
+            {
+                using var scope = serviceScopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+
+                var game = await dbContext.Games.Include(x => x.Addons)
+                    .FirstOrDefaultAsync(x => x.Id == GameLobby.GameId);
+                var pendingAddons = game?.Addons?.Where(a => !a.InstallHookFired).ToList()
+                    ?? new List<AddonModel>();
+
+                foreach (var addon in pendingAddons)
+                {
+                    await CallHookAsync(Hook.Install, new HookArgs.AddonHookArgs
+                    {
+                        GameId = GameLobby.GameId,
+                        PlayerId = GameLobby.SystemPlayer?.Id ?? default,
+                        AddonKey = addon.Key,
+                    });
+                    addon.InstallHookFired = true;
+                }
+
+                if (pendingAddons.Count > 0)
+                    await dbContext.SaveChangesAsync();
+            }
+            catch (Exception e)
+            {
+                GameLobby?.EventLog?.Log("Error", "Action", $"RunPendingAddonInstallHooksAsync failed: {e.Message}",
+                    details: new { exceptionType = e.GetType().Name });
             }
         }
 

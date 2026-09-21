@@ -87,6 +87,7 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     RepositoryUrl = table.Column<string>(type: "TEXT", nullable: true),
                     License = table.Column<string>(type: "TEXT", nullable: true),
                     IsEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
+                    InstallHookFired = table.Column<bool>(type: "INTEGER", nullable: false),
                     AddonModelId = table.Column<Guid>(type: "TEXT", nullable: true),
                     GameModelId = table.Column<Guid>(type: "TEXT", nullable: true)
                 },
