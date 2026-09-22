@@ -31,6 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.UpdateMap
             map.Name = request?.Map.Name ?? map.Name;
             map.GridVisible = request?.Map.GridVisible ?? map.GridVisible;
             map.GridSize = request?.Map.GridSize ?? map.GridSize;
+            map.GridColor = request?.Map.GridColor ?? map.GridColor;
             map.Width = request?.Map.Width ?? map.Width;
             map.Height = request?.Map.Height ?? map.Height;
 

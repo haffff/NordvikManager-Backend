@@ -18,6 +18,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public bool? GridVisible { get; set; }
         public Permission? Permission { get; set; }
         public int? GridUnitSize { get; set; }
+        public string? GridColor { get; set; }
         public IEnumerable<PropertyDTO>? Properties { get; set; }
     }
 }

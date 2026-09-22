@@ -74,8 +74,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Elements
             Assert.True(created!.Selectable);
             Assert.Equal(map.Id, created.MapId);
             Assert.Contains(created.Details!, d => d.Key == "width" && d.Value == "100");
-            // null-valued fabric.js props are filtered out by CreateModel
-            Assert.DoesNotContain(created.Details!, d => d.Key == "color");
+            // explicit JSON nulls (e.g. a freehand Path's `fill: null`) must survive,
+            // since fabric.js treats a missing key differently from a present null one
+            Assert.Contains(created.Details!, d => d.Key == "color" && d.Value == null);
         }
     }
 }

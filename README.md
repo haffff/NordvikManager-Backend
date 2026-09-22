@@ -5,7 +5,7 @@ Its backend part of Nordvik Manager VTT application. For release please go to [m
 ## How to run
 ### Backend:
 1. Change JWTSecret in AppSettings.Development.json
-2. If you want to use Postgresql DB. Change "UseSQLite" and "ConntectionStrings" fields.
+2. If you want to use MySQL instead of the SQLite default, change `UseSqlite` and `ConnectionStrings` fields.
 3. Run DNDOnePlaceManager project
 
 ### Frontend

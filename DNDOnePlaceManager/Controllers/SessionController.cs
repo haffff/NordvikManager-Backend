@@ -139,6 +139,32 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
+        /// Returns the backend's own Game ID for the connection this request arrived on.
+        ///
+        /// A player who joins via an invite link only ever learns the Central Server's
+        /// session ID (see GameListItem.js's "?game=" link and Central's gamelist/join,
+        /// which never returns this backend's own Games.Id) — a different ID space
+        /// entirely. WebRTCInProcessDispatcher already corrects this transparently for
+        /// REST calls tunneled through the data channel (it overrides "gameId" in the
+        /// query string with the connection's authoritative value), but raw WebSocket
+        /// Send() commands (e.g. property_add) have no equivalent correction, since the
+        /// property system is generic and a parentId legitimately isn't always "the
+        /// current game". The frontend calls this once after connecting to learn and
+        /// correct its own locally-held game id before anything depends on it.
+        ///
+        /// Returns 404 outside a WebRTC-tunneled request — the GM's direct HTTP calls
+        /// never need this, since the GM always already holds the real Games.Id.
+        /// </summary>
+        [HttpGet("whoami")]
+        public IActionResult WhoAmI()
+        {
+            if (HttpContext.Items.TryGetValue("WebRTCGameId", out var value) && value is Guid gameId)
+                return Ok(new { gameId });
+
+            return NotFound();
+        }
+
+        /// <summary>
         /// Returns the current CentralToken if it is still valid (more than 1 minute left).
         /// If expired, tries to refresh it using the stored CentralRefreshToken and
         /// updates the CentralToken cookie before returning the new value.

@@ -49,7 +49,7 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("Resource")]
-        public async Task<IActionResult> GetResource(Guid id, string? key, Guid? gameId)
+        public async Task<IActionResult> GetResource(Guid id, string? key, Guid? gameId, bool thumbnail = false)
         {
             var user = HttpContext.Items["User"] as User;
 
@@ -59,13 +59,27 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest();
             }
 
-            GetResourceDataCommand imageCommand = new GetResourceDataCommand();
-            imageCommand.GameID = gameId;
-            imageCommand.Player = playerResult.Player;
-            imageCommand.ID = id;
-            imageCommand.Key = key;
+            (byte[], MimeType) result;
+            if (thumbnail)
+            {
+                result = await mediator.Send(new GetResourceThumbnailCommand
+                {
+                    GameID = gameId,
+                    Player = playerResult.Player,
+                    ID = id,
+                    Key = key,
+                });
+            }
+            else
+            {
+                GetResourceDataCommand imageCommand = new GetResourceDataCommand();
+                imageCommand.GameID = gameId;
+                imageCommand.Player = playerResult.Player;
+                imageCommand.ID = id;
+                imageCommand.Key = key;
 
-            var result = await mediator.Send(imageCommand);
+                result = await mediator.Send(imageCommand);
+            }
 
             if (result.Item1 == null)
             {
@@ -290,20 +304,28 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("ResourceWebRTC")]
-        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId)
+        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId, bool thumbnail = false)
         {
             var user = HttpContext.Items["User"] as User;
             var playerResult = await GetPlayerIfExists(gameId, user);
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var result = await mediator.Send(new GetResourceDataCommand
-            {
-                GameID = gameId,
-                Player = playerResult.Player,
-                ID     = id,
-                Key    = key,
-            });
+            (byte[], MimeType) result = thumbnail
+                ? await mediator.Send(new GetResourceThumbnailCommand
+                {
+                    GameID = gameId,
+                    Player = playerResult.Player,
+                    ID     = id,
+                    Key    = key,
+                })
+                : await mediator.Send(new GetResourceDataCommand
+                {
+                    GameID = gameId,
+                    Player = playerResult.Player,
+                    ID     = id,
+                    Key    = key,
+                });
 
             if (result.Item1 == null)
                 return NotFound();

@@ -35,6 +35,14 @@ namespace DndOnePlaceManager.Application.Services
                 dbPermission = new PermissionModel() { All = all, ModelID = model.Id, PlayerID = playerId ?? Guid.Empty, Permission = Permission.None };
                 battleMapContext.Permissions.Add(dbPermission);
             }
+            else
+            {
+                // Self-heal rows created by the old code path (e.g. the "everyone" row
+                // written with All=false before entity-wide grants routed through
+                // SetGenericPermissions) — every caller passes the All-ness this row
+                // should have, so bring a reused row in line with it.
+                dbPermission.All = all;
+            }
 
             return dbPermission;
         }

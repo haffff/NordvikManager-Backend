@@ -27,6 +27,7 @@ using System.ComponentModel;
 using System.Threading.Tasks;
 using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 
 namespace DNDOnePlaceManager.Controllers
 {
@@ -301,7 +302,7 @@ namespace DNDOnePlaceManager.Controllers
 
         /// <summary>POST addon/uninstall — uninstall by id or key.</summary>
         [Route("uninstall")]
-        [HttpPost]        
+        [HttpPost]
         public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromBody] UninstallAddonRequest body)
         {
             if (string.IsNullOrWhiteSpace(body?.AddonId))
@@ -312,7 +313,9 @@ namespace DNDOnePlaceManager.Controllers
 
             Guid? addonGuid = Guid.TryParse(body.AddonId, out var g) ? g : null;
 
-            // ensure addon exists and try to get key for hook call
+            // ensure addon exists and try to get key for hook call — kept on the request
+            // thread (unlike the uninstall itself below) so a bad/missing addonId still
+            // gets an immediate 400 instead of surfacing only via a background failure toast.
             var getExistingAddonCommand = new GetAddonCommand()
             {
                 GameID = gameId,
@@ -325,30 +328,68 @@ namespace DNDOnePlaceManager.Controllers
 
             if (existingAddon == null)
                 return BadRequest(new { error = "Addon not found." });
-            
-            var addonKey = existingAddon.Key;
 
-            //call hook
-            var lobby = lobbyService.GetLobby(gameId);
-            lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Uninstall, new AddonHookArgs
-            {
-                GameId = gameId,
-                PlayerId = player.Player.Id ?? default,
-                AddonKey = addonKey,
-            });
+            var operationId = Guid.NewGuid();
 
-            // after hook proceed with uninstall
-            var command = new UninstallAddonCommand
+            RunUninstallInBackground(gameId, player.Player, operationId, existingAddon.Key, new UninstallAddonCommand
             {
                 GameID = gameId,
                 Player = player.Player,
                 AddonId = addonGuid,
                 AddonKey = addonGuid == null ? body.AddonId : null,
-            };
+            });
 
-            await mediator.Send(command);
+            return Ok(new { started = true, operationId });
+        }
 
-            return Ok();
+        /// <summary>
+        /// Fire-and-forget: runs an addon uninstall in its own DI scope (mirrors
+        /// RunInstallInBackground) and pushes completion/failure over the lobby's WS/WebRTC
+        /// channel via OperationProgressPublisher, keyed by operationId. Uninstalling can
+        /// itself run addon-authored actions/queries against the game, which was blocking
+        /// the request thread (and, for a game host, its own WebRTC signaling) for as long
+        /// as those actions took — same class of bug already fixed for installs.
+        /// </summary>
+        private void RunUninstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, string? addonKey, UninstallAddonCommand command)
+        {
+            _ = Task.Run(async () =>
+            {
+                using var scope = serviceProvider.CreateScope();
+                var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
+                var lobby = scopedLobbyService.GetLobby(gameId);
+
+                (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                    as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
+
+                try
+                {
+                    // Bug fix: this used to be an un-awaited fire-and-forget call made right
+                    // before the uninstall proceeded synchronously on the request thread — the
+                    // hook's own async work raced the addon's data actually being deleted right
+                    // after. Now properly awaited, and still ahead of the removal below, so the
+                    // addon's own Uninstall action gets to run against still-live data.
+                    if (lobby != null)
+                    {
+                        await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Uninstall, new AddonHookArgs
+                        {
+                            GameId = gameId,
+                            PlayerId = player.Id ?? default,
+                            AddonKey = addonKey,
+                        });
+                    }
+
+                    var (_, addonInfo) = await scopedMediator.Send(command);
+
+                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
+                        lobby, player, operationId, "Addon uninstalled", addonInfo.AddonName);
+                }
+                catch (Exception ex)
+                {
+                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
+                        lobby, player, operationId, "Uninstallation failed", ex.Message);
+                }
+            });
         }
 
         public class SetEnabledRequest { public string AddonId { get; set; } public bool Enabled { get; set; } }
@@ -439,17 +480,37 @@ namespace DNDOnePlaceManager.Controllers
                         .Update(lobby, player, operationId, progress.Current, progress.Total, progress.Message)
                         .GetAwaiter().GetResult();
 
-                    var (_, addonInfo) = await scopedMediator.Send(command);
+                    var (installResponse, addonInfo) = await scopedMediator.Send(command);
+                    var alreadyInstalled = installResponse == DndOnePlaceManager.Domain.Enums.CommandResponse.AlreadyExists;
 
                     await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
-                        lobby, player, operationId, "Addon installed", addonInfo.AddonName);
+                        lobby, player, operationId,
+                        alreadyInstalled ? "Addon already installed" : "Addon installed",
+                        addonInfo.AddonName);
 
-                    lobby?.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                    // AlreadyExists means InstallAddonCommandHandler found this addon already
+                    // installed and skipped re-processing it entirely (see its own guard) — its
+                    // Install hook already ran the first time. Firing it again here would re-run
+                    // the addon's install action a second time for no reason.
+                    if (lobby != null && !alreadyInstalled)
                     {
-                        GameId = gameId,
-                        PlayerId = player.Id ?? default,
-                        AddonKey = addonInfo.AddonKey,
-                    });
+                        await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                        {
+                            GameId = gameId,
+                            PlayerId = player.Id ?? default,
+                            AddonKey = addonInfo.AddonKey,
+                        });
+
+                        // Mark it fired so RunPendingAddonInstallHooksAsync (run on the next
+                        // player join) doesn't fire Install a second time for this addon.
+                        var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                        var installedAddon = await dbContext.Addons.FindAsync(addonInfo.AddonId);
+                        if (installedAddon != null)
+                        {
+                            installedAddon.InstallHookFired = true;
+                            await dbContext.SaveChangesAsync();
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {

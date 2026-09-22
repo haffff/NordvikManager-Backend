@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
+using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects;
@@ -90,6 +91,39 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
             if (addon.Key == null)
                 throw new InvalidOperationException("Addon 'info.json' is missing the required 'key' field.");
+
+            // Without this, installing an addon that's already present for this game (e.g. it
+            // was pulled in as another addon's dependency, then also selected directly — see
+            // FindAndInstallDependencies, which only guards its OWN recursive calls, not a
+            // top-level request like this one) silently created a second AddonModel row and
+            // re-ran AddActions/AddTemplates/AddViews with no existence check of their own,
+            // duplicating every action and card. Two AddonModel rows for the same Key each got
+            // their own Hook.Install fired later, and since CallHookAsync queries actions
+            // game-wide rather than per-addon, that ran every duplicated action multiple times.
+            var existingAddon = game.Addons.FirstOrDefault(x => x.Key == addon.Key);
+            if (existingAddon != null)
+            {
+                if (!request.Reinstall)
+                {
+                    gameEventLogger.Info("AddonInstall", $"Addon '{addon.Key}' is already installed for game '{game.Name}' — skipping (pass Reinstall to replace it).");
+                    return (CommandResponse.AlreadyExists, new InstallAddonCommandResponse
+                    {
+                        AddonId = existingAddon.Id,
+                        AddonKey = existingAddon.Key,
+                        AddonName = existingAddon.Name,
+                        AddonVersion = existingAddon.Version,
+                    });
+                }
+
+                gameEventLogger.Info("AddonInstall", $"Addon '{addon.Key}' is already installed for game '{game.Name}' — removing the existing install before reinstalling.");
+                await mediator.Send(new UninstallAddonCommand
+                {
+                    Player = request.Player,
+                    GameID = request.GameID,
+                    AddonId = existingAddon.Id,
+                });
+                game.Addons.Remove(existingAddon);
+            }
 
             // Reset navigation collections so EF doesn't try to re-attach stale entries
             addon.Id = default;
@@ -229,6 +263,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 var dto = DeserializeAction(ReadToBytes(action), action.FullName);
 
                 dto.Prefix = addon.Key;
+                // ActionDto.IsEnabled has no explicit default, so it deserializes to false
+                // unless the addon's JSON happens to say "isEnabled": true (which authors
+                // have no reason to write — an addon's own actions are meant to work
+                // immediately after install, same as AddonModel.IsEnabled defaults to true).
+                // Without this, every addon-installed action silently starts disabled and
+                // Hook.Install (and any other hook) never actually runs it.
+                dto.IsEnabled = true;
 
                 var (_, result) = await mediator.Send(new AddActionCommand
                 {

@@ -11,6 +11,7 @@ using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -38,10 +39,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
         }
 
+        // Featured-addon installation now runs as a fire-and-forget background task (mirrors
+        // AddonController.RunInstallInBackground) — installing something like dnd5e can take a
+        // long time, and awaiting it inline used to block AddGame itself. The background task
+        // resolves its own IMediator from this real (if minimal) DI container rather than the
+        // directly-injected mock, so it observes the same Setup()s.
+        private static IServiceScopeFactory BuildBackgroundScopeFactory(Mock<IMediator> mediatorMock) =>
+            new ServiceCollection()
+                .AddSingleton(mediatorMock.Object)
+                .BuildServiceProvider()
+                .GetRequiredService<IServiceScopeFactory>();
+
         private AddGameCommandHandler Handler(IConfiguration? config = null) =>
             new(Db, Mapper, _mediator.Object,
                 config ?? new ConfigurationBuilder().Build(),
-                NullLogger<AddGameCommandHandler>.Instance);
+                NullLogger<AddGameCommandHandler>.Instance,
+                BuildBackgroundScopeFactory(_mediator));
 
         private static User ValidUser() => new() { Id = Guid.NewGuid().ToString(), UserName = "gm" };
 
@@ -152,8 +165,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
             _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
+        // Featured-addon installation is fire-and-forget (see BuildBackgroundScopeFactory
+        // above) — this proves Handle() returns the new game immediately without waiting on
+        // it, rather than verifying the eventual InstallAddonCommand calls synchronously
+        // (which would be a race against the background Task.Run). Matches the convention
+        // AddonControllerTests already uses for its own backgrounded installs. The actual
+        // per-addon install behavior is covered by InstallAddonCommandHandlerTests.
         [Fact]
-        public async Task Handle_AddonsSelectedWithRepositoryConfigured_InstallsEachAddon()
+        public async Task Handle_AddonsSelectedWithRepositoryConfigured_ReturnsGameIdWithoutBlockingOnInstall()
         {
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["AddonsConfiguration:MainRepository"] = "https://repo.example/addons" })
@@ -161,9 +180,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
             var cmd = ValidCommand();
             cmd.AddonsSelected = new[] { "dnd5e", "pathfinder" };
 
-            await Handler(config).Handle(cmd, CancellationToken.None);
+            var gameId = await Handler(config).Handle(cmd, CancellationToken.None);
 
-            _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            Assert.NotNull(gameId);
         }
 
         [Fact]

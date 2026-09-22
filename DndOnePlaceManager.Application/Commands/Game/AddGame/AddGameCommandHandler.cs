@@ -11,6 +11,7 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
@@ -20,11 +21,13 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         IMediator mediator;
         string? mainRepositoryUrl;
         ILogger<AddGameCommandHandler> logger;
+        IServiceScopeFactory serviceScopeFactory;
 
-        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger) : base(battleMapContext, mapper)
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
             this.logger = logger;
+            this.serviceScopeFactory = serviceScopeFactory;
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
@@ -195,29 +198,43 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             await mediator.Send(addLayoutCommand);
 
-            if (request.AddonsSelected == null || mainRepositoryUrl == null)
+            if (request.AddonsSelected != null && mainRepositoryUrl != null)
             {
-                return game.Id;
-            }
+                var addonsToInstall = request.AddonsSelected;
+                var gameId = game.Id;
+                var installingPlayer = playerDTO;
 
-            foreach (var addon in request.AddonsSelected)
-            {
-                try
+                // Fire-and-forget (mirrors AddonController.RunInstallInBackground) — installing
+                // a featured addon (e.g. dnd5e: many resources/cards/actions, each its own
+                // mediator round-trip) can take a long time. Awaiting it here used to block the
+                // whole AddGame request, which in turn delayed GameListController.AddGame's
+                // later WebRTC session start (StartSessionAsync) long enough to time out, even
+                // though the WebRTC handshake itself was never the slow part.
+                // Hook.Install for whatever gets installed here still runs — once a player
+                // actually joins the game, see ActionProcessingService.RunPendingAddonInstallHooksAsync.
+                _ = Task.Run(async () =>
                 {
-                    InstallAddonCommand installAddonCommand = new InstallAddonCommand()
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+
+                    foreach (var addon in addonsToInstall)
                     {
-                        AddonSourceKey = addon,
-                        GameID = game.Id,
-                        Player = playerDTO,
-                        AutoInstallDeps = true,
-                    };
-
-                    await mediator.Send(installAddonCommand);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, game.Id);
-                }
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonSourceKey = addon,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, gameId);
+                        }
+                    }
+                });
             }
 
             return game.Id;

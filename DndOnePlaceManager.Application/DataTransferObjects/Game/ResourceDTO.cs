@@ -12,6 +12,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
     public class ResourceDTO
     {
         public string Name { get; set; }
+        public string? Key { get; set; }
         public string? Path { get; set; }
         public ResourceStorageKind Storage { get; set; }
         public Guid? Id { get; set; }

@@ -26,7 +26,11 @@ namespace DndOnePlaceManager.Application.Commands.Elements
         {
             var model = base.CreateModel(game, request);
 
-            model.Details = model.Details.Where(x => x.Value != null).ToList();
+            // Don't drop details whose value is an explicit JSON null (e.g. a freehand
+            // Path's `fill: null`) — fabric.js treats a missing key differently from a
+            // present key with a null value (missing falls back to fabric's default
+            // fill, black), so filtering these out silently turned "no fill" into a
+            // solid black fill after the next reload.
             model.Map = dbContext.Maps.Find(request.Dto.MapID);
             model.Selectable = true;
             model.Id = default;
