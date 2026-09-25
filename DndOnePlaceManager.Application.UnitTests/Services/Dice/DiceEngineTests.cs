@@ -110,5 +110,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Dice
 
             Assert.Throws<WrongArgumentsException>(() => engine.Evaluate(expression));
         }
+
+        // Roll20 sheets put plain numbers inside inline rolls — [[0]], [[10]],
+        // [[${skill_total}]] — and a roll query can make them negative
+        // ("Difficult (-10)"). Imperium Maledictum sends all of these in one batch.
+        [Theory]
+        [InlineData("0", 0)]
+        [InlineData("10", 10)]
+        [InlineData("-10", -10)]
+        [InlineData("34+0", 34)]
+        [InlineData("34+-10", 24)]
+        public void Evaluate_ConstantExpressionsWithoutDice_ReturnTheirValue(string expression, int expected)
+        {
+            var result = EngineWith().Evaluate(expression);
+
+            Assert.Equal(expected, result.Result);
+            Assert.Empty(result.Dices);
+        }
     }
 }
