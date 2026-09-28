@@ -27,5 +27,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("Border colour of the chat card (CSS colour, e.g. '#e94560'). Leave empty for default.")]
         public string? BorderColor { get; set; }
+
+        [UIType("playerid")]
+        [Description("Whisper: send only to this player (name / ID / %variable%). The message is not stored in chat history. " +
+                     "Leave empty to post to everyone.")]
+        public string? Player { get; set; }
     }
 }

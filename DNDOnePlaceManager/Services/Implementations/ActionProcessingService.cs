@@ -55,8 +55,15 @@ namespace DNDOnePlaceManager.Services.Implementations
             { WebSocketCommandNames.PropertyRemove,  Hook.PropertyRemove },
             { WebSocketCommandNames.CardAdd,         Hook.CardAdd },
             { WebSocketCommandNames.CardUpdate,      Hook.CardUpdate },
-            { WebSocketCommandNames.CardDelete,      Hook.CardDelete }
+            { WebSocketCommandNames.CardDelete,      Hook.CardDelete },
+            { WebSocketCommandNames.SettingsGame,    Hook.GameUpdate }
         };
+
+        // Frontend tags a drag's element_update with Action = "drag" (OnNativeObjectModifiedClientBehavior).
+        private const string ElementDragAction = "drag";
+
+        // Stripped from hook data before actions see it (settings_game carries the new game password).
+        private static readonly string[] SensitiveHookDataKeys = { "password" };
 
         private readonly Dictionary<string, IActionStepDefinition> actionStepDefinitions = new Dictionary<string, IActionStepDefinition>();
 
@@ -145,16 +152,28 @@ namespace DNDOnePlaceManager.Services.Implementations
         {
             try
             {
+                var hooks = new List<Hook>();
                 if (commandsToHooks.TryGetValue(webSocketCommand.Command, out var hook))
+                    hooks.Add(hook);
+                if (webSocketCommand.Command == WebSocketCommandNames.ElementUpdate &&
+                    string.Equals(webSocketCommand.Action, ElementDragAction, StringComparison.OrdinalIgnoreCase))
+                    hooks.Add(Hook.ElementMove);
+
+                if (hooks.Count == 0)
+                    return;
+
+                var player = webSocketCommand.PlayerId.HasValue
+                    ? GameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == webSocketCommand.PlayerId)
+                    : null;
+                var hookCommand = WithoutSensitiveData(webSocketCommand);
+
+                foreach (var h in hooks)
                 {
-                    var player = webSocketCommand.PlayerId.HasValue
-                        ? GameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == webSocketCommand.PlayerId)
-                        : null;
-                    await CallHookAsync(hook, new HookArgs.CommandHookArgs()
+                    await CallHookAsync(h, new HookArgs.CommandHookArgs()
                     {
-                        Command = webSocketCommand,
+                        Command = hookCommand,
                         Player = player,
-                        Data = webSocketCommand.Data as JObject,
+                        Data = hookCommand.Data as JObject,
                     });
                 }
             }
@@ -163,6 +182,42 @@ namespace DNDOnePlaceManager.Services.Implementations
                 GameLobby?.EventLog?.Log("Error", "Action", $"CommandToHook for '{webSocketCommand.Command}' failed: {e.Message}",
                     details: new { command = webSocketCommand.Command, exceptionType = e.GetType().Name });
             }
+        }
+
+        /// <summary>
+        /// Returns the command unchanged, or a copy with sensitive keys removed from its data
+        /// (a copy because the original is still being broadcast concurrently).
+        /// </summary>
+        private static WebSocketCommand WithoutSensitiveData(WebSocketCommand command)
+        {
+            if (command.Data is not JObject data || !SensitiveHookDataKeys.Any(k => data.ContainsKey(k)))
+                return command;
+
+            var cleaned = (JObject)data.DeepClone();
+            foreach (var key in SensitiveHookDataKeys)
+                cleaned.Remove(key);
+
+            return new WebSocketCommand
+            {
+                PlayerId = command.PlayerId,
+                GameId = command.GameId,
+                Command = command.Command,
+                Data = cleaned,
+                Result = command.Result,
+                OnlyToSender = command.OnlyToSender,
+                ElementIds = command.ElementIds,
+                BattleMapId = command.BattleMapId,
+                Action = command.Action,
+                InputToken = command.InputToken,
+            };
+        }
+
+        public async Task<bool> HasEnabledHookAsync(Hook hook)
+        {
+            using var scope = serviceScopeFactory.CreateScope();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            var actions = await GetActionsAsync(mediator);
+            return actions.Any(x => x.Hook == hook && x.IsEnabled);
         }
 
         private async Task<List<ActionDto>> GetActionsAsync(IMediator mediator)
@@ -240,11 +295,6 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                     if (!actionStepDefinitions.TryGetValue(step[WebSocketCommandNames.StepTypeKey].ToString(), out var stepDefinition))
                     {
-                        if (step[WebSocketCommandNames.StepTypeKey]?.ToString() == WebSocketCommandNames.StepTypeExit)
-                        {
-                            entry.SetCompleted();
-                            return;
-                        }
                         await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
                         continue;
                     }
@@ -257,10 +307,13 @@ namespace DNDOnePlaceManager.Services.Implementations
                         // Resolve %q:% / %qn:% query patterns first, then standard %varName% substitution.
                         // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
                         // after Value has been evaluated, so a %var% default isn't erased by an empty variable.
+                        // Likewise skip any argument the step declares as deferred (IDeferredArgumentsStep).
+                        var deferred = (stepDefinition as IDeferredArgumentsStep)?.DeferredArguments;
                         var resolver = new ActionPropertyQueryResolver(dbContext, GameLobby.GameId);
                         foreach (var token in stepObject.Descendants().OfType<JValue>())
                         {
-                            if (token.Parent is JProperty jp && jp.Name == "DefaultValue")
+                            if (token.Parent is JProperty jp &&
+                                (jp.Name == "DefaultValue" || (deferred != null && deferred.Contains(jp.Name, StringComparer.OrdinalIgnoreCase))))
                                 continue;
 
                             var raw = token.Value?.ToString() ?? string.Empty;
@@ -277,6 +330,13 @@ namespace DNDOnePlaceManager.Services.Implementations
             catch (OperationCanceledException)
             {
                 // entry.Kill() already set State = Killed; nothing more to do
+            }
+            catch (ActionExitException exit)
+            {
+                if (!string.IsNullOrWhiteSpace(exit.ExitMessage))
+                    GameLobby?.EventLog?.Log("Info", "Action", $"Action '{action.Name}' exited: {exit.ExitMessage}",
+                        details: new { actionName = action.Name, actionId = action.Id });
+                entry.SetCompleted();
             }
             catch (Exception e)
             {

@@ -33,7 +33,7 @@
         [HookMeta("Element Updated", "Fires when an existing element's properties are changed.", "Element")]
         ElementUpdate,
 
-        [HookMeta("Element Moved", "Fires when an element is dragged to a new position.", "Element")]
+        [HookMeta("Element Moved", "Fires when an element is dragged to a new position (in addition to Element Updated). Use %v:Data.id% for the element and %v:Data.object.left% / %v:Data.object.top% for the new position.", "Element")]
         ElementMove,
 
         [HookMeta("Element Removed", "Fires when an element is deleted from the map.", "Element")]
@@ -63,14 +63,14 @@
         MapChange,
 
         // ── Game ────────────────────────────────────────────────────────────
-        [HookMeta("Game Updated", "Fires when top-level game settings are modified.", "Game")]
+        [HookMeta("Game Updated", "Fires when top-level game settings (e.g. name) are saved. Data holds the submitted settings; the password is never included.", "Game")]
         GameUpdate,
 
         // ── Chat ────────────────────────────────────────────────────────────
         [HookMeta("Chat Message", "Fires on every chat message sent by any player.", "Chat")]
         ChatMessage,
 
-        [HookMeta("Chat Command", "Fires when a chat message starts with '/' — used for slash-command handling.", "Chat")]
+        [HookMeta("Chat Command", "Fires for a chat slash command that is not built in (/r, /roll, /help). Variables: ChatCommand ('cast'), ChatArgs ('fireball 3'), ChatText, Player. While any action uses this hook, unknown commands are no longer answered with 'Wrong command'.", "Chat")]
         ChatCommand,
 
         // ── Cards ───────────────────────────────────────────────────────────

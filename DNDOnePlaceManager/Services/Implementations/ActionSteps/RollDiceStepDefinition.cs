@@ -24,7 +24,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Roll Dice";
         public string Value => "RollDice";
         public string Category => "Roll";
-        public string Description => "Rolls dice using standard notation (e.g. '2d6+3'). Stores the result and optionally prints it to chat.";
+        public string Description => "Rolls dice using standard notation (e.g. '2d6+3'). Also supports keep/drop ('2d20kh1' advantage, '4d6dl1'), " +
+            "exploding ('3d6!'), success counting ('6d10cs>7') and Fudge dice ('4dF'). Stores the result and optionally prints it to chat.";
         public Type DataType => typeof(RollDiceStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

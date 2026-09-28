@@ -129,6 +129,9 @@ namespace DNDOnePlaceManager.Services.Implementations
                     return message;
                 }
 
+                if (await TryHandleActionChatCommandAsync(message, player))
+                    return message;
+
                 using var handlerScope = serviceScopeFactory.CreateScope();
                 var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -178,6 +181,43 @@ namespace DNDOnePlaceManager.Services.Implementations
                     new { exceptionType = e.GetType().Name, command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player);
             }
+        }
+
+        /// <summary>
+        /// Routes a non-built-in slash command ("/cast fireball") to Hook.ChatCommand actions.
+        /// Only claims the message when at least one such action is enabled — otherwise
+        /// ChatHandler answers as before ("Wrong command"). A claimed message is echoed to the
+        /// sender only and not stored in chat history.
+        /// </summary>
+        private async Task<bool> TryHandleActionChatCommandAsync(WebSocketCommand message, PlayerDTO player)
+        {
+            if (message.Command != WebSocketCommandNames.CmdChatPush || message.Data?.Type != JTokenType.String)
+                return false;
+
+            var text = message.Data.ToString().Trim();
+            if (!text.StartsWith('/') || text.Length < 2)
+                return false;
+
+            var space = text.IndexOf(' ');
+            var name = space < 0 ? text : text[..space];
+            if (ChatHandler.BuiltInCommands.Contains(name))
+                return false;
+
+            if (!await ActionProcessingService.HasEnabledHookAsync(Hook.ChatCommand))
+                return false;
+
+            var args = new ChatCommandHookArgs
+            {
+                Player = player,
+                ChatCommand = name[1..],
+                ChatArgs = space < 0 ? string.Empty : text[(space + 1)..].Trim(),
+                ChatText = text,
+            };
+            _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.ChatCommand, args));
+
+            message.OnlyToSender = true;
+            message.Result = WebSocketCommandNames.ResultOk;
+            return true;
         }
 
         // Use OrdinalIgnoreCase to avoid a string allocation from .ToLower()

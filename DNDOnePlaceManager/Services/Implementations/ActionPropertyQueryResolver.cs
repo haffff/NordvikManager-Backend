@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace DNDOnePlaceManager.Services.Implementations
 {
     /// <summary>
-    /// Resolves %q:{varOrGuid}.propName%, %qn:type-"name".propName%, and %v:varName.field%
+    /// Resolves %q:{varOrGuid}.propName%, %qn:type-"name".propName%, and %v:varName.path%
     /// patterns before the standard %varName% pass in Prepare().
     /// </summary>
     public class ActionPropertyQueryResolver
@@ -19,10 +19,6 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private static readonly Regex _qnPattern =
             new Regex(@"\%qn:(\w+)-""([^""]+)""\.([^%]+)\%", RegexOptions.Compiled);
-
-        // %v:varName.fieldName% — reads a public property from a complex object stored in variables
-        private static readonly Regex _vPattern =
-            new Regex(@"\%v:(\w+)\.(\w+)\%", RegexOptions.Compiled);
 
         private readonly IDbContext _db;
         private readonly Guid _gameId;
@@ -43,22 +39,8 @@ namespace DNDOnePlaceManager.Services.Implementations
             if (string.IsNullOrEmpty(raw))
                 return raw;
 
-            // Handle %v:varName.field% — reflect into a complex object stored in variables
-            foreach (Match m in _vPattern.Matches(raw))
-            {
-                var varName   = m.Groups[1].Value;
-                var fieldName = m.Groups[2].Value;
-                string resolved = string.Empty;
-
-                if (variables.TryGetValue(varName, out var obj) && obj != null)
-                {
-                    var prop = obj.GetType().GetProperty(fieldName,
-                        BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-                    resolved = prop?.GetValue(obj)?.ToString() ?? string.Empty;
-                }
-
-                raw = raw.Replace(m.Value, resolved);
-            }
+            // Handle %v:varName.path[0].field% — walk into a complex object stored in variables
+            raw = VariablePathResolver.ResolveTokens(raw, variables);
 
             // Handle %qn:type-"name".prop%
             var qnMatches = _qnPattern.Matches(raw);
