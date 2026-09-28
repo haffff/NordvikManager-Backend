@@ -22,7 +22,7 @@ namespace DNDOnePlaceManager.Services.Interfaces
         Task RunPendingAddonInstallHooksAsync();
         Task CommandToHook(WebSocketCommand webSocketCommand);
         Task<bool> HasEnabledHookAsync(Hook hook);
-        Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null);
-        Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null);
+        Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null);
+        Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, ActionTrace trace = null);
     }
 }

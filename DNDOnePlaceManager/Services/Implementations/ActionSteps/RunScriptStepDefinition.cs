@@ -30,11 +30,6 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         // catastrophic regex would otherwise run unbounded inside one built-in call.
         private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
 
-        private static readonly JsonSerializerSettings SnapshotSettings = new()
-        {
-            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-        };
-
         public string Name => "Run Script";
         public string Value => "RunScript";
         public string Category => "Script";
@@ -85,7 +80,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 .RegexTimeoutInterval(RegexTimeout)
                 .DisableStringCompilation());
 
-            engine.SetValue("__vars", Snapshot(variables));
+            engine.SetValue("__vars", VariableSnapshot.Build(variables).ToString(Formatting.None));
 
             try
             {
@@ -112,28 +107,6 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             {
                 throw new ActionProcessException($"RunScript: SyntaxError: {e.Message}");
             }
-        }
-
-        /// <summary>
-        /// JSON snapshot of the variables. A value that can't be serialized is skipped rather than
-        /// failing the whole step — scripts only ever see plain data.
-        /// </summary>
-        private static string Snapshot(Dictionary<string, object> variables)
-        {
-            var root = new JObject();
-            var serializer = JsonSerializer.Create(SnapshotSettings);
-            foreach (var kv in variables)
-            {
-                try
-                {
-                    root[kv.Key] = kv.Value == null ? JValue.CreateNull() : JToken.FromObject(kv.Value, serializer);
-                }
-                catch (Exception)
-                {
-                    // e.g. a type with a throwing getter — leave it out of `vars`
-                }
-            }
-            return root.ToString(Formatting.None);
         }
 
         // Primitives come back as .NET values (so %var% and If/Calculate keep working);

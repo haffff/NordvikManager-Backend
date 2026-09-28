@@ -419,10 +419,17 @@ namespace DNDOnePlaceManager.Services.Implementations
                     ? argsObj.ToObject<Dictionary<string, object>>()
                     : null;
 
+                // The action editor's Run button asks for a per-step trace (sent only to this player).
+                ActionTrace trace = null;
+                if (parsedMsg.Data[WebSocketCommandNames.DataKeyTrace]?.Type == JTokenType.Boolean &&
+                    parsedMsg.Data.Value<bool>(WebSocketCommandNames.DataKeyTrace) &&
+                    Guid.TryParse(parsedMsg.Data[WebSocketCommandNames.DataKeyTraceId]?.ToString(), out var traceId))
+                    trace = new ActionTrace { TraceId = traceId, Player = player };
+
                 _ = Task.Run(() => ActionProcessingService.ExecActionAsync(
                     actionName,
                     new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject, Player = player },
-                    sharedVariables));
+                    sharedVariables, trace));
 
                 parsedMsg.OnlyToSender = true;
                 parsedMsg.Result = WebSocketCommandNames.ResultOk;

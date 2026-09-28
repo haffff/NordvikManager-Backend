@@ -131,6 +131,8 @@
         public const string CmdDebugModeGet = "debug_mode_get";
         public const string CmdDebugModeSet = "debug_mode_set";
         public const string CmdExecuteAction = "execute_action";
+        /// <summary>Per-step report of an action run, sent only to the player who ran it with Trace = true.</summary>
+        public const string CmdActionTrace = "action_trace";
         public const string CmdDebugActionResponse = "debug_action_response";
         public const string CmdInputValue = "input_value";
 
@@ -143,6 +145,8 @@
         public const string DataKeyPermission = "permission";
         public const string DataKeyAction = "Action";
         public const string DataKeyArgs = "Args";
+        public const string DataKeyTrace = "Trace";
+        public const string DataKeyTraceId = "TraceId";
 
         // Chat
         public const string CmdChatPush = "chat_push";

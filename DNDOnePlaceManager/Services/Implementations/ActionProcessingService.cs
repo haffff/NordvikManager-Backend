@@ -65,6 +65,10 @@ namespace DNDOnePlaceManager.Services.Implementations
         // Stripped from hook data before actions see it (settings_game carries the new game password).
         private static readonly string[] SensitiveHookDataKeys = { "password" };
 
+        // The run whose step is currently executing on this async flow. A sub-action started
+        // by that step (If/ForEach/ExecuteAction) sees it as its parent.
+        private static readonly AsyncLocal<ActionRunEntry> CurrentRun = new();
+
         private readonly Dictionary<string, IActionStepDefinition> actionStepDefinitions = new Dictionary<string, IActionStepDefinition>();
 
         public ActionProcessingService(IServiceScopeFactory serviceScopeFactory)
@@ -87,6 +91,10 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         public async Task CallHookAsync(Hook hook, HookArgs.HookArgs hookArg)
         {
+            // Hooks can be fired from inside a running action (e.g. SetProperty → Property
+            // Updated via Task.Run, which carries this AsyncLocal along). Hook actions are
+            // independent runs, not sub-actions of that step.
+            CurrentRun.Value = null;
             try
             {
                 using var scope = serviceScopeFactory.CreateScope();
@@ -236,7 +244,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             return result;
         }
-        public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null)
+        public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null)
         {
             // Always create a scope so we can get dbContext for the property query resolver.
             // If mediator was already provided by a caller, we still need our own scope for dbContext.
@@ -244,8 +252,17 @@ namespace DNDOnePlaceManager.Services.Implementations
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
             mediator ??= scope.ServiceProvider.GetRequiredService<IMediator>();
 
-            var entry = new ActionRunEntry { ActionName = action.Name };
+            var entry = new ActionRunEntry { ActionName = action.Name, Trace = trace };
             RunningActions[entry.RunId] = entry;
+
+            // A sub-action (If/ForEach/ExecuteAction) runs inside its caller's step; remember the
+            // caller so a failure here can be reported on that step.
+            var parentRun = CurrentRun.Value;
+            CurrentRun.Value = entry;
+            var fullName = string.IsNullOrEmpty(action.Prefix) ? action.Name : $"{action.Prefix}/{action.Name}";
+
+            var stepIndex = -1;
+            string stepId = null, stepType = null;
 
             try
             {
@@ -283,6 +300,9 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                 foreach (var step in steps)
                 {
+                    stepIndex++;
+                    stepId = step["id"]?.ToString();
+                    stepType = step[WebSocketCommandNames.StepTypeKey]?.ToString();
                     entry.CancellationToken.ThrowIfCancellationRequested();
 
                     var debugCmd = await DebugLog(mediator, DebugLogData.ExecutingStep(action, step, variables), entry: entry);
@@ -290,19 +310,22 @@ namespace DNDOnePlaceManager.Services.Implementations
                     if (debugCmd != null && debugCmd.Data.ToString() == WebSocketCommandNames.DebugStopSignal)
                     {
                         entry.SetCompleted();
+                        trace?.Finished(GameLobby, "Exited", "Stopped from the debug console.");
                         return;
                     }
 
                     if (!actionStepDefinitions.TryGetValue(step[WebSocketCommandNames.StepTypeKey].ToString(), out var stepDefinition))
                     {
                         await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
+                        trace?.Step(GameLobby, stepIndex, stepId, stepType, "failed", $"Unknown step type '{stepType}', skipped.");
                         continue;
                     }
                     else
                     {
                         var stepObject = step as JObject;
-                        var stepType = step[WebSocketCommandNames.StepTypeKey]?.ToString();
                         entry.SetStep(stepType);
+                        trace?.Step(GameLobby, stepIndex, stepId, stepType, "running");
+                        var childFaultsBefore = entry.ChildFaultCount;
 
                         // Resolve %q:% / %qn:% query patterns first, then standard %varName% substitution.
                         // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
@@ -322,14 +345,24 @@ namespace DNDOnePlaceManager.Services.Implementations
                         }
 
                         await stepDefinition.Execute(mediator, variables, GameLobby, step.ToObject<ActionStep>());
+
+                        if (trace != null)
+                        {
+                            // A sub-action's error doesn't throw here, so check what it recorded.
+                            var childError = entry.ChildFaultsSince(childFaultsBefore);
+                            trace.Step(GameLobby, stepIndex, stepId, stepType, childError == null ? "done" : "failed",
+                                childError, VariableSnapshot.Build(variables, ActionTrace.MaxVariableChars));
+                        }
                     }
                 }
                 await DebugLog(mediator, DebugLogData.Finishing(action, steps, variables), entry: entry);
                 entry.SetCompleted();
+                trace?.Finished(GameLobby, "Completed");
             }
             catch (OperationCanceledException)
             {
                 // entry.Kill() already set State = Killed; nothing more to do
+                trace?.Finished(GameLobby, "Killed");
             }
             catch (ActionExitException exit)
             {
@@ -337,6 +370,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                     GameLobby?.EventLog?.Log("Info", "Action", $"Action '{action.Name}' exited: {exit.ExitMessage}",
                         details: new { actionName = action.Name, actionId = action.Id });
                 entry.SetCompleted();
+                trace?.Step(GameLobby, stepIndex, stepId, stepType, "exited", exit.ExitMessage);
+                trace?.Finished(GameLobby, "Exited", exit.ExitMessage);
             }
             catch (Exception e)
             {
@@ -344,6 +379,9 @@ namespace DNDOnePlaceManager.Services.Implementations
                 GameLobby?.EventLog?.Log("Error", "Action", $"Action '{action.Name}' failed: {e.Message}",
                     details: new { actionName = action.Name, actionId = action.Id, lastStep = entry.CurrentStep, exceptionType = e.GetType().Name });
                 await DebugLog(mediator, DebugLogData.Fault(e.Message), false, entry: entry);
+                parentRun?.AddChildFault($"{fullName} failed: {e.Message}");
+                trace?.Step(GameLobby, stepIndex, stepId, stepType, "failed", e.Message);
+                trace?.Finished(GameLobby, "Faulted", e.Message);
             }
             finally
             {
@@ -353,11 +391,16 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
-        public async Task ExecActionAsync(string action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null)
+        public async Task ExecActionAsync(string action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, ActionTrace trace = null)
         {
             using var scope = serviceScopeFactory.CreateScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+
+            // Tracing shows every variable after every step, so only the GM or players who may
+            // edit the game get it; anyone else's run just goes ahead untraced.
+            if (trace != null && !await CanTraceAsync(mediator, dbContext, trace.Player))
+                trace = null;
 
             List<ActionDto> allActions;
             try
@@ -385,7 +428,12 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
 
             if (foundActionDto == null)
+            {
+                // Called from a step (If branch, ExecuteAction…): tell that step its target is missing.
+                CurrentRun.Value?.AddChildFault($"action '{action}' not found");
+                trace?.Finished(GameLobby, "Faulted", $"Action '{action}' not found.");
                 return;
+            }
 
             // This overload is reached whenever an action is looked up BY NAME — the only
             // caller that puts an attacker-controlled name here is GameLobby's CmdExecuteAction
@@ -429,11 +477,27 @@ namespace DNDOnePlaceManager.Services.Implementations
                     GameLobby?.EventLog?.Log("Warning", "Permission",
                         $"Player '{cmdArgs.Player.Name}' attempted to execute action '{action}' without sufficient permission.",
                         cmdArgs.Player.Name);
+                    trace?.Finished(GameLobby, "Faulted", "You don't have permission to run this action.");
                     return;
                 }
             }
 
-            await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator);
+            await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator, trace);
+        }
+
+        private async Task<bool> CanTraceAsync(IMediator mediator, IDbContext dbContext, PlayerDTO player)
+        {
+            if (player?.Id == null)
+                return false;
+            var game = await dbContext.Games.FindAsync(GameLobby.GameId);
+            if (game != null && game.MasterId == player.Id)
+                return true;
+            return await mediator.Send(new CheckPermissionsCommand
+            {
+                Player = player,
+                EntityId = GameLobby.GameId,
+                RequiredPermission = DndOnePlaceManager.Domain.Enums.Permission.Edit,
+            });
         }
         private async Task<WebSocketCommand> DebugLog(IMediator mediator, object data, bool expectInput = true, ActionRunEntry entry = null)
         {
