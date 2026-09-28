@@ -30,6 +30,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SetProperty";
         public string Category => "Data";
         public string Description => "Creates or updates a named property on any entity, identified by its ID.";
+        public string? Summary => "Set {PropertyName} of {ParentId} = {PropertyValue}";
         public Type DataType => typeof(SetPropertyStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

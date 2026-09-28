@@ -23,10 +23,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Description => "Filters a collection based on a condition. The condition is evaluated once per item, " +
             "with the current item available as %ItemName% (or %v:ItemName.field% for objects). " +
             "Property queries (%q:...% / %qn:...%) are not resolved inside Condition — read them into a variable first.";
+        public string? Summary => "Filter {Collection} where {Condition}[ → {OutputName}]";
         public Type DataType => typeof(FilterStepData);
 
         // Condition references the per-item variable, so it must not be substituted up front.
-        public IReadOnlyCollection<string> DeferredArguments { get; } = new[] { nameof(FilterStepData.Condition) };
+        private static readonly string[] DeferredArgs = { nameof(FilterStepData.Condition) };
+        public IReadOnlyCollection<string> DeferredArguments => DeferredArgs;
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {

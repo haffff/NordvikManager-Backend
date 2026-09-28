@@ -16,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value       => "DeleteResource";
         public string Category    => "Data";
         public string Description => "Permanently deletes a resource identified by key or ID. Also removes any associated tree entries.";
+        public string? Summary  => "Delete resource[ {Key}][ {ResourceId}]";
         public Type   DataType    => typeof(DeleteResourceStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

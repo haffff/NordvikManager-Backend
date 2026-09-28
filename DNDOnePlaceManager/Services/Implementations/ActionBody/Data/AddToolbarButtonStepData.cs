@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.Collections.Generic;
 using System.ComponentModel;
 
@@ -14,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Icon identifier for the button.")]
         public string Icon { get; set; }
 
+        [UIType("action")]
         [Description("Action name to execute when button is clicked.")]
         public string Action { get; set; }
 

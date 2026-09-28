@@ -40,10 +40,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Category => "Script";
         public string Description => "Runs a short sandboxed JavaScript snippet for calculations, lists, text and JSON. " +
             "Reads variables through `vars`, returns new values. It cannot change the game directly — use the other steps for that.";
+        public string? Summary => "Script {Script}[ → {Output}]";
         public Type DataType => typeof(RunScriptStepData);
 
         // JS source must reach the engine verbatim (`%` is the modulo operator, and variables come in via `vars`).
-        public IReadOnlyCollection<string> DeferredArguments { get; } = new[] { nameof(RunScriptStepData.Script) };
+        private static readonly string[] DeferredArgs = { nameof(RunScriptStepData.Script) };
+        public IReadOnlyCollection<string> DeferredArguments => DeferredArgs;
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {

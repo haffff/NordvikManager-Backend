@@ -26,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SendChat";
         public string Category => "Client";
         public string Description => "Sends a formatted message to the game chat. Use Template='Roll' after a RollDice step to display a styled roll card, 'BigNumber' for a large value, or 'Text' for a plain message.";
+        public string? Summary => "Chat[ to {Player}]:[ {Title}][ {Message}][ {Number}]";
         public Type DataType => typeof(SendChatStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

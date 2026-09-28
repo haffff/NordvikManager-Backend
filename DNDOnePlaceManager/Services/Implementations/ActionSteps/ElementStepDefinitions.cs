@@ -27,6 +27,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Category => "Map";
         public string Description => "Moves an element (e.g. a token) to a new position; clients animate it like a drag. " +
             "Also fires Element Updated / Element Moved hooks — an action on those hooks that moves the same element will loop.";
+        public string? Summary => "Move {ElementId} to {X}, {Y}";
         public Type DataType => typeof(MoveElementStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -56,6 +57,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "DeleteElement";
         public string Category => "Map";
         public string Description => "Removes an element (e.g. a token) from its map.";
+        public string? Summary => "Delete element {ElementId}";
         public Type DataType => typeof(DeleteElementStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -77,6 +79,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "ChangeMap";
         public string Category => "Map";
         public string Description => "Switches a battle map view to another map for everyone in the game.";
+        public string? Summary => "Show map {MapId}[ in {BattleMapId}]";
         public Type DataType => typeof(ChangeMapStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

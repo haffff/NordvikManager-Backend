@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "RequirePermission";
         public string Category => "Security";
         public string Description => "Checks if the player who triggered the action has the required permission on an entity. Can store the result in a variable or stop the action if denied.";
+        public string? Summary => "Require {Permission} on {EntityId}";
         public Type DataType => typeof(RequirePermissionStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -20,6 +20,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "DeleteCard";
         public string Category => "Data";
         public string Description => "Permanently deletes a card and its properties.";
+        public string? Summary => "Delete card {CardId}";
         public Type DataType => typeof(DeleteCardStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -42,6 +43,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "DeleteProperty";
         public string Category => "Properties";
         public string Description => "Deletes a named property from an entity. Does nothing if the property doesn't exist.";
+        public string? Summary => "Delete {PropertyName} of {ParentId}";
         public Type DataType => typeof(DeletePropertyStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -86,6 +88,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "Delay";
         public string Category => "Control Flow";
         public string Description => $"Waits before running the next step (up to {MaxMilliseconds / 1000} seconds).";
+        public string? Summary => "Wait {Milliseconds} ms";
         public Type DataType => typeof(DelayStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -104,6 +107,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "Log";
         public string Category => "Control Flow";
         public string Description => "Writes a message to the game event log — useful for debugging actions.";
+        public string? Summary => "Log {Message}";
         public Type DataType => typeof(LogStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

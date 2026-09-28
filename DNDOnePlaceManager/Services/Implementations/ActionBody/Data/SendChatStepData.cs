@@ -19,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Title shown on the chat card. Supports %variable% substitution (e.g. %v:rollResult.Result%).")]
         public string? Title { get; set; }
 
+        [UIType("textarea")]
         [Description("Message body shown below the main content. Supports %variable% substitution.")]
         public string? Message { get; set; }
 

@@ -14,6 +14,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         string Category { get; }
         string Description { get; }
         Type DataType { get; }
+
+        /// <summary>
+        /// Optional one-line summary template for the action editor, e.g. "Roll {DiceString} → {OutputVariable}".
+        /// {Arg} placeholders are filled from the step's arguments; empty ones are dropped by the editor.
+        /// </summary>
+        string? Summary => null;
         Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step);
     }
 }

@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -10,6 +11,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Permission to require: Read, Execute, Control, Edit, Remove, All.")]
         public string Permission { get; set; }
 
+        [VariableOutput]
         [Description("Variable name to store the boolean result. Leave empty to skip storing.")]
         public string Output { get; set; }
 

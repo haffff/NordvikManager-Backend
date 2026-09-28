@@ -98,24 +98,7 @@ namespace DNDOnePlaceManager.Controllers
 
             GetActionsDefinitionaResponse stepDefinitions = new GetActionsDefinitionaResponse()
             {
-                StepDefinitions = services.Select(x => new ActionDefinitionResponse()
-                {
-                    Name = x.Name,
-                    Value = x.Value,
-                    Category = x.Category,
-                    Description = x.Description,
-                    Arguments = x.DataType?
-                        .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                        .Where(y => y.SetMethod?.IsPublic == true)
-                        .Select(y => new ActionDefinitionArgument()
-                        {
-                            Name = y.Name,
-                            Type = y.GetCustomAttribute<DNDOnePlaceManager.Models.UITypeAttribute>()?.Type ?? y.PropertyType.Name,
-                            Description = y.GetCustomAttribute<DescriptionAttribute>()?.Description,
-                            ConditionField = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Field,
-                            ConditionValue = y.GetCustomAttribute<DNDOnePlaceManager.Models.ShowIfAttribute>()?.Value,
-                        }).ToArray()
-                }).ToArray()
+                StepDefinitions = StepDefinitionMetadata.Build(services)
             };
 
             return Ok(stepDefinitions);

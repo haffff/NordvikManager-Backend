@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -9,6 +10,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("One property per line as 'propertyName=value', e.g. 'item_name=%name%'. Values support %variable%, %v:% and %q:% tokens; " +
             "they are substituted after the lines are split, so a value may safely contain line breaks or '='.")]
+        [UIType("textarea")]
         public string Properties { get; set; }
     }
 }

@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "RemovePropertyListItem";
         public string Category => "Properties";
         public string Description => "Removes a row from a list-typed property by its id.";
+        public string? Summary => "Remove row {ItemId} from {PropertyName}";
         public Type DataType => typeof(RemovePropertyListItemStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

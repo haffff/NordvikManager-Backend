@@ -28,11 +28,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SetProperties";
         public string Category => "Data";
         public string Description => "Creates or updates several properties on one entity. Each line in Properties is 'propertyName=value'.";
+        public string? Summary => "Set on {ParentId}: {Properties}";
         public Type DataType => typeof(SetPropertiesStepData);
 
         // Split lines first, substitute afterwards — a substituted value containing a line break
         // (e.g. an item description) must not be mistaken for another 'name=value' line.
-        public IReadOnlyCollection<string> DeferredArguments { get; } = new[] { nameof(SetPropertiesStepData.Properties) };
+        private static readonly string[] DeferredArgs = { nameof(SetPropertiesStepData.Properties) };
+        public IReadOnlyCollection<string> DeferredArguments => DeferredArgs;
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {

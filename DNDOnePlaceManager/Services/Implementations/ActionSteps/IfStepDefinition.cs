@@ -19,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "If";
         public string Category => "Control Flow";
         public string Description => "Executes action based on condition";
+        public string? Summary => "If {Condition}[ → {OutputName}]";
         public Type DataType => typeof(IfStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

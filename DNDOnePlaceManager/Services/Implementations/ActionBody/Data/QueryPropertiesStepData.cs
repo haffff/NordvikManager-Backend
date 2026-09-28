@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using DNDOnePlaceManager.Models;
+using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
@@ -13,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Comma-separated list of specific entity IDs to filter by. Leave empty to query all under the parent.")]
         public string Ids { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the queried properties will be stored.")]
         public string Output { get; set; }
     }

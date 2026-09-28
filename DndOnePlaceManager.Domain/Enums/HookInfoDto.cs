@@ -19,5 +19,7 @@ namespace DNDOnePlaceManager.Enums
 
         /// <summary>UI grouping category from <see cref="HookMetaAttribute"/>.</summary>
         public string Category { get; set; }
+        /// <summary>Variables this hook gives an action (see HookMetaAttribute.Variables).</summary>
+        public string[] Variables { get; set; } = System.Array.Empty<string>();
     }
 }

@@ -26,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "RunClientCommand";
         public string Category => "Client";
         public string Description => "Runs a targeted ClientMediator command (panel + command + data) on a specific player's client.";
+        public string? Summary => "Client command {Panel}.{Command}[ for {Player}]";
         public Type DataType => typeof(RunClientCommandStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

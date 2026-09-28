@@ -12,6 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Resource to update. Pick one, or type a GUID / %variable%. Used when Key is not set.")]
         public string ResourceId { get; set; }
 
+        [UIType("textarea")]
         [Description("New text content to store. Supports %variable% substitution.")]
         public string Content { get; set; }
 

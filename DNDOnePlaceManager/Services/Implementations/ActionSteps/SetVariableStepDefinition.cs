@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SetVariable";
         public string Category => "Control Flow";
         public string Description => "Sets a variable to a value, with optional type casting and a default fallback when the value is empty.";
+        public string? Summary => "{Name} = {Value}";
         public Type DataType => typeof(SetVariableStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System;
 using System.ComponentModel;
 
@@ -11,6 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Display name for the resource. Used only when creating a new resource.")]
         public string Name { get; set; }
 
+        [UIType("textarea")]
         [Description("Text content to store (JSON, plain text, etc.). Supports %variable% substitution.")]
         public string Content { get; set; }
 
@@ -20,6 +22,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("ID of the folder tree entry to place the resource in. Created at root when not set.")]
         public Guid? FolderId { get; set; }
 
+        [VariableOutput]
         [Description("Optional variable name to store the resource's GUID in after the operation.")]
         public string OutputVariable { get; set; }
     }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using DNDOnePlaceManager.Models;
+using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
@@ -7,6 +8,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         public string Name { get; set; }
         public string UiName { get; set; }
         public string Icon { get; set; }
+        [UIType("action")]
         public string Action { get; set; }
         public string Location { get; set; }
         public bool OnlyOwner { get; set; }
