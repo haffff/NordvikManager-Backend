@@ -152,6 +152,7 @@
         public const string CmdAddMenuItem        = "menu_item_add";
         public const string CmdAddToolbarButton   = "toolbar_button_add";
         public const string CmdFireClientMediator = "client_mediator_fire";
+        public const string CmdRunClientCommand   = "run_client_command";
 
         // Debug / action engine
         public const string CmdDebugAction = "debug_action";
