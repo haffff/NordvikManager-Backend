@@ -15,10 +15,15 @@ namespace DndOnePlaceManager.Infrastructure
             var connectionString = configuration.GetSection("ConnectionStrings")["DBData"];
             var useSqlite = configuration.GetValue<bool>("UseSqlite");
 
+            // Split queries by default: loading several collections of a game in one joined
+            // query multiplies their row counts (e.g. resources × tree entries ran into tens of
+            // millions of rows and SQLite failed with "disk full" sorting them).
             if (useSqlite)
-                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseSqlite(connectionString));
+                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseSqlite(connectionString,
+                    o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
             else
-                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString));
+                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString,
+                    o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
             services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();

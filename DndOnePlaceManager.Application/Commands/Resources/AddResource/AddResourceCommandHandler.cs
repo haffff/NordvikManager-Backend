@@ -31,7 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             //TODO: mimeType enum should be passed in command
             MimeType? mimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();
 
-            var game = dbContext.Games.Include(x => x.Resources).Include(x => x.TreeEntries).FirstOrDefault(x => x.Id == request.GameID);
+            var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
 
             var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
             Guard.NotFound(player, "Player", request.Player.Id);
@@ -63,7 +63,6 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             }
 
             var entry = await dbContext.Resources.AddAsync(model);
-            game?.Resources.Add(entry.Entity);
 
             var result = dbContext.SaveChanges();
 
