@@ -39,8 +39,7 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
             // per install, growing every call as TreeEntries accumulated.
             var game = await dbContext.Games
                 .Include(x => x.Players)
-                .Include(x => x.TreeEntries).ThenInclude(y => y.Parent)
-                .Include(x => x.TreeEntries).ThenInclude(y => y.Next)
+                .IncludeTree(request.TreeEntryDto.EntryType)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
@@ -61,6 +60,9 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
             if (request.TreeEntryDto.Next != null)
             {
                 next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
+                // Only this tree is loaded; an entry that exists elsewhere belongs to another tree.
+                if (next == null && dbContext.TreeEntries.Any(x => x.Id == request.TreeEntryDto.Next))
+                    Guard.Argument(false, nameof(request.TreeEntryDto.Next), "Next entry belongs to a different tree.");
                 Guard.NotFound(next, "TreeEntry", request.TreeEntryDto.Next);
                 Guard.Argument(next.EntryType == treeEntry.EntryType, nameof(request.TreeEntryDto.Next), "Next entry belongs to a different tree.");
             }

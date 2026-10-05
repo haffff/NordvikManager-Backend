@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities;
@@ -28,7 +29,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree
             base.Handle(request, cancellationToken);
 
             var game = await dbContext.Games
-                .Include(x => x.TreeEntries)
+                .IncludeTree(request.EntityType)
                 .FirstOrDefaultAsync(x => x.Id == request.GameID, cancellationToken);
 
             Guard.NotFound(game, "Game", request.GameID);

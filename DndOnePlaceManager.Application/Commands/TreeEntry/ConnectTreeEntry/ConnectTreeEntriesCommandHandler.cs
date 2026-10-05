@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
@@ -51,8 +52,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry
         private async Task<CommandResponse> ConnectPendingEntries(ConnectTreeEntriesCommand request, CancellationToken cancellationToken)
         {
             var game = dbContext.Games
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Parent)
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
+                .IncludeTree(request.EntityType)
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             Guard.Argument(game != null, nameof(request.GameID));
