@@ -1,5 +1,4 @@
 ﻿using AutoMapper;
-using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Enums;
@@ -26,15 +25,6 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetAllCards
             if (request.Flat)
             {
                 var cards = cardsOriginal.Select(x => new CardDto { Id = x.Id, Name = x.Name }).ToList();
-
-                //Get required properties
-                GetPropertiesByQueryCommand getPropertiesByQueryCommand = new GetPropertiesByQueryCommand()
-                {
-                    PropertyNames = new string[] { "Name", "Description", "Image" },
-                    Player = request.Player,
-                    Ids = cardsOriginal.Select(x => x.Id).ToArray()
-                };
-
                 return (CommandResponse.Ok, cards);
             }
             else

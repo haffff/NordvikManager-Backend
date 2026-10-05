@@ -50,7 +50,9 @@ namespace DndOnePlaceManager.Application.Extension
             using (var scope = ServiceProvider.CreateScope())
             {
                 var permissionService = scope.ServiceProvider.GetRequiredService<IPermissionService>();
-                return entities.Where(x => permissionService.CheckIfHasPermissions(playerId, x, permission)).ToList();
+                var list = entities.ToList();
+                var permitted = permissionService.GetPermittedIds(playerId, list.Select(x => x.Id), permission);
+                return list.Where(x => permitted.Contains(x.Id)).ToList();
             }
         }
 
@@ -59,7 +61,9 @@ namespace DndOnePlaceManager.Application.Extension
             using (var scope = ServiceProvider.CreateScope())
             {
                 var permissionService = scope.ServiceProvider.GetRequiredService<IPermissionService>();
-                return entities.Where(x => permissionService.CheckIfHasPermissions(playerId, x, permission)).ToList();
+                var list = entities.ToList();
+                var permitted = permissionService.GetPermittedIds(playerId, list.Select(x => x.Id), permission);
+                return list.Where(x => permitted.Contains(x.Id)).ToList();
             }
         }
 

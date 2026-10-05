@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Chat.GetMessages;
+﻿using DndOnePlaceManager.Application.Commands.Chat.GetMessages;
 using DndOnePlaceManager.Domain.Entities.Chat;
 using Moq;
 
@@ -96,8 +96,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
         {
             var game = BuildGame();
             var message = SeedMessage(game.Id, PlayerId, "hidden", DateTime.UtcNow);
-            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => ((MessageModel)e).Id == message.Id), DndOnePlaceManager.Domain.Enums.Permission.Read))
-                .Returns(false);
+            PermissionsMock.Setup(p => p.GetPermittedIds(PlayerId, It.IsAny<IEnumerable<Guid>>(), DndOnePlaceManager.Domain.Enums.Permission.Read))
+                .Returns((Guid _, IEnumerable<Guid> ids, DndOnePlaceManager.Domain.Enums.Permission _) => ids.Where(id => id != message.Id).ToHashSet());
             var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 10, Page = 0 };
 
             var result = await Handler().Handle(cmd, CancellationToken.None);
