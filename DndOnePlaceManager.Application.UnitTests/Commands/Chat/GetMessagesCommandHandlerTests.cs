@@ -1,18 +1,29 @@
 ﻿using DndOnePlaceManager.Application.Commands.Chat.GetMessages;
 using DndOnePlaceManager.Domain.Entities.Chat;
-using Moq;
+using DndOnePlaceManager.Domain.Entities.Security;
+using DndOnePlaceManager.Domain.Enums;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
 {
-    public class GetMessagesCommandHandlerTests : HandlerTestBase
+    // SQLite-backed with the real permission service: filtering, permissions and paging
+    // must all happen in SQL (this used to load every message of every game).
+    public class GetMessagesCommandHandlerTests : SqliteHandlerTestBase
     {
         private GetMessagesCommandHandler Handler() => new(Db, Mapper);
 
-        private MessageModel SeedMessage(Guid gameId, Guid playerId, string content, DateTime created)
+        private sealed record GameRef(Guid Id);
+
+        private GameRef BuildGame() => new(Guid.NewGuid());
+
+        // Posted messages get an "everyone can read" row (AddMessageCommandHandler → SetGlobalPermission).
+        private MessageModel SeedMessage(Guid gameId, Guid playerId, string content, DateTime created, bool everyoneCanRead = true)
         {
             var message = new MessageModel { Id = Guid.NewGuid(), GameId = gameId, PlayerId = playerId, Content = content, Created = created };
-            Db.Messages.Add(message);
-            Db.SaveChanges();
+            using var seed = SeedContext();
+            seed.Messages.Add(message);
+            if (everyoneCanRead)
+                seed.Permissions.Add(new PermissionModel { ModelID = message.Id, All = true, Permission = Permission.Read });
+            seed.SaveChanges();
             return message;
         }
 
@@ -95,14 +106,63 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
         public async Task Handle_NoPermissionOnMessage_ExcludesFromResults()
         {
             var game = BuildGame();
-            var message = SeedMessage(game.Id, PlayerId, "hidden", DateTime.UtcNow);
-            PermissionsMock.Setup(p => p.GetPermittedIds(PlayerId, It.IsAny<IEnumerable<Guid>>(), DndOnePlaceManager.Domain.Enums.Permission.Read))
-                .Returns((Guid _, IEnumerable<Guid> ids, DndOnePlaceManager.Domain.Enums.Permission _) => ids.Where(id => id != message.Id).ToHashSet());
+            SeedMessage(game.Id, PlayerId, "hidden", DateTime.UtcNow, everyoneCanRead: false);
             var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 10, Page = 0 };
 
             var result = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Empty(result);
+        }
+
+        [Fact]
+        public async Task Handle_PlayersOwnPermissionRowWinsOverEveryoneRow()
+        {
+            var game = BuildGame();
+            var message = SeedMessage(game.Id, PlayerId, "hidden from me", DateTime.UtcNow);
+            using (var seed = SeedContext())
+            {
+                seed.Permissions.Add(new PermissionModel { ModelID = message.Id, PlayerID = PlayerId, Permission = Permission.None });
+                seed.SaveChanges();
+            }
+            var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 10, Page = 0 };
+
+            Assert.Empty(await Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_HiddenMessagesDoNotTakeUpPageSlots()
+        {
+            var game = BuildGame();
+            var now = DateTime.UtcNow;
+            SeedMessage(game.Id, PlayerId, "newest, hidden", now, everyoneCanRead: false);
+            SeedMessage(game.Id, PlayerId, "a", now.AddMinutes(-1));
+            SeedMessage(game.Id, PlayerId, "b", now.AddMinutes(-2));
+            var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 2, Page = 0 };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { "a", "b" }, result.Select(x => x.Data));
+        }
+
+        [Fact]
+        public async Task Handle_SendsOneQueryAndLoadsOnlyThePage()
+        {
+            var game = BuildGame();
+            var otherGame = BuildGame();
+            var now = DateTime.UtcNow;
+            for (int i = 0; i < 40; i++)
+            {
+                SeedMessage(game.Id, PlayerId, $"msg{i}", now.AddMinutes(-i));
+                SeedMessage(otherGame.Id, PlayerId, $"other{i}", now.AddMinutes(-i));
+            }
+            Commands.Reset();
+            var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 5, Page = 0 };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(5, result.Count);
+            Assert.Equal(1, Commands.Count);
+            Assert.True(Db.ChangeTracker.Entries<MessageModel>().Count() <= 5);
         }
     }
 }
