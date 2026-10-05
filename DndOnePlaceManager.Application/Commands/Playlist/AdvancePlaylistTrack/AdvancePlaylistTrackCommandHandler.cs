@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
@@ -36,9 +36,11 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.AdvancePlaylistTrack
             // Re-read the canonical resource-id list from the DB (not the possibly-stale
             // client-supplied order) — so a playlist edited mid-play picks up track
             // additions/removals on its next lap wrap, for free.
+            // Track ids only: loading the tracks would read their file bytes.
             var playlist = await dbContext.Playlists
-                .Include(p => p.Resources)
-                .FirstOrDefaultAsync(p => p.Id == request.PlaylistId && p.GameId == request.GameId, cancellationToken);
+                .Where(p => p.Id == request.PlaylistId && p.GameId == request.GameId)
+                .Select(p => new { TrackIds = p.Resources.Select(r => r.Id).ToList() })
+                .FirstOrDefaultAsync(cancellationToken);
 
             Guard.NotFound(playlist, "Playlist", request.PlaylistId);
 
@@ -56,7 +58,7 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.AdvancePlaylistTrack
                 };
             }
 
-            var canonicalIds = playlist.Resources.Select(r => r.Id).ToList();
+            var canonicalIds = playlist.TrackIds;
 
             if (!request.Repeat || canonicalIds.Count == 0)
             {
