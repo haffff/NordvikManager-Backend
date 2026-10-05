@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions;
+﻿using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
@@ -411,6 +411,47 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             var cmd = ValidCommand(game, Player(), archive);
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        // The handler used to load every resource (file bytes included), tree entry, card,
+        // action and property of the game up front. Installing into a game that already has
+        // content must leave all of it unloaded, and key references must still resolve.
+        [Fact]
+        public async Task Handle_DoesNotLoadTheGamesExistingContent()
+        {
+            var game = BuildGame();
+            var sharedMapId = Guid.NewGuid();
+            var existing = new List<Guid> { sharedMapId };
+            Db.Resources.Add(new ResourceModel { Id = sharedMapId, Name = "map.png", Key = "shared_map.png", GameId = game.Id, PlayerId = PlayerId, Data = new byte[4096] });
+            for (int i = 0; i < 3; i++)
+            {
+                var resourceId = Guid.NewGuid();
+                existing.Add(resourceId);
+                Db.Resources.Add(new ResourceModel { Id = resourceId, Name = $"r{i}.png", Key = $"other_{i}", GameId = game.Id, PlayerId = PlayerId, Data = new byte[4096] });
+                Db.Cards.Add(new CardModel { Id = Guid.NewGuid(), Name = $"Card {i}", GameId = game.Id, Properties = new List<PropertyModel> { new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "1" } } });
+                Db.Actions.Add(new ActionModel { Id = Guid.NewGuid(), Name = $"Action {i}", Content = "[]", Prefix = "x", Game = game });
+            }
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+
+            var archive = BuildAddonZip(BasicInfoJson,
+                ("resources/icon.png", "fake-binary"),
+                ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"),
+                ("templates/monster.json", "{\"name\":\"Monster\",\"description\":\"d\",\"mainResource\":\"dnd5e_icon.png\",\"additionalResources\":[\"shared_map.png\"]}"),
+                ("views/panel.json", "{\"name\":\"Panel\",\"description\":\"d\"}"));
+
+            var (response, result) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            var iconId = Db.Resources.AsNoTracking().Single(r => r.Key == "dnd5e_icon.png").Id;
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c => c.IsTemplate
+                && c.Dto.MainResource == iconId
+                && c.Dto.AdditionalResources!.SequenceEqual(new[] { sharedMapId })), It.IsAny<CancellationToken>()), Times.Once);
+
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<ResourceModel>(), e => existing.Contains(e.Entity.Id));
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<CardModel>(), e => e.Entity.Name.StartsWith("Card "));
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<ActionModel>(), e => e.Entity.Name.StartsWith("Action "));
+            Assert.Empty(Db.ChangeTracker.Entries<PropertyModel>());
         }
     }
 }

@@ -41,27 +41,12 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
         {
-            // AsSplitQuery(): six chained .Include()s for separate one-to-many
-            // collections (Addons/Resources/TreeEntries/Actions/Cards/Properties)
-            // on a single query, EF Core's default SingleQuery behavior joins all
-            // six into one SQL statement — the result row count is the CARTESIAN
-            // PRODUCT of every collection's size. Confirmed live: on a game with
-            // enough accumulated content (46+ resources from repeated addon
-            // installs), this query ran for 276 seconds and then failed with
-            // SQLite Error 13 ('disk or disk full') — not literal disk exhaustion
-            // (61GB/14GB free on both drives at the time), but SQLite's temp
-            // b-tree materialization for the exploded joined result set
-            // overflowing available temp space. AsSplitQuery() issues one query
-            // per collection instead (linear cost, not multiplicative) — the
-            // fix EF Core's own "MultipleCollectionIncludeWarning" recommends.
+            // Only the addons list. Resources, tree entries, cards and actions used to be loaded
+            // here too (all of them, resource file bytes included) — on a game with a big
+            // addon that was tens of thousands of rows per install, and once failed outright
+            // with SQLite "disk full". Everything below looks up just what it needs instead.
             var game = dbContext.Games
                 .Include(x => x.Addons)
-                .Include(x => x.Resources)
-                .Include(x => x.TreeEntries)
-                .Include(x => x.Actions)
-                .Include(x => x.Cards)
-                .Include(x => x.Properties)
-                .AsSplitQuery()
                 .FirstOrDefault(x => x.Id == request.GameID);
 
             Guard.NotFound(game, "Game", request.GameID);
@@ -197,7 +182,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 });
 
                 // Bug fix: was incorrectly adding to addon.Templates instead of addon.Views
-                var card = game.Cards.FirstOrDefault(x => x.Id == res)
+                var card = FindCreatedCard(res, game)
                     ?? throw new InvalidOperationException($"Card '{res}' not found after adding view '{dto.Name}'.");
 
                 if (dto.GenericPermission.HasValue)
@@ -235,7 +220,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                     IsTemplate = true
                 });
 
-                var card = game.Cards.FirstOrDefault(x => x.Id == res)
+                var card = FindCreatedCard(res, game)
                     ?? throw new InvalidOperationException($"Card '{res}' not found after adding template '{dto.Name}'.");
 
                 if (dto.GenericPermission.HasValue)
@@ -278,7 +263,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                     Action = dto
                 });
 
-                var actionModel = game.Actions.FirstOrDefault(x => x.Id == result)
+                var actionModel = dbContext.Actions.Find(result)
                     ?? throw new InvalidOperationException($"Action '{result}' not found after adding '{dto.Name}'.");
 
                 if (dto.GenericPermission.HasValue)
@@ -369,13 +354,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         // Bug fix: was calling dbContext.SaveChanges() per-resource — removed, top-level SaveChangesAsync handles it
         private bool CheckIfAlreadyExists(InstallAddonCommand request, AddonModel addon, GameModel game, ZipArchiveEntry entry)
         {
-            var existing = game.Resources.FirstOrDefault(x => x.Key == addon.Key + "_" + entry.Name);
+            var key = addon.Key + "_" + entry.Name;
+            var existing = dbContext.Resources.FirstOrDefault(x => x.GameId == game.Id && x.Key == key);
             if (existing == null)
                 return true;
 
             if (request.Reinstall)
             {
-                game.Resources.Remove(existing);
                 dbContext.Remove(existing);
                 return true;
             }
@@ -407,9 +392,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
 
         private async Task<Guid?> CreateFolder(InstallAddonCommand request, GameModel game, string name, Guid? parentFolderId = null)
         {
-            var existing = game.TreeEntries.FirstOrDefault(x =>
-                x.Name == name
-                && x.EntryType == typeof(ResourceModel).Name
+            var resourceTree = typeof(ResourceModel).Name;
+            var existing = dbContext.TreeEntries.FirstOrDefault(x =>
+                x.Game.Id == game.Id
+                && x.Name == name
+                && x.EntryType == resourceTree
                 && (parentFolderId == null ? x.Parent == null : x.Parent != null && x.Parent.Id == parentFolderId));
 
             if (existing != null)
@@ -524,13 +511,20 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
         }
 
         /// <summary>
-        /// Resolves a resource reference that may be either a GUID string or a resource key.
-        /// Newly installed addon resources (not yet saved) are checked via addonResources;
-        /// pre-existing game resources are checked via game.Resources.
+        /// Resolves a resource reference that may be either a GUID string or a resource key:
+        /// first among this addon's own new resources, then among the game's resources (by id
+        /// only — the resources themselves aren't loaded).
         /// </summary>
         private CardDto ResolveCardDto(CardInstallDto raw, GameModel game, IEnumerable<ResourceModel> addonResources)
         {
-            var allResources = game.Resources.Concat(addonResources);
+            Guid? ResolveResourceRef(string? value)
+            {
+                if (value == null) return null;
+                if (Guid.TryParse(value, out var guid)) return guid;
+                return addonResources.FirstOrDefault(r => r.Key == value)?.Id
+                    ?? dbContext.Resources.Where(r => r.GameId == game.Id && r.Key == value).Select(r => (Guid?)r.Id).FirstOrDefault();
+            }
+
             return new CardDto
             {
                 Id                 = raw.Id,
@@ -540,9 +534,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 FirstOpen          = raw.FirstOpen,
                 TemplateId         = raw.TemplateId,
                 Owner              = raw.Owner,
-                MainResource       = ResolveResourceRef(raw.MainResource, allResources),
+                MainResource       = ResolveResourceRef(raw.MainResource),
                 AdditionalResources = raw.AdditionalResources?
-                    .Select(r => ResolveResourceRef(r, allResources))
+                    .Select(r => ResolveResourceRef(r))
                     .Where(g => g.HasValue)
                     .Select(g => g!.Value)
                     .ToList(),
@@ -553,11 +547,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             };
         }
 
-        private static Guid? ResolveResourceRef(string? value, IEnumerable<ResourceModel> resources)
+        /// <summary>A card AddCardCommand just created in this game (already tracked, so no query).</summary>
+        private CardModel? FindCreatedCard(Guid id, GameModel game)
         {
-            if (value == null) return null;
-            if (Guid.TryParse(value, out var guid)) return guid;
-            return resources.FirstOrDefault(r => r.Key == value)?.Id;
+            var card = dbContext.Cards.Find(id);
+            return card?.GameId == game.Id ? card : null;
         }
 
         /// <summary>
