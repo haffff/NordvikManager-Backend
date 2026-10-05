@@ -53,52 +53,34 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperties
 
         private bool AddProperties(AddPropertiesCommand request, object entity, PropertyModel[] property)
         {
-            List<PropertyModel> properties = null;
             Guid parentId = request.Properties.First().ParentID ?? default;
 
             switch (entity)
             {
                 case GameModel game:
-                    properties = dbContext.Games.Where(g => g.Id == parentId).Include(g => g.Properties).FirstOrDefault(x => x.Id == parentId)?.Properties;
-                    foreach (var item in property)
-                    {
-                        item.Game = game;
-                    }
+                    foreach (var item in property) item.Game = game;
                     break;
                 case MapModel map:
-                    properties = dbContext.Maps.Where(g => g.Id == parentId).Include(g => g.Properties).FirstOrDefault(x => x.Id == parentId)?.Properties;
-                    foreach (var item in property)
-                    {
-                        item.Map = map;
-                    }
+                    foreach (var item in property) item.Map = map;
                     break;
                 case ElementModel element:
-                    properties = dbContext.Elements.Where(g => g.Id == parentId).Include(g => g.Properties).FirstOrDefault(x => x.Id == parentId)?.Properties;
-                    foreach (var item in property)
-                    {
-                        item.Element = element;
-                    }
+                    foreach (var item in property) item.Element = element;
                     break;
                 case CardModel card:
-                    properties = dbContext.Cards.Where(g => g.Id == parentId).Include(g => g.Properties).FirstOrDefault(x => x.Id == parentId)?.Properties;
-                    foreach (var item in property)
-                    {
-                        item.Card = card;
-                    }
+                    foreach (var item in property) item.Card = card;
                     break;
                 default:
-                    break;
+                    return false;
             }
 
-            if (properties == null)
-            {
-                return false;
-            }
+            // Skip names the owner already has — checked by name, without loading its properties.
+            var names = property.Select(x => x.Name).ToList();
+            var existing = dbContext.Properties
+                .Where(x => x.ParentID == parentId && names.Contains(x.Name))
+                .Select(x => x.Name)
+                .ToHashSet();
 
-            var hashSet = properties.Select(x => new { name = x.Name, parent = x.ParentID }).ToHashSet();
-            var newProperties = property.Where(x => !hashSet.Contains(new { name = x.Name, parent = x.ParentID }));
-
-            properties.AddRange(newProperties);
+            dbContext.Properties.AddRange(property.Where(x => !(x.ParentID == parentId && existing.Contains(x.Name))));
 
             return true;
         }
