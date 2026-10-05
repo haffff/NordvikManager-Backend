@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Card.AddCard;
+﻿using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects;
@@ -213,6 +213,53 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             await Handler().Handle(cmd, CancellationToken.None);
 
             PermissionsMock.Verify(p => p.SetGenericPermissions(It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission>()), Times.Never);
+        }
+
+        // GetGame used to include every card of the game with every property; an addon
+        // install adds cards one by one, so that grew with the square of the card count.
+        private (GameModel Game, Guid TemplateId) SeedTemplateAmongOtherCards()
+        {
+            var game = SeedGameWithCards();
+            var templateId = Guid.NewGuid();
+            Db.Cards.Add(new CardModel { Id = templateId, Name = "Template", GameId = game.Id, Game = game, AdditionalResources = "[]", Properties = new List<PropertyModel>() });
+            for (int i = 0; i < 5; i++)
+            {
+                var other = new CardModel { Id = Guid.NewGuid(), Name = $"Other {i}", GameId = game.Id, Game = game, Properties = new List<PropertyModel>() };
+                Db.Cards.Add(other);
+                Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "1", ParentID = other.Id, Card = other });
+            }
+            Db.SaveChanges();
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "10", ParentID = templateId, Card = Db.Cards.Find(templateId) });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            return (game, templateId);
+        }
+
+        [Fact]
+        public async Task Handle_WithTemplateId_LoadsOnlyTheTemplate()
+        {
+            var (game, templateId) = SeedTemplateAmongOtherCards();
+            var cmd = new AddCardCommand { GameID = game.Id, Player = Player(), Dto = new CardDto { Name = "Goblin", TemplateId = templateId, Properties = new List<PropertyDTO>() } };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { id, templateId }.OrderBy(x => x), Db.ChangeTracker.Entries<CardModel>().Select(e => e.Entity.Id).OrderBy(x => x));
+            Assert.Equal(2, Db.ChangeTracker.Entries<PropertyModel>().Count()); // template's hp + its copy
+            Db.ChangeTracker.Clear();
+            Assert.Contains(Db.Cards.Include(c => c.Properties).First(c => c.Id == id).Properties, p => p.Name == "hp" && p.Value == "10");
+        }
+
+        [Fact]
+        public async Task Handle_WithoutTemplate_LoadsNoOtherCards()
+        {
+            var (game, _) = SeedTemplateAmongOtherCards();
+            var cmd = new AddCardCommand { GameID = game.Id, Player = Player(), Dto = new CardDto { Name = "Goblin", Properties = new List<PropertyDTO>() } };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(id, Assert.Single(Db.ChangeTracker.Entries<CardModel>()).Entity.Id);
+            Db.ChangeTracker.Clear();
+            Assert.Equal(game.Id, Db.Cards.Find(id)!.GameId);
         }
     }
 }
