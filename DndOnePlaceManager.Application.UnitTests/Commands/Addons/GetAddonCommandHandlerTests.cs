@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
+﻿using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Enums;
@@ -23,14 +23,34 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             return addon;
         }
 
-        // Known pre-existing bug: GetEntity dereferences game.Addons without a null check
-        // when the game isn't found — pinning down current behavior, not fixing it.
         [Fact]
-        public async Task Handle_GameNotFound_ThrowsNullReferenceException_KnownBug()
+        public async Task Handle_GameNotFound_ReturnsNull()
         {
             var cmd = new GetAddonCommand { GameID = Guid.NewGuid(), Player = Player(), Id = Guid.NewGuid() };
 
-            await Assert.ThrowsAsync<NullReferenceException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.Null(await Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        // Used to load every addon of the game with all of its actions, views and resources
+        // (file bytes included); the only caller needs the addon's key.
+        [Fact]
+        public async Task Handle_LoadsOnlyTheAddonItself()
+        {
+            var game = BuildGame();
+            var addon = SeedAddon(game);
+            SeedAddon(game, "other");
+            var resource = new DndOnePlaceManager.Domain.Entities.Resources.ResourceModel { Id = Guid.NewGuid(), GameId = game.Id, PlayerId = PlayerId, Name = "big.png", Data = new byte[4096] };
+            Db.Resources.Add(resource);
+            addon.Resources!.Add(resource);
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+
+            var result = await Handler().Handle(new GetAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "dnd5e" }, CancellationToken.None);
+
+            Assert.Equal(addon.Id, result!.Id);
+            Assert.Equal("dnd5e", result.Key);
+            Assert.Equal(addon.Id, Assert.Single(Db.ChangeTracker.Entries<AddonModel>()).Entity.Id);
+            Assert.Empty(Db.ChangeTracker.Entries<DndOnePlaceManager.Domain.Entities.Resources.ResourceModel>());
         }
 
         [Fact]
