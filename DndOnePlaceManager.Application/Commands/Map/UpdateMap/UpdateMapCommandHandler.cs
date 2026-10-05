@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
@@ -19,10 +20,10 @@ namespace DndOnePlaceManager.Application.Commands.Map.UpdateMap
         public override async Task<CommandResponse> Handle(UpdateMapCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var game = dbContext.Games.Include(x => x.Maps).FirstOrDefault(x => x.Id == request.GameId);
-            Guard.NotFound(game, "Game", request.GameId);
+            if (!dbContext.Games.Any(x => x.Id == request.GameId))
+                throw new ResourceNotFoundException("Game", request.GameId);
 
-            var map = game.Maps.FirstOrDefault(x => x.Id == request.Map.Id);
+            var map = dbContext.Maps.FirstOrDefault(x => x.Id == request.Map.Id && x.Game.Id == request.GameId);
 
             Guard.NotFound(map, "Map", request.Map.Id);
 

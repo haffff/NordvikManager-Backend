@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
@@ -18,11 +18,9 @@ namespace DndOnePlaceManager.Application.Commands.Actions
         {
             await base.Handle(request, cancellationToken);
             // Retrieve the action from the database
-            var game = await dbContext.Games
-                .Include(x => x.Actions)
-                .FirstOrDefaultAsync(x => x.Id == request.GameId, cancellationToken);
+            var game = await dbContext.Games.FirstOrDefaultAsync(x => x.Id == request.GameId, cancellationToken);
             Guard.NotFound(game, "Game", request.GameId);
-            var action = game.Actions.FirstOrDefault(x => x.Id == request.Action.Id);
+            var action = await dbContext.Actions.FirstOrDefaultAsync(x => x.Id == request.Action.Id && x.Game.Id == game.Id, cancellationToken);
             Guard.NotFound(action, "Action", request.Action.Id);
 
             // Check for permissions
