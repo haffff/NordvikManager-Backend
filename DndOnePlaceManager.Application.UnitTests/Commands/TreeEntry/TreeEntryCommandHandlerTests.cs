@@ -204,6 +204,70 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TreeEntry
             Assert.NotNull(child.Parent);
             Assert.Equal(folder.Id, child.Parent!.Id);
         }
+
+        // Item entries are added pending (AutoConnect = false) and only linked on the next tree
+        // load. A folder created "before" such an item must still work.
+        private async Task<TreeEntryModel> BuildPendingEntry(GameModel game, string name, string type)
+        {
+            var target = Guid.NewGuid();
+            await Handler().Handle(new AddTreeEntryCommand
+            {
+                GameId = game.Id,
+                Player = Player(),
+                TreeEntryDto = new TreeEntryDto { Name = name, EntryType = type, TargetId = target, AutoConnect = false }
+            }, CancellationToken.None);
+            return Db.TreeEntries.First(x => x.TargetId == target);
+        }
+
+        private AddTreeEntryCommand FolderBefore(GameModel game, Guid? next, string type = "CardTemplate") => new()
+        {
+            GameId = game.Id,
+            Player = Player(),
+            TreeEntryDto = new TreeEntryDto { Name = "Folder", EntryType = type, IsFolder = true, Next = next, AutoConnect = true }
+        };
+
+        [Fact]
+        public async Task Handle_FolderBeforePendingEntry_LinksBothWithFolderFirst()
+        {
+            var game = BuildGame();
+            var item = await BuildPendingEntry(game, "Template", "CardTemplate");
+
+            await Handler().Handle(FolderBefore(game, item.Id), CancellationToken.None);
+
+            var entries = Db.TreeEntries.Include(x => x.Next).Where(x => x.EntryType == "CardTemplate").ToList();
+            var folder = entries.Single(x => x.IsFolder);
+            Assert.True(folder.Head);
+            Assert.Equal(item.Id, folder.Next!.Id);
+            Assert.All(entries, x => Assert.False(x.NewItem));
+            Assert.Single(entries, x => x.Head == true);
+        }
+
+        [Fact]
+        public async Task Handle_FolderBeforePendingEntry_KeepsLinkedEntriesInOrder()
+        {
+            var game = BuildGame();
+            var first = await BuildTreeEntry(game, "First", type: "CardTemplate");
+            var item = await BuildPendingEntry(game, "Template", "CardTemplate");
+
+            await Handler().Handle(FolderBefore(game, item.Id), CancellationToken.None);
+
+            var entries = Db.TreeEntries.Include(x => x.Next).Where(x => x.EntryType == "CardTemplate").ToList();
+            var folder = entries.Single(x => x.IsFolder);
+            Assert.Equal(folder.Id, entries.Single(x => x.Id == first.Id).Next!.Id);
+            Assert.Equal(item.Id, folder.Next!.Id);
+            Assert.Single(entries, x => x.Head == true);
+        }
+
+        [Fact]
+        public async Task Handle_RejectedAdd_LeavesNothingBehind()
+        {
+            var game = BuildGame();
+            var otherTreeEntry = await BuildTreeEntry(game, "Map", type: "MapModel");
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(FolderBefore(game, otherTreeEntry.Id), CancellationToken.None));
+
+            Assert.DoesNotContain(Db.TreeEntries.AsNoTracking().ToList(), x => x.Name == "Folder");
+        }
     }
 
     // =========================================================================
@@ -355,6 +419,36 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TreeEntry
 
             var exception = await Record.ExceptionAsync(() => Handler().Handle(cmd, CancellationToken.None));
             Assert.Null(exception);
+        }
+
+        [Fact]
+        public async Task Handle_MovingFollowingItemsIntoFolder_FolderNoLongerPointsAtThem()
+        {
+            // Folder -> A -> B at the top level; dragging A then B into the folder must leave
+            // the folder with no Next (its old neighbours are now its children).
+            var game = BuildGame();
+            var targetA = Guid.NewGuid();
+            var targetB = Guid.NewGuid();
+            var entryB = await BuildTreeEntry(game, "B", targetId: targetB);
+            var entryA = await BuildTreeEntry(game, "A", next: entryB, targetId: targetA);
+            var folder = await BuildTreeEntry(game, "Folder", isFolder: true, next: entryA);
+
+            foreach (var (entry, name) in new[] { (entryA, "A"), (entryB, "B") })
+            {
+                await Handler().Handle(new UpdateTreeEntryCommand
+                {
+                    GameId = game.Id,
+                    PlayerId = PlayerId,
+                    TreeEntryDto = new TreeEntryDto { Id = entry.Id, Name = name, Next = null, ParentId = folder.Id }
+                }, CancellationToken.None);
+            }
+
+            var reloadedFolder = Db.TreeEntries.Include(x => x.Next).AsNoTracking().First(x => x.Id == folder.Id);
+            Assert.Null(reloadedFolder.Next);
+            Assert.True(reloadedFolder.Head);
+            var children = Db.TreeEntries.Include(x => x.Parent).Include(x => x.Next).AsNoTracking().Where(x => x.Parent!.Id == folder.Id).ToList();
+            Assert.Equal(2, children.Count);
+            Assert.Single(children, x => x.Head == true);
         }
     }
 

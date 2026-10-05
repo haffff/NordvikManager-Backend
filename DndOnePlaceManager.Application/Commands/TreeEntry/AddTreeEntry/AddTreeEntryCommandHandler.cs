@@ -55,35 +55,61 @@ namespace DndOnePlaceManager.Application.Commands.Folder.AddFolder
                 !treeEntry.TargetId.HasValue || !game.TreeEntries.Any(x => x.TargetId == treeEntry.TargetId && x.EntryType == treeEntry.EntryType),
                 nameof(treeEntry.TargetId), "Duplicate tree entry for this target.");
 
-            game.TreeEntries.Add(treeEntry);
-
-            if (request.TreeEntryDto.ParentId == null && request.TreeEntryDto.Next != null)
+            // Work out where the entry goes before touching the tree, so a rejected request
+            // leaves nothing half-saved behind.
+            TreeEntryModel? next = null;
+            if (request.TreeEntryDto.Next != null)
             {
-                var next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
+                next = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.Next);
                 Guard.NotFound(next, "TreeEntry", request.TreeEntryDto.Next);
-                treeEntry.Parent = next.Parent;
+                Guard.Argument(next.EntryType == treeEntry.EntryType, nameof(request.TreeEntryDto.Next), "Next entry belongs to a different tree.");
             }
 
-            //assign to folder
-            if (request.TreeEntryDto.ParentId != null && treeEntry.Parent == null)
+            TreeEntryModel? parent = next?.Parent;
+            if (request.TreeEntryDto.ParentId != null)
             {
-                var parent = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.ParentId);
-
+                parent = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryDto.ParentId);
                 Guard.NotFound(parent, "TreeEntry", request.TreeEntryDto.ParentId);
-
-                treeEntry.Parent = parent;
+                Guard.Argument(next == null || next.Parent?.Id == parent.Id, nameof(request.TreeEntryDto.Next), nameof(request.TreeEntryDto.ParentId));
             }
 
-            treeEntry.NewItem = true;
+            if (request.TreeEntryDto.AutoConnect == true && next?.NewItem == true)
+            {
+                // Items get their entry pending and are linked on the next tree load; one the
+                // user can already see (and insert before) gets linked now instead.
+                LinkPendingEntries(game, treeEntry.EntryType, parent);
+            }
 
-            dbContext.SaveChanges();
+            game.TreeEntries.Add(treeEntry);
+            treeEntry.Parent = parent;
+            treeEntry.NewItem = true;
 
             if (request.TreeEntryDto.AutoConnect == true)
             {
                 return await ConnectTreeEntry(request, treeEntry, game);
             }
 
+            dbContext.SaveChanges();
+
             return (CommandResponse.Ok, new List<TreeEntryDto>() { mapper.Map<TreeEntryDto>(treeEntry) });
+        }
+
+        /// <summary>Appends the pending entries of one tree level after its last linked entry, like ConnectTreeEntries does.</summary>
+        private static void LinkPendingEntries(GameModel game, string entryType, TreeEntryModel? parent)
+        {
+            var pending = game.TreeEntries
+                .Where(x => x.NewItem == true && x.EntryType == entryType && x.Parent?.Id == parent?.Id)
+                .ToList();
+
+            foreach (var entry in pending)
+            {
+                var tail = game.TreeEntries.FirstOrDefault(x => x.Next == null && x.NewItem != true && x.EntryType == entryType && x.Parent?.Id == parent?.Id);
+                if (tail != null)
+                    tail.Next = entry;
+                else
+                    entry.Head = true;
+                entry.NewItem = false;
+            }
         }
 
         private async Task<(CommandResponse, List<TreeEntryDto>)> ConnectTreeEntry(AddTreeEntryCommand request, TreeEntryModel treeEntry, GameModel game)
