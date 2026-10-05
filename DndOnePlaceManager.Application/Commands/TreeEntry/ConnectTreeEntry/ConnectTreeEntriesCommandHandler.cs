@@ -1,6 +1,9 @@
 ﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.TreeEntry.CheckTree;
 using DndOnePlaceManager.Application.Guards;
+using DndOnePlaceManager.Application.Services;
+using DndOnePlaceManager.Domain.Entities;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -54,6 +57,8 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry
 
             Guard.Argument(game != null, nameof(request.GameID));
 
+            AddMissingEntries(game, request.EntityType);
+
             var newTreeEntries = game.TreeEntries.Where(x => x.NewItem == true && x.EntryType == request.EntityType);
             if (newTreeEntries.Any())
             {
@@ -96,6 +101,60 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry
             await mediator.Send(checkTreeCommand);
 
             return CommandResponse.Ok;
+        }
+
+        /// <summary>
+        /// Templates, custom views, playlists and soundboards made before their panel had
+        /// folders have no tree entry. Give each one a pending entry; the loop in
+        /// ConnectPendingEntries then links it at the end of the top level. Runs under the
+        /// same per-tree lock, and skips anything already filed, so it never duplicates.
+        /// </summary>
+        private void AddMissingEntries(GameModel game, string entityType)
+        {
+            var items = ItemsShownIn(game.Id, entityType);
+            if (items == null)
+                return;
+
+            var filed = game.TreeEntries
+                .Where(x => x.EntryType == entityType && x.TargetId != null)
+                .Select(x => x.TargetId!.Value)
+                .ToHashSet();
+
+            foreach (var (id, name) in items.Where(x => !filed.Contains(x.Id)).OrderBy(x => x.Name))
+            {
+                var entry = new TreeEntryModel
+                {
+                    Id = Guid.NewGuid(),
+                    Name = name,
+                    EntryType = entityType,
+                    TargetId = id,
+                    IsFolder = false,
+                    NewItem = true,
+                    Game = game,
+                };
+                // Added explicitly: with a preset key, EF would otherwise treat an entity found
+                // through the navigation as already stored and try to update it.
+                dbContext.TreeEntries.Add(entry);
+                game.TreeEntries.Add(entry);
+            }
+        }
+
+        /// <summary>The items a tree should contain, for trees that get backfilled; null for the rest.</summary>
+        private List<(Guid Id, string Name)>? ItemsShownIn(Guid gameId, string entityType)
+        {
+            var cards = dbContext.Cards.Where(c => c.GameId == gameId);
+            var playlists = dbContext.Playlists.Where(p => p.GameId == gameId);
+
+            var query = entityType switch
+            {
+                TreeEntryTypes.CardTemplate => cards.Where(c => c.IsTemplate && !c.IsCustomUi).Select(c => new { c.Id, c.Name }),
+                TreeEntryTypes.CustomView   => cards.Where(c => c.IsCustomUi).Select(c => new { c.Id, c.Name }),
+                TreeEntryTypes.Playlist     => playlists.Where(p => p.Kind == PlaylistKind.Music).Select(p => new { p.Id, p.Name }),
+                TreeEntryTypes.Soundboard   => playlists.Where(p => p.Kind == PlaylistKind.Soundboard).Select(p => new { p.Id, p.Name }),
+                _ => null,
+            };
+
+            return query?.AsEnumerable().Select(x => (x.Id, x.Name)).ToList();
         }
     }
 }

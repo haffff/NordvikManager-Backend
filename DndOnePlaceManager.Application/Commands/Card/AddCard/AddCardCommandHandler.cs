@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Services;
+using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
@@ -69,7 +70,8 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
                 }
             }
 
-            this.OmitTreeCreation = request.IsCustomUi || request.IsTemplate;
+            // Templates and custom views are cards too, but each panel has its own folders.
+            this.TreeEntryType = TreeEntryTypes.ForCard(request.IsTemplate, request.IsCustomUi);
 
             return model;
         }
