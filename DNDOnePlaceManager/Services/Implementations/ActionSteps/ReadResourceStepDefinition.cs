@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value       => "ReadResource";
         public string Category    => "Data";
         public string Description => "Reads a text resource by key or ID and stores its content in a variable.";
+        public string? Summary  => "Read resource[ {Key}][ {ResourceId}][ → {OutputVariable}]";
         public Type   DataType    => typeof(ReadResourceStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

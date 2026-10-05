@@ -10,6 +10,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
@@ -25,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SendChat";
         public string Category => "Client";
         public string Description => "Sends a formatted message to the game chat. Use Template='Roll' after a RollDice step to display a styled roll card, 'BigNumber' for a large value, or 'Text' for a plain message.";
+        public string? Summary => "Chat[ to {Player}]:[ {Title}][ {Message}][ {Number}]";
         public Type DataType => typeof(SendChatStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -53,12 +55,26 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             var json = JsonConvert.SerializeObject(template, Formatting.None, _camel);
 
-            await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand
+            var command = new WebSocketCommand
             {
                 Command = WebSocketCommandNames.CmdChatPush,
                 Data    = JToken.Parse(json),
                 GameId  = gameLobby.GameId,
-            });
+            };
+
+            if (!string.IsNullOrWhiteSpace(stepData.Player))
+            {
+                // Whisper: straight to one client, bypassing ChatHandler so it isn't persisted for everyone.
+                var player = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(
+                    x => x.Name.Trim().ToLower() == stepData.Player.Trim().ToLower() ||
+                         x.Id.Value.ToString() == stepData.Player.Trim())
+                    ?? throw new ActionProcessException($"SendChat: player '{stepData.Player}' is not connected.");
+                command.PlayerId = gameLobby.SystemPlayer?.Id;
+                gameLobby.SendToPlayer(command, player);
+                return;
+            }
+
+            await gameLobby.HandleCommand(gameLobby.SystemPlayer, command);
         }
 
         private static RollChatTemplate BuildRollTemplate(SendChatStepData stepData, Dictionary<string, object> variables)

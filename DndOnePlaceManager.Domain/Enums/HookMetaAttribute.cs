@@ -20,6 +20,12 @@ namespace DNDOnePlaceManager.Enums
         /// </summary>
         public string Category { get; }
 
+        /// <summary>
+        /// Comma-separated names of the variables this hook gives an action, e.g. "Data,Player".
+        /// Shown in the action editor's variable autocomplete.
+        /// </summary>
+        public string Variables { get; set; } = "";
+
         public HookMetaAttribute(string name, string description, string category = "General")
         {
             Name = name;

@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -10,9 +11,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the list-typed property (must already exist — use a Set Property step with Value \"[]\" to create it first).")]
         public string PropertyName { get; set; }
 
+        [UIType("textarea")]
         [Description("New row's fields as a JSON object, e.g. {\"name\":\"Hunt\",\"value\":\"2\"}. Supports %variable% substitution.")]
         public string Fields { get; set; }
 
+        [VariableOutput]
         [Description("Optional — name of the variable where the new row's generated id will be stored.")]
         public string Output { get; set; }
     }

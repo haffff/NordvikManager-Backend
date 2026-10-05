@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "QueryProperties";
         public string Description => "Query properties based on names and parentIds or ids";
         public string Category => "Properties";
+        public string? Summary => "Query[ {PropertyNames}][ of {ParentIds}][ ids {Ids}][ → {Output}]";
         public Type DataType => typeof(QueryPropertiesStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

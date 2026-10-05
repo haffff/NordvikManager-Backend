@@ -13,10 +13,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "GetConnectedPlayers";
         public string Category => "Data";
         public string Description => "Gets all connected players and sets variable with name provided as argument";
-        public Type DataType => typeof(ValueStepData);
+        public string? Summary => "Connected players[ → {Value}]";
+        public Type DataType => typeof(GetConnectedPlayersStepData);
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
-            var stepData = step.Data.ToObject<ValueStepData>()?.Value;
+            var stepData = step.Data.ToObject<GetConnectedPlayersStepData>()?.Value;
             var players = gameLobby.ConnectedPlayers.Keys;
             variables[stepData] = players;
         }

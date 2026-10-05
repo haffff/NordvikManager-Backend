@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "GetData";
         public string Category => "Data";
         public string Description => "Gets data from database and sets variable with name provided as output argument";
+        public string? Summary => "Get {Type}[ {Name}][ {Id}][ → {Output}]";
         public Type DataType => typeof(GetDataStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "ForEach";
         public string Category => "Control Flow";
         public string Description => "Executes action for each item in collection";
+        public string? Summary => "For each {ItemName} in {Collection}: run {Action}";
         public Type DataType => typeof(ForEachStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

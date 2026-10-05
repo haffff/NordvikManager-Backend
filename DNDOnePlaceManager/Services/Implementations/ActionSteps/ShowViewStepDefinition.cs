@@ -28,6 +28,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "ShowView";
         public string Category => "Client";
         public string Description => "Shows a view (hidden UI panel/card) to a specific player or broadcasts it to all players.";
+        public string? Summary => "Show view {ViewKey}[ to {Player}]";
         public Type DataType => typeof(ShowViewStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

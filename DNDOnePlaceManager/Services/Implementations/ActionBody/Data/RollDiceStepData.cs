@@ -8,6 +8,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Dice notation to roll, e.g. '1d20', '2d6+3'. Supports %variable% substitution.")]
         public string DiceString { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the result is stored. Leave empty to skip storing.")]
         public string? OutputVariable { get; set; }
 
@@ -33,6 +34,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Border colour of the chat card (CSS colour, e.g. '#e94560'). Leave empty for default.")]
         public string? ChatBorderColor { get; set; }
 
+        [UIType("action")]
         [ShowIf("PrintToChat", "true")]
         [Description("Name of an action to offer as a follow-up button under the roll (e.g. 'dnd5e.roll_damage'). Leave empty for no button.")]
         public string? FollowUpActionName { get; set; }

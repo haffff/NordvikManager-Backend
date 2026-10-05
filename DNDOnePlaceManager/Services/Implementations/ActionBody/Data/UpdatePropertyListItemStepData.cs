@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -13,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Id of the row to update. Supports %variable% substitution.")]
         public string ItemId { get; set; }
 
+        [UIType("textarea")]
         [Description("Fields to merge into the row, as a JSON object, e.g. {\"value\":\"3\"}. Only the supplied keys change. Supports %variable% substitution.")]
         public string Fields { get; set; }
     }

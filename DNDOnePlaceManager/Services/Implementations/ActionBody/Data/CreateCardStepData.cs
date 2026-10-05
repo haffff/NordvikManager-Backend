@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Player to grant Edit permission on the new card. Pick one, or type an ID / %variable%. Leave empty to skip.")]
         public string Owner { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the new card's id will be stored.")]
         public string Output { get; set; }
 

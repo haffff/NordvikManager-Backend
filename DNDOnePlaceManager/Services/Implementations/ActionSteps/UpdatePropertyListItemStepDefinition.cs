@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "UpdatePropertyListItem";
         public string Category => "Properties";
         public string Description => "Merges fields into an existing row of a list-typed property, identified by its id.";
+        public string? Summary => "Update row {ItemId} in {PropertyName}";
         public Type DataType => typeof(UpdatePropertyListItemStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

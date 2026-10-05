@@ -19,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "AddMenuItem";
         public string Category => "Client";
         public string Description => "Adds a menu item to the client UI. Allows addons to create shortcuts or custom actions in the game menu.";
+        public string? Summary => "Menu item {UiName}[ → {Action}]";
         public Type DataType => typeof(MenuButtonStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

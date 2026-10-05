@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SetDetail";
         public string Description => "Set a detail on an object";
         public string Category => "Data";
+        public string? Summary => "Set {DetailName} of {Input} = {Value}";
         public Type DataType => typeof(SetDetailStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SendRequest";
         public string Category => "Network";
         public string Description => "Sends an HTTP request to an external URL. Protected properties can be injected into the body or used as a Bearer token. Protected values are never returned to the caller.";
+        public string? Summary => "Request[ {HttpMethod}] {TargetUrl}[ → {Output}]";
         public Type DataType => typeof(SendRequestStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

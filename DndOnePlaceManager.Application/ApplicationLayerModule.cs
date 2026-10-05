@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Application.Services.Dice;
 using DndOnePlaceManager.Application.Services.Implementations;
 using DndOnePlaceManager.Application.Services.Interfaces;
+using DndOnePlaceManager.Application.Services.Rolls;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
@@ -18,6 +19,7 @@ namespace DndOnePlaceManager.Application
             services.AddSingleton<IDiceRandomSource, DiceRandomSource>();
             services.AddSingleton<IDiceEngine, DiceEngine>();
             services.AddScoped<IChatService, ChatService>();
+            services.AddSingleton<IRollSessionStore>(_ => new RollSessionStore());
 
             services.AddMediatR(Assembly.GetExecutingAssembly());
         }

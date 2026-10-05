@@ -30,6 +30,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SetProperty";
         public string Category => "Data";
         public string Description => "Creates or updates a named property on any entity, identified by its ID.";
+        public string? Summary => "Set {PropertyName} of {ParentId} = {PropertyValue}";
         public Type DataType => typeof(SetPropertyStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -47,13 +48,21 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
 
-            var entityName = await DetectEntityNameAsync(dbContext, parentGuid, gameLobby.GameId);
-            if (entityName == null)
-                throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found in the current game.");
+            var entityName = await DetectEntityNameAsync(dbContext, parentGuid, gameLobby.GameId)
+                ?? throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found in the current game.");
 
+            await SetAsync(mediator, gameLobby, parentGuid, entityName, stepData.PropertyName, stepData.PropertyValue);
+        }
+
+        /// <summary>
+        /// Creates or updates one property through the lobby (so clients get the broadcast and
+        /// property hooks fire). Shared with SetPropertiesStepDefinition.
+        /// </summary>
+        internal static async Task SetAsync(IMediator mediator, GameLobby gameLobby, Guid parentGuid, string entityName, string name, string value)
+        {
             var getCmd = new GetPropertyCommand()
             {
-                Name = stepData.PropertyName,
+                Name = name,
                 ParentID = parentGuid,
                 Player = gameLobby.SystemPlayer,
             };
@@ -71,16 +80,16 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                     Command = "property_add",
                     Data = JObject.FromObject(new PropertyDTO()
                     {
-                        Name = stepData.PropertyName,
+                        Name = name,
                         ParentID = parentGuid,
-                        Value = stepData.PropertyValue,
+                        Value = value,
                         EntityName = entityName,
                     })
                 });
                 return;
             }
 
-            property.Value = stepData.PropertyValue;
+            property.Value = value;
             await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
             {
                 Command = "property_update",
@@ -88,7 +97,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             });
         }
 
-        private static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id, Guid gameId)
+        internal static async Task<string?> DetectEntityNameAsync(IDbContext db, Guid id, Guid gameId)
         {
             if (await db.Elements.AnyAsync(e => e.Id == id && e.Map.Game.Id == gameId)) return "ElementModel";
             if (await db.Maps.AnyAsync(m => m.Id == id && m.Game.Id == gameId))         return "MapModel";

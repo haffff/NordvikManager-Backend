@@ -1,3 +1,4 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -22,6 +23,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the variable holding a Dictionary<string,object> of extra key/value pairs to merge into the request body alongside the protected properties.")]
         public string ExtraBodyVariable { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the response will be stored. The response object has Success (bool), StatusCode (int) and ResponseBody (string).")]
         public string Output { get; set; }
     }

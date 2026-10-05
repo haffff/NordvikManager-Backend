@@ -16,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "GetDetail";
         public string Category => "Data";
         public string Description => "Get a detail from a DTO";
+        public string? Summary => "Read {DetailName} of {Input}[ → {Output}]";
         public Type DataType => typeof(GetDetailStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

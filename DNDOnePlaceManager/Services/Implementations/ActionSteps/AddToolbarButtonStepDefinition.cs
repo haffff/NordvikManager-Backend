@@ -19,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "AddToolbarButton";
         public string Category => "Client";
         public string Description => "Adds a button to the client toolbar. Allows addons to create shortcuts or custom actions in the game toolbar.";
+        public string? Summary => "Toolbar button {UiName}[ → {Action}]";
         public Type DataType => typeof(AddToolbarButtonStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

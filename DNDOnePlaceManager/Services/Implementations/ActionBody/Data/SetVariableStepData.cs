@@ -1,9 +1,11 @@
-﻿using System.ComponentModel;
+﻿using DNDOnePlaceManager.Models;
+using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class SetVariableStepData
     {
+        [VariableOutput]
         [Description("Name of the variable to create or overwrite.")]
         public string? Name { get; set; }
 
