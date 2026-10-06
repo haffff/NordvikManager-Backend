@@ -30,7 +30,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
             var parentIds = request.ParentIDs;
 
             // Filters run in SQL; permissions on the owners are then checked in one batch.
-            var collection = dbContext.Properties.AsNoTracking();
+            // Always limited to the game: permissions alone let through anything readable by all.
+            var collection = dbContext.Properties.AsNoTracking().InGame(request.GameId);
 
             if (parentIds?.Any() == true)
             {
