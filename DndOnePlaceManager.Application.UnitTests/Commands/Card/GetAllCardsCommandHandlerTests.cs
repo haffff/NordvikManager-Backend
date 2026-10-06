@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
+﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using Moq;
@@ -84,8 +84,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
         {
             var game = BuildGame();
             var card = SeedCard(game.Id, "Hidden");
-            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => ((CardModel)e).Id == card.Id), Permission.Read))
-                .Returns(false);
+            PermissionsMock.Setup(p => p.GetPermittedIds(PlayerId, It.IsAny<IEnumerable<Guid>>(), Permission.Read))
+                .Returns((Guid _, IEnumerable<Guid> ids, DndOnePlaceManager.Domain.Enums.Permission _) => ids.Where(id => id != card.Id).ToHashSet());
             var cmd = new GetAllCardsCommand { GameId = game.Id, Player = Player() };
 
             var (_, cards) = await Handler().Handle(cmd, CancellationToken.None);

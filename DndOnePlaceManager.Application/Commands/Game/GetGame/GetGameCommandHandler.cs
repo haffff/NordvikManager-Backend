@@ -1,4 +1,4 @@
-
+﻿
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.BattleMap.GetGame;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -30,7 +30,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             {
                 var fullGame = await dbContext.Games
                  .Include(players => players.Players)
-                 .Include(maps => maps.Maps).ThenInclude(e => e.Elements).ThenInclude(e => e.Properties)
+                 .Include(maps => maps.Maps) // only id/name/path are returned; elements load with the map
                  .Include(maps => maps.Layouts)
                  .Include(bms => bms.BattleMaps)
                  .Include(g => g.Properties)

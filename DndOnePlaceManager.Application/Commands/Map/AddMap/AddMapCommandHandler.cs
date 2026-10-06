@@ -16,7 +16,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.AddMap
 
         public override GameModel GetGame(AddMapCommand request)
         {
-            return dbContext.Games.Include(x => x.Maps).Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameID);
+            return dbContext.Games.Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameID);
         }
 
         public override MapDTO GetDefault()
@@ -35,7 +35,9 @@ namespace DndOnePlaceManager.Application.Commands.Map.AddMap
 
         public override void AddToGame(GameModel game, MapModel model, AddMapCommand request)
         {
-            game.Maps.Add(model);
+            // Added directly: loading game.Maps to append to it read every map of the game.
+            model.Game = game;
+            dbContext.Maps.Add(model);
         }
     }
 }

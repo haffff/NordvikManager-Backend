@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
+﻿using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
@@ -107,6 +107,47 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
             var reread = Db.Games.Include(g => g.Properties).First(g => g.Id == game.Id);
             Assert.Single(reread.Properties!);
             Assert.Equal("Easy", reread.Properties![0].Value); // original untouched, new duplicate skipped
+        }
+
+        // Adding used to load every existing property of the owner (a character sheet card
+        // has hundreds) just to append to its collection or check names.
+        private GameModel SeedGameWithManyProperties(int count)
+        {
+            var game = SeedGameWithProperties();
+            for (int i = 0; i < count; i++)
+                Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = $"p{i}", Value = "v", ParentID = game.Id, EntityName = "GameModel", Game = game });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            return game;
+        }
+
+        private int CountPropertiesOf(Guid parentId)
+        {
+            using var check = SeedContext();
+            return check.Properties.Count(p => p.ParentID == parentId);
+        }
+
+        [Fact]
+        public async Task Handle_DoesNotLoadTheOwnersOtherProperties_AndStillSkipsExistingNames()
+        {
+            var game = SeedGameWithManyProperties(20);
+            var cmd = new AddPropertiesCommand
+            {
+                GameID = game.Id, Player = Player(),
+                Properties = new[]
+                {
+                    new PropertyDTO { Name = "new1", ParentID = game.Id, EntityName = "GameModel" },
+                    new PropertyDTO { Name = "p3", Value = "changed", ParentID = game.Id, EntityName = "GameModel" },
+                    new PropertyDTO { Name = "new2", ParentID = game.Id, EntityName = "GameModel" },
+                },
+            };
+
+            Assert.Equal(CommandResponse.Ok, await Handler().Handle(cmd, CancellationToken.None));
+
+            Assert.Equal(new[] { "new1", "new2" }, Db.ChangeTracker.Entries<PropertyModel>().Select(e => e.Entity.Name).OrderBy(x => x));
+            Assert.Equal(22, CountPropertiesOf(game.Id));
+            using var check = SeedContext();
+            Assert.Equal("v", check.Properties.Single(p => p.ParentID == game.Id && p.Name == "p3").Value);
         }
     }
 }

@@ -2,7 +2,10 @@ using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Domain.Entities;
+using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Moq;
 
@@ -73,6 +76,46 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             Assert.Equal(CommandResponse.Ok, response);
             var created = Db.Resources.Find(id!.Value);
             Assert.Equal(MimeType.JavaScript, created!.MimeType);
+        }
+
+        // Regression: the handler loaded the game with all of its resources AND tree entries in
+        // one joined query (resources × entries rows). On a game with an installed addon that
+        // is tens of millions of rows; SQLite's sort spilled to temp and failed with "disk full".
+        [Fact]
+        public async Task Handle_DoesNotLoadTheGamesExistingResourcesOrTreeEntries()
+        {
+            var gameId = Guid.NewGuid();
+            using (var seed = SeedContext())
+            {
+                var game = new GameModel
+                {
+                    Id = gameId, Name = "Big game", SystemPlayerId = Guid.NewGuid(),
+                    Players = new List<PlayerModel> { new PlayerModel { Id = PlayerId, Name = "Tester" } },
+                    TreeEntries = new List<TreeEntryModel>(),
+                };
+                seed.Games.Add(game);
+                for (var i = 0; i < 3; i++)
+                {
+                    seed.Resources.Add(new ResourceModel { Id = Guid.NewGuid(), GameId = gameId, PlayerId = PlayerId, Name = $"r{i}", Data = new byte[] { 1 } });
+                    game.TreeEntries.Add(new TreeEntryModel { Id = Guid.NewGuid(), Name = $"e{i}", EntryType = "ResourceModel" });
+                }
+                seed.SaveChanges();
+            }
+
+            var (response, id) = await Handler().Handle(new AddResourceCommand
+            {
+                GameID = gameId,
+                Player = Player(),
+                Name = "new.png",
+                MimeType = "image/png",
+                DataRaw = new byte[] { 1, 2, 3 },
+            }, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal(id, Assert.Single(Db.ChangeTracker.Entries<ResourceModel>()).Entity.Id);
+            Assert.Empty(Db.ChangeTracker.Entries<TreeEntryModel>());
+            using var check = SeedContext();
+            Assert.Equal(gameId, check.Resources.Find(id!.Value)!.GameId);
         }
     }
 }

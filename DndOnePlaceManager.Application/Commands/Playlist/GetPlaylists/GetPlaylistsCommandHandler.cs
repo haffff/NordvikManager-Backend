@@ -1,4 +1,5 @@
-using AutoMapper;
+﻿using AutoMapper;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
@@ -35,9 +36,21 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.GetPlaylists
                 throw new PermissionException(Permission.Edit);
 
             var playlists = await dbContext.Playlists
-                .Include(p => p.Resources)
+                .AsNoTracking()
                 .Where(p => p.GameId == request.GameId && p.Kind == request.Kind)
                 .ToListAsync(cancellationToken);
+
+            // Tracks without their file bytes: including Resources would read every track's Data.
+            var playlistIds = playlists.Select(p => p.Id).ToList();
+            var links = await dbContext.Playlists
+                .Where(p => playlistIds.Contains(p.Id))
+                .SelectMany(p => p.Resources, (p, r) => new { PlaylistId = p.Id, ResourceId = r.Id })
+                .ToListAsync(cancellationToken);
+            var trackIds = links.Select(x => x.ResourceId).Distinct().ToList();
+            var tracks = (await dbContext.Resources.Where(r => trackIds.Contains(r.Id)).WithoutFileData().ToListAsync(cancellationToken))
+                .ToDictionary(r => r.Id);
+            foreach (var playlist in playlists)
+                playlist.Resources = links.Where(x => x.PlaylistId == playlist.Id).Select(x => tracks[x.ResourceId]).ToList();
 
             // Path can reveal the backend host's absolute filesystem layout for
             // ManagedFile/Linked resources — GM-only, mirrors GetResourcesCommandHandler.

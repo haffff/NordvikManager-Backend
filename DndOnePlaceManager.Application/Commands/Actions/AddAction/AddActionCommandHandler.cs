@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -17,7 +17,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions
         public async override Task<(CommandResponse, Guid)> Handle(AddActionCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var game = await dbContext.Games.Include(x => x.Actions).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
+            var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
 
             Guard.NotFound(game, "Game", request.GameId);
             Guard.Argument(request.GameId != Guid.Empty && request.Action != null, nameof(request.GameId), nameof(request.Action));
@@ -27,7 +27,8 @@ namespace DndOnePlaceManager.Application.Commands.Actions
             var action = mapper.Map<ActionModel>(request.Action);
             action.Id = default;
 
-            game.Actions.Add(action);
+            action.Game = game;
+            dbContext.Actions.Add(action);
 
             await dbContext.SaveChangesAsync(cancellationToken);
 

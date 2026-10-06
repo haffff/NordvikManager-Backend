@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.EntityFrameworkCore;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
@@ -28,7 +29,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
             var ids = request.Ids;
             var parentIds = request.ParentIDs;
 
-            var collection = dbContext.Properties.AsEnumerable();
+            // Filters run in SQL; permissions on the owners are then checked in one batch.
+            var collection = dbContext.Properties.AsNoTracking();
 
             if (parentIds?.Any() == true)
             {
@@ -47,9 +49,12 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
 
             if (request.Prefix != null)
             {
-                collection = collection.Where(x => x.Name?.StartsWith(request.Prefix) == true);
+                collection = collection.Where(x => x.Name != null && x.Name.StartsWith(request.Prefix));
             }
-            var collectionList = collection.ToList().Where(x => permissionService.CheckIfHasPermissions(request.Player, x.ParentID, Domain.Enums.Permission.Read));
+
+            var properties = collection.ToList();
+            var readableParents = permissionService.GetPermittedIds(request.Player?.Id ?? Guid.Empty, properties.Select(x => x.ParentID), Domain.Enums.Permission.Read);
+            var collectionList = properties.Where(x => readableParents.Contains(x.ParentID));
 
             return collectionList.Select(x =>
             {

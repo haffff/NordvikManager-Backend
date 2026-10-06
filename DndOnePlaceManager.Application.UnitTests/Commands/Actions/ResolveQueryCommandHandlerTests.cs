@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions.ResolveQuery;
+﻿using DndOnePlaceManager.Application.Commands.Actions.ResolveQuery;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
@@ -199,6 +199,26 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var result = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Equal("[]", result);
+        }
+
+        [Fact]
+        public async Task Handle_QueryById_DoesNotLoadTheGamesEntities()
+        {
+            var game = BuildGame();
+            var card = SeedCard(game, "Goblin");
+            SeedCard(game, "Orc");
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, IsProtected = false });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            var cmd = new ResolveQueryCommand
+            {
+                GameId = game.Id, Player = Player(), Expression = "%q:{cardId}.hp%",
+                Variables = new() { ["cardId"] = card.Id.ToString() },
+            };
+
+            Assert.Equal("7", await Handler().Handle(cmd, CancellationToken.None));
+            Assert.Empty(Db.ChangeTracker.Entries<DndOnePlaceManager.Domain.Entities.BattleMap.CardModel>());
+            Assert.Empty(Db.ChangeTracker.Entries<PlayerModel>());
         }
     }
 }

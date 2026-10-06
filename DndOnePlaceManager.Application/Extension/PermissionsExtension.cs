@@ -1,6 +1,7 @@
 ﻿using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
+using DndOnePlaceManager.Domain.Entities.Security;
 using DndOnePlaceManager.Domain.Enums;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,6 +10,19 @@ namespace DndOnePlaceManager.Application.Extension
     public static class PermissionsExtension
     {
         public static IServiceProvider ServiceProvider { get; set; }
+
+        /// <summary>
+        /// SQL-side version of WithPermission, for queries that must filter before paging.
+        /// Same rule as PermissionsService: the player's own row decides; without one, the
+        /// "everyone" row; without either, no access.
+        /// </summary>
+        public static IQueryable<T> WhereHasPermission<T>(this IQueryable<T> query, IQueryable<PermissionModel> permissions, Guid playerId, Permission permission = Permission.Read) where T : IEntity
+        {
+            return query.Where(x =>
+                permissions.Any(p => p.ModelID == x.Id && p.PlayerID == playerId && (p.Permission & permission) == permission)
+                || (!permissions.Any(p => p.ModelID == x.Id && p.PlayerID == playerId)
+                    && permissions.Any(p => p.ModelID == x.Id && p.All && (p.Permission & permission) == permission)));
+        }
 
         public static bool HasPermission(this IEntity entity, Guid playerId, Permission permission = Permission.Read)
         {
@@ -50,7 +64,9 @@ namespace DndOnePlaceManager.Application.Extension
             using (var scope = ServiceProvider.CreateScope())
             {
                 var permissionService = scope.ServiceProvider.GetRequiredService<IPermissionService>();
-                return entities.Where(x => permissionService.CheckIfHasPermissions(playerId, x, permission)).ToList();
+                var list = entities.ToList();
+                var permitted = permissionService.GetPermittedIds(playerId, list.Select(x => x.Id), permission);
+                return list.Where(x => permitted.Contains(x.Id)).ToList();
             }
         }
 
@@ -59,7 +75,9 @@ namespace DndOnePlaceManager.Application.Extension
             using (var scope = ServiceProvider.CreateScope())
             {
                 var permissionService = scope.ServiceProvider.GetRequiredService<IPermissionService>();
-                return entities.Where(x => permissionService.CheckIfHasPermissions(playerId, x, permission)).ToList();
+                var list = entities.ToList();
+                var permitted = permissionService.GetPermittedIds(playerId, list.Select(x => x.Id), permission);
+                return list.Where(x => permitted.Contains(x.Id)).ToList();
             }
         }
 

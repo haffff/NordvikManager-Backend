@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.DataTransferObjects.Chat;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Chat.GetMessages
 {
@@ -16,7 +17,9 @@ namespace DndOnePlaceManager.Application.Commands.Chat.GetMessages
         public async override Task<List<MessageDTO>> Handle(GetMessagesCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var query = dbContext.Messages.WithPermission(request.PlayerID)
+            // Everything below runs in SQL; permissions are checked before paging so hidden
+            // messages don't take up page slots.
+            var query = dbContext.Messages.AsNoTracking()
                 .Where(x => x.GameId == request.GameID);
 
             if (!string.IsNullOrWhiteSpace(request.Filter))
@@ -29,9 +32,12 @@ namespace DndOnePlaceManager.Application.Commands.Chat.GetMessages
                 query = query.Where(x => x.PlayerId == request.From);
             }
 
-            var messages = query.OrderByDescending(x => x.Created)
+            var messages = query
+                .WhereHasPermission(dbContext.Permissions, request.PlayerID)
+                .OrderByDescending(x => x.Created)
                 .Skip(request.Page * request.Size)
-                .Take(request.Size);
+                .Take(request.Size)
+                .ToList();
 
             return mapper.Map<List<MessageDTO>>(messages);
         }

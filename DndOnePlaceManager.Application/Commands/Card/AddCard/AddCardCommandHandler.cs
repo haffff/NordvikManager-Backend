@@ -24,12 +24,14 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
         public override GameModel GetGame(AddCardCommand request)
         {
-            return dbContext.Games.Include(x => x.Cards).ThenInclude(x => x.Properties).FirstOrDefault(x => x.Id == request.GameID);
+            // Just the game: the template (if any) is loaded on its own in CreateModel.
+            return dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
         }
 
         public override void AddToGame(GameModel game, CardModel model, AddCardCommand request)
         {
-            game.Cards.Add(model);
+            model.Game = game;
+            dbContext.Cards.Add(model);
 
             dbContext.SaveChanges();
 
@@ -48,7 +50,9 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
 
             if (request.Dto.TemplateId != null)
             {
-                var template = game.Cards.FirstOrDefault(x => x.Id == request.Dto.TemplateId);
+                var template = dbContext.Cards
+                    .Include(x => x.Properties)
+                    .FirstOrDefault(x => x.Id == request.Dto.TemplateId && x.GameId == game.Id);
 
                 if (template != null)
                 {

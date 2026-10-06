@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Properties.AddProperty;
+﻿using DndOnePlaceManager.Application.Commands.Properties.AddProperty;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -85,6 +85,37 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
             var reread = Db.Games.Include(g => g.Properties).First(g => g.Id == game.Id);
             Assert.Single(reread.Properties!);
             Assert.Equal("Easy", reread.Properties![0].Value); // untouched
+        }
+
+        // Adding used to load every existing property of the owner (a character sheet card
+        // has hundreds) just to append to its collection or check names.
+        private GameModel SeedGameWithManyProperties(int count)
+        {
+            var game = SeedGameWithProperties();
+            for (int i = 0; i < count; i++)
+                Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = $"p{i}", Value = "v", ParentID = game.Id, EntityName = "GameModel", Game = game });
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            return game;
+        }
+
+        private int CountPropertiesOf(Guid parentId)
+        {
+            using var check = SeedContext();
+            return check.Properties.Count(p => p.ParentID == parentId);
+        }
+
+        [Fact]
+        public async Task Handle_DoesNotLoadTheOwnersOtherProperties()
+        {
+            var game = SeedGameWithManyProperties(20);
+            var cmd = new AddPropertyCommand { Player = Player(), Property = new PropertyDTO { Name = "new", Value = "1", ParentID = game.Id, EntityName = "GameModel" } };
+
+            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal("new", Assert.Single(Db.ChangeTracker.Entries<PropertyModel>()).Entity.Name);
+            Assert.Equal(21, CountPropertiesOf(game.Id));
         }
     }
 }

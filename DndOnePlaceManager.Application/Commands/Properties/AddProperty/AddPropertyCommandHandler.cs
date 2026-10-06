@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
@@ -55,25 +55,29 @@ namespace DndOnePlaceManager.Application.Commands.Properties.AddProperty
             return (await dbContext.Properties.FirstOrDefaultAsync(p => p.Name == property.Name && p.ParentID == property.ParentID))?.Id;
         }
 
+        // Attach to the owner (already loaded above) and add the row; loading the owner's
+        // properties collection just to append to it read every existing property.
         private void AddProperty(AddPropertyCommand request, object entity, PropertyModel property)
         {
             switch (entity)
             {
-                case GameModel:
-                    dbContext.Games.Include(g => g.Properties).FirstOrDefault(g => g.Id == request.Property.ParentID).Properties.Add(property);
+                case GameModel game:
+                    property.Game = game;
                     break;
-                case MapModel:
-                    dbContext.Maps.Include(m => m.Properties).FirstOrDefault(m => m.Id == request.Property.ParentID).Properties.Add(property);
+                case MapModel map:
+                    property.Map = map;
                     break;
-                case ElementModel:
-                    dbContext.Elements.Include(e => e.Properties).FirstOrDefault(e => e.Id == request.Property.ParentID).Properties.Add(property);
+                case ElementModel element:
+                    property.Element = element;
                     break;
-                case CardModel:
-                    dbContext.Cards.Include(c => c.Properties).FirstOrDefault(c => c.Id == request.Property.ParentID).Properties.Add(property);
+                case CardModel card:
+                    property.Card = card;
                     break;
                 default:
-                    break;
+                    return;
             }
+
+            dbContext.Properties.Add(property);
         }
     }
 }
