@@ -360,6 +360,8 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     GameId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Data = table.Column<byte[]>(type: "BLOB", nullable: true),
                     ThumbnailData = table.Column<byte[]>(type: "BLOB", nullable: true),
+                    ThumbnailSourceVersion = table.Column<string>(type: "TEXT", nullable: true),
+                    ContentHash = table.Column<string>(type: "TEXT", nullable: true),
                     MimeType = table.Column<int>(type: "INTEGER", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     Key = table.Column<string>(type: "TEXT", nullable: true),
