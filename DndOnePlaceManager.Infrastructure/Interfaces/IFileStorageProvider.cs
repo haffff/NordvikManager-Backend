@@ -1,4 +1,4 @@
-namespace DndOnePlaceManager.Infrastructure.Interfaces
+﻿namespace DndOnePlaceManager.Infrastructure.Interfaces
 {
     // file:// storage today; deliberately path-in/bytes-out shaped (not DB-aware, not
     // game-object-aware beyond the save call) so a future S3/Azure provider can implement the
@@ -9,6 +9,12 @@ namespace DndOnePlaceManager.Infrastructure.Interfaces
         Task<byte[]?> ReadAsync(string path);
         Task DeleteAsync(string path);
         bool Exists(string path);
+
+        /// <summary>Last write time and size of a file, without reading it; null if it doesn't exist.</summary>
+        FileStamp? GetStamp(string path);
+
         IReadOnlyList<LocalDirectoryEntry> ListDirectory(string? path);
     }
+
+    public record FileStamp(DateTime LastWriteUtc, long Length);
 }

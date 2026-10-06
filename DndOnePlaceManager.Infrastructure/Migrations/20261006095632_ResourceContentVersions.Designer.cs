@@ -3,6 +3,7 @@ using System;
 using DNDOnePlaceManager.Data.Contexts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DndOnePlaceManager.Infrastructure.Migrations
 {
     [DbContext(typeof(DndOneContext))]
-    partial class DndOneContextModelSnapshot : ModelSnapshot
+    [Migration("20261006095632_ResourceContentVersions")]
+    partial class ResourceContentVersions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
