@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
+using DndOnePlaceManager.Application.Commands.Resources.GetResourceContent;
 using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
@@ -304,36 +305,36 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("ResourceWebRTC")]
-        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId, bool thumbnail = false)
+        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId, bool thumbnail = false, string? ifVersion = null)
         {
             var user = HttpContext.Items["User"] as User;
             var playerResult = await GetPlayerIfExists(gameId, user);
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            (byte[], MimeType) result = thumbnail
-                ? await mediator.Send(new GetResourceThumbnailCommand
-                {
-                    GameID = gameId,
-                    Player = playerResult.Player,
-                    ID     = id,
-                    Key    = key,
-                })
-                : await mediator.Send(new GetResourceDataCommand
-                {
-                    GameID = gameId,
-                    Player = playerResult.Player,
-                    ID     = id,
-                    Key    = key,
-                });
+            // The client sends the version it has cached; headers don't cross the WebRTC
+            // tunnel, so the version and "not modified" travel in the body.
+            var content = await mediator.Send(new GetResourceContentCommand
+            {
+                GameID     = gameId,
+                Player     = playerResult.Player,
+                ID         = id,
+                Key        = key,
+                Thumbnail  = thumbnail,
+                IfVersion  = ifVersion,
+            });
 
-            if (result.Item1 == null)
+            if (content == null)
                 return NotFound();
+
+            if (content.NotModified)
+                return Ok(new { notModified = true, version = content.Version });
 
             return Ok(new
             {
-                data     = Convert.ToBase64String(result.Item1),
-                mimeType = result.Item2.GetDescriptionValue(),
+                data     = Convert.ToBase64String(content.Data!),
+                mimeType = content.MimeType.GetDescriptionValue(),
+                version  = content.Version,
             });
         }
 

@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -60,34 +60,37 @@ namespace DndOnePlaceManager.Application.UnitTests
             connection.Dispose();
         }
 
-        /// <summary>Counts the SQL commands sent through <see cref="Db"/>.</summary>
+        /// <summary>Counts the SQL commands sent through <see cref="Db"/>, keeping their text.</summary>
         public class CommandCounter : DbCommandInterceptor
         {
-            public int Count { get; private set; }
+            public int Count => Texts.Count;
 
-            public void Reset() => Count = 0;
+            /// <summary>The SQL of each command, in order.</summary>
+            public List<string> Texts { get; } = new();
+
+            public void Reset() => Texts.Clear();
 
             public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
             {
-                Count++;
+                Texts.Add(command.CommandText);
                 return result;
             }
 
             public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
             {
-                Count++;
+                Texts.Add(command.CommandText);
                 return ValueTask.FromResult(result);
             }
 
             public override InterceptionResult<object> ScalarExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<object> result)
             {
-                Count++;
+                Texts.Add(command.CommandText);
                 return result;
             }
 
             public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<object> result, CancellationToken cancellationToken = default)
             {
-                Count++;
+                Texts.Add(command.CommandText);
                 return ValueTask.FromResult(result);
             }
         }
