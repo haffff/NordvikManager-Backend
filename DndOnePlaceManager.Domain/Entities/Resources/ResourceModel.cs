@@ -22,6 +22,15 @@ namespace DndOnePlaceManager.Domain.Entities.Resources
         // linked/blob image is only ever decoded+resized once, not on every request.
         // Null means "not generated yet" (or not an image type at all).
         public byte[]? ThumbnailData { get; set; }
+        // The resource version ThumbnailData was made from; regenerated when it no longer
+        // matches (a linked file can change on disk without the app knowing).
+        public string? ThumbnailSourceVersion { get; set; }
+
+        // SHA-256 (hex) of the bytes, set wherever the app writes them (Blob, ManagedFile).
+        // Clients cache resources by version; linked files are versioned by their file
+        // stamp instead, since they can change outside the app. Null on rows written
+        // before this existed — filled in on first fetch.
+        public string? ContentHash { get; set; }
         public MimeType MimeType { get; set; }
         public string Name { get; set; }
         public string? Key { get; set; }

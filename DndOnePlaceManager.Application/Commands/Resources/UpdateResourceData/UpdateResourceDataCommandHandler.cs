@@ -1,3 +1,4 @@
+﻿using DndOnePlaceManager.Application.Services;
 using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
@@ -62,6 +63,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData
                 resource.Path = await storage.SaveAsync(resource.GameId, resource.Id, data, null);
             else
                 resource.Data = data;
+            resource.ContentHash = ResourceVersions.HashOf(data);
 
             if (!string.IsNullOrWhiteSpace(request.MimeType))
                 // Matches SetResourceCommandHandler/CreateResourceCommandHandler's

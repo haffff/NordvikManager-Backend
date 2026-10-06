@@ -526,6 +526,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<Guid?>("AddonModelId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ContentHash")
+                        .HasColumnType("TEXT");
+
                     b.Property<byte[]>("Data")
                         .HasColumnType("BLOB");
 
@@ -553,6 +556,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
 
                     b.Property<byte[]>("ThumbnailData")
                         .HasColumnType("BLOB");
+
+                    b.Property<string>("ThumbnailSourceVersion")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 

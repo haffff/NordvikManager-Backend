@@ -1,3 +1,4 @@
+﻿using DndOnePlaceManager.Application.Services;
 using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
@@ -67,6 +68,8 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Transfer
                 resource.Data = null;
                 resource.Storage = ResourceStorageKind.ManagedFile;
             }
+            // Same bytes, but a linked file being adopted had no hash yet.
+            resource.ContentHash = ResourceVersions.HashOf(bytes);
 
             dbContext.SaveChanges();
 

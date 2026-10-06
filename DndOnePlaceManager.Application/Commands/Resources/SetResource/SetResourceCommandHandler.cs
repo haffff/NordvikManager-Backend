@@ -1,3 +1,4 @@
+﻿using DndOnePlaceManager.Application.Services;
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.DataTransferObjects;
@@ -42,6 +43,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
                     existing.Path = await storage.SaveAsync(existing.GameId, existing.Id, request.Data, null);
                 else
                     existing.Data = request.Data;
+                existing.ContentHash = ResourceVersions.HashOf(request.Data);
 
                 if (mimeType != MimeType.None)
                     existing.MimeType = mimeType;
@@ -77,6 +79,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
                 model.Data = request.Data;
                 model.Storage = ResourceStorageKind.Blob;
             }
+            model.ContentHash = ResourceVersions.HashOf(request.Data);
 
             await dbContext.Resources.AddAsync(model, cancellationToken);
             dbContext.SaveChanges();

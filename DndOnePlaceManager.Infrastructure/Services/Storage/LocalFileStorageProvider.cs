@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Infrastructure.Interfaces;
+﻿using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.Extensions.Configuration;
 
 namespace DndOnePlaceManager.Infrastructure.Services.Storage
@@ -43,6 +43,14 @@ namespace DndOnePlaceManager.Infrastructure.Services.Storage
         public bool Exists(string path)
         {
             return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+        }
+
+        public FileStamp? GetStamp(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+            var info = new FileInfo(path);
+            return info.Exists ? new FileStamp(info.LastWriteTimeUtc, info.Length) : null;
         }
 
         public IReadOnlyList<LocalDirectoryEntry> ListDirectory(string? path)
