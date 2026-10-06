@@ -87,6 +87,7 @@ namespace DNDOnePlaceManager.Controllers
                 cmd.PropertyNames = names.Split(',');
             }
 
+            cmd.GameId = gameId;
             cmd.Player = player.Player;
             cmd.Prefix = prefix;
 

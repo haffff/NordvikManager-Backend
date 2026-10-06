@@ -29,6 +29,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             GetPropertiesByQueryCommand command = new GetPropertiesByQueryCommand
             {
+                GameId = gameLobby.GameId,
                 Player = gameLobby.SystemPlayer,
                 PropertyNames = propNames,
                 ParentIDs = parentIds?.Select(x => Guid.Parse(x)).ToArray(),

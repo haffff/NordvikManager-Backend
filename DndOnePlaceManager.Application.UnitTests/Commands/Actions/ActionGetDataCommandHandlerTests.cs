@@ -141,5 +141,43 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
 
             Assert.Equal(element.Id, ((ElementDTO)Assert.Single(result)).Id);
         }
+
+        // By-ID lookups used dbContext.Find with no game check, so an action could read any
+        // game's entity by its id.
+        [Theory]
+        [InlineData("MapModel")]
+        [InlineData("ElementModel")]
+        [InlineData("GameModel")]
+        public async Task Handle_ById_EntityOfAnotherGame_ReturnsNothing(string type)
+        {
+            var game = BuildGame();
+            var other = new GameModel { Id = Guid.NewGuid(), Name = "Other", SystemPlayerId = Guid.NewGuid(), Players = new List<PlayerModel>() };
+            Db.Games.Add(other);
+            var otherMap = SeedMap(other, "Elsewhere");
+            var otherElement = new ElementModel { Id = Guid.NewGuid(), Map = otherMap };
+            Db.Elements.Add(otherElement);
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            var id = type switch { "MapModel" => otherMap.Id, "ElementModel" => otherElement.Id, _ => other.Id };
+
+            var result = await Handler().Handle(new ActionGetDataCommand { GameID = game.Id, EntityType = type, ID = id }, CancellationToken.None);
+
+            Assert.Empty(result);
+        }
+
+        [Fact]
+        public async Task Handle_ById_OwnElement_StillFound()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game, "Dungeon");
+            var element = new ElementModel { Id = Guid.NewGuid(), Map = map };
+            Db.Elements.Add(element);
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+
+            var byElement = await Handler().Handle(new ActionGetDataCommand { GameID = game.Id, EntityType = "ElementModel", ID = element.Id }, CancellationToken.None);
+
+            Assert.Equal(element.Id, ((ElementDTO)Assert.Single(byElement)).Id);
+        }
     }
 }

@@ -335,6 +335,7 @@ namespace DNDOnePlaceManager.Controllers
 
             var getCharSheetDefaultsCommand = new GetPropertiesByQueryCommand()
             {
+                GameId = (Guid)gameId,
                 Player = systemPlayer,
                 ParentIDs = [(Guid)gameId],
                 PropertyNames = ["useDefaultCharacterSheets", "characterSheetTemplate"]
