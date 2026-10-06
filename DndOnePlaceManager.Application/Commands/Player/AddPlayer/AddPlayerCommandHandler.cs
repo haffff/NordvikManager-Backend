@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
@@ -50,7 +50,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
                 var newPlayer = new PlayerModel()
                 {
-                    Name = "Player",
+                    // Named after the joining user; "Player" only when there's no username.
+                    Name = string.IsNullOrWhiteSpace(request.User?.UserName) ? "Player" : request.User.UserName.Trim(),
                     CentralServerUserId = request.User?.Id,
                     Color = $"rgba({red},{green},{blue},1)",
                     Image = string.Empty
