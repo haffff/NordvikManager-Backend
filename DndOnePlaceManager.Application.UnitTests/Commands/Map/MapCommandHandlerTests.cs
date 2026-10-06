@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
+﻿using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.Commands.Map.AddMap;
 using DndOnePlaceManager.Application.Commands.Map.GetFlatMaps;
 using DndOnePlaceManager.Application.Commands.Map.GetMap;
@@ -65,6 +65,17 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Map
 
             // Assert
             Assert.True(Db.Maps.Any(m => m.Id == mapId));
+        }
+
+        // A solid grid was too harsh over real battle map images.
+        [Fact]
+        public async Task Handle_NewMap_GetsASemiTransparentGrid()
+        {
+            var game = BuildGame();
+
+            var (_, mapId) = await Handler().Handle(new AddMapCommand { GameID = game.Id, Player = Player() }, CancellationToken.None);
+
+            Assert.Equal("rgba(170, 170, 170, 0.35)", Db.Maps.Find(mapId)!.GridColor);
         }
 
         [Fact]

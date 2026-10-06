@@ -25,7 +25,7 @@ namespace DndOnePlaceManager.Application.Commands.Map.AddMap
             {
                 GridSize = 50,
                 GridVisible = true,
-                GridColor = "#aaaaaa",
+                GridColor = "rgba(170, 170, 170, 0.35)", // subtle over battle map images
                 Width = 1200,
                 Height = 700,
                 Name = "New map",
