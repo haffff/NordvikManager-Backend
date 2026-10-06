@@ -1,9 +1,12 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
+using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Playlist.AddPlaylist
@@ -11,11 +14,13 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.AddPlaylist
     internal class AddPlaylistCommandHandler : HandlerBase<AddPlaylistCommand, (CommandResponse, Guid)>
     {
         private readonly IPermissionService permissionService;
+        private readonly IMediator mediator;
 
-        public AddPlaylistCommandHandler(IDbContext dbContext, IMapper mapper, IPermissionService permissionService)
+        public AddPlaylistCommandHandler(IDbContext dbContext, IMapper mapper, IPermissionService permissionService, IMediator mediator)
             : base(dbContext, mapper)
         {
             this.permissionService = permissionService;
+            this.mediator = mediator;
         }
 
         public override async Task<(CommandResponse, Guid)> Handle(AddPlaylistCommand request, CancellationToken cancellationToken)
@@ -51,6 +56,20 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.AddPlaylist
 
             await dbContext.Playlists.AddAsync(model, cancellationToken);
             dbContext.SaveChanges();
+
+            // Playlists and soundboards each have their own folder tree in their panel.
+            await mediator.Send(new AddTreeEntryCommand
+            {
+                TreeEntryDto = new TreeEntryDto
+                {
+                    Name = model.Name,
+                    EntryType = TreeEntryTypes.ForPlaylist(model.Kind),
+                    IsFolder = false,
+                    TargetId = model.Id,
+                },
+                GameId = request.GameId,
+                Player = request.Player,
+            }, cancellationToken);
 
             return (CommandResponse.Ok, model.Id);
         }

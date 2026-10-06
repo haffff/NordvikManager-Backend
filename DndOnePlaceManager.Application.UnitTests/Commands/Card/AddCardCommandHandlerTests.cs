@@ -54,8 +54,31 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             _mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Once);
         }
 
+        // Every card gets a tree entry; its EntryType says which panel's folder tree it
+        // belongs to (cards, templates and custom views are all CardModel underneath).
+        private void VerifyTreeEntry(Guid cardId, string entryType) =>
+            _mediator.Verify(m => m.Send(
+                It.Is<AddTreeEntryCommand>(c => c.TreeEntryDto.TargetId == cardId && c.TreeEntryDto.EntryType == entryType),
+                It.IsAny<CancellationToken>()), Times.Once);
+
         [Fact]
-        public async Task Handle_CustomUiCard_OmitsTreeEntryCreation()
+        public async Task Handle_RegularCard_CreatesTreeEntryInCardTree()
+        {
+            var game = SeedGameWithCards();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Properties = new List<PropertyDTO>() },
+            };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            VerifyTreeEntry(id, "CardModel");
+        }
+
+        [Fact]
+        public async Task Handle_CustomUiCard_CreatesTreeEntryInCustomViewTree()
         {
             var game = SeedGameWithCards();
             var cmd = new AddCardCommand
@@ -66,13 +89,13 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
                 Dto = new CardDto { Name = "Panel", Properties = new List<PropertyDTO>() },
             };
 
-            await Handler().Handle(cmd, CancellationToken.None);
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
 
-            _mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            VerifyTreeEntry(id, "CustomView");
         }
 
         [Fact]
-        public async Task Handle_TemplateCard_OmitsTreeEntryAndAddsTemplateProperties()
+        public async Task Handle_TemplateCard_CreatesTreeEntryInTemplateTreeAndAddsTemplateProperties()
         {
             var game = SeedGameWithCards();
             var cmd = new AddCardCommand
@@ -83,12 +106,32 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
                 Dto = new CardDto { Name = "Monster Template", Properties = new List<PropertyDTO>() },
             };
 
-            await Handler().Handle(cmd, CancellationToken.None);
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
 
-            _mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            VerifyTreeEntry(id, "CardTemplate");
             _mediator.Verify(m => m.Send(
                 It.Is<AddPropertiesCommand>(c => c.Properties.Any(p => p.Name == "template_id") && c.Properties.Any(p => p.Name == "drop_token_size")),
                 It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_TemplateAndCustomUi_CustomViewWins()
+        {
+            // Addon installs set one flag or the other; if both are ever set, the card is
+            // shown in the Custom views panel, so that's the tree it belongs to.
+            var game = SeedGameWithCards();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                IsTemplate = true,
+                IsCustomUi = true,
+                Dto = new CardDto { Name = "Odd", Properties = new List<PropertyDTO>() },
+            };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            VerifyTreeEntry(id, "CustomView");
         }
 
         [Fact]

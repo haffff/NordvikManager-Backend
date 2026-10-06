@@ -1,3 +1,7 @@
+using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
+using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
+using DndOnePlaceManager.Application.DataTransferObjects;
+using MediatR;
 using DndOnePlaceManager.Application.Commands.Playlist.DeletePlaylist;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.UnitTests.Commands.Resources;
@@ -10,7 +14,23 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Playlist
 {
     public class DeletePlaylistCommandHandlerTests : ResourceDataHandlerTestBase
     {
-        private DeletePlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object);
+        private readonly Mock<IMediator> _mediator = new();
+        private DeletePlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object, _mediator.Object);
+
+        [Fact]
+        public async Task Handle_ExistingPlaylist_RemovesItsTreeEntry()
+        {
+            var game = BuildGame();
+            var playlist = new PlaylistModel { GameId = game.Id, Name = "Tavern", Description = "" };
+            Db.Playlists.Add(playlist);
+            Db.SaveChanges();
+
+            await Handler().Handle(new DeletePlaylistCommand { GameId = game.Id, Player = Player(), PlaylistId = playlist.Id }, CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(
+                It.Is<RemoveTreeEntryCommand>(c => c.TargetId == playlist.Id && c.GameId == game.Id),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
 
         [Fact]
         public async Task Handle_ValidRequest_RemovesPlaylistAndReturnsOk()

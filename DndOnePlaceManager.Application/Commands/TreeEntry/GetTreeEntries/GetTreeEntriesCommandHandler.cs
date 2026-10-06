@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -30,8 +31,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.GetTreeEntries
             await mediator.Send(connectTreeEntriesCommand, cancellationToken);
 
             var treeEntries = dbContext.Games
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Parent)
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
+                .IncludeTree(request.EntityType)
                 .FirstOrDefault(x => request.GameId == x.Id)
                 .TreeEntries
                 .Where(x => x.EntryType == request.EntityType)

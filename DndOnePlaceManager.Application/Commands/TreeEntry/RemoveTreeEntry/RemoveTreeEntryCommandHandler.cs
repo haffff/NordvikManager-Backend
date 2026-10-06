@@ -25,10 +25,15 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
             // for why chaining multiple collection .Include()s without it is a
             // cartesian-explosion risk (confirmed live: a 6-collection version of
             // this pattern took 276s and failed with a disk-full error).
+            // Only the tree this entry belongs to.
+            var entryType = await dbContext.TreeEntries
+                .Where(x => x.Game.Id == request.GameId && (x.Id == request.TreeEntryId || x.TargetId == request.TargetId))
+                .Select(x => x.EntryType)
+                .FirstOrDefaultAsync(cancellationToken);
+
             var game = await dbContext.Games
                 .Include(x => x.Players)
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Parent)
-                .Include(x => x.TreeEntries).ThenInclude(x => x.Next)
+                .IncludeTree(entryType)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 
