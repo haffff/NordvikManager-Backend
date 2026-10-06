@@ -23,16 +23,12 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
             await base.Handle(request, cancellationToken);
             var type = request.EntityType.ToEntityType();
 
-            if (request.ID != null)
-            {
-                var model = dbContext.Find(type, request.ID);
-                var destinationType = type.GetDTOType();
-                var dto = mapper.Map(model, type, destinationType);
-                return new List<IGameDataTransferObject> { dto as IGameDataTransferObject };
-            }
-
             // ToEntityType doesn't know every type (e.g. ActionModel); fall back to the name as given.
             var typeName = type?.Name ?? request.EntityType;
+
+            // By id too, only within this game.
+            if (request.ID != null)
+                return Find(typeName, request.GameID, name: null, new List<Guid> { request.ID.Value });
 
             if (!String.IsNullOrEmpty(request.Property))
             {
@@ -60,6 +56,8 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
                     return Query<LayoutModel, LayoutDTO>(dbContext.Layouts.Where(x => x.GameModelId == gameId), name, ids);
                 case "ActionModel":
                     return Query<ActionModel, ActionDto>(dbContext.Actions.Where(x => x.Game.Id == gameId), name, ids);
+                case "PropertyModel":
+                    return Query<PropertyModel, PropertyDTO>(dbContext.Properties.InGame(gameId), name, ids);
                 case "ElementModel":
                     if (name != null)
                         return new List<IGameDataTransferObject>(); // elements have no name
