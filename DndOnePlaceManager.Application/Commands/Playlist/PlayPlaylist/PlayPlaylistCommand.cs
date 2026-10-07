@@ -17,5 +17,11 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist
         public bool Shuffle { get; set; }
         public bool Repeat { get; set; }
         public List<Guid> TrackOrder { get; set; } = new();
+
+        /// <summary>The playlist's volume, 0..1.</summary>
+        public double Volume { get; set; } = 1;
+
+        /// <summary>Tracks with a volume of their own (file volume), by id.</summary>
+        public Dictionary<Guid, double> TrackVolumes { get; set; } = new();
     }
 }

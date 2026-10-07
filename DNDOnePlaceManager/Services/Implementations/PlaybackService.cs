@@ -25,17 +25,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                 existing.IsPaused = false;
                 existing.CurrentTrackStartedAtUtc = DateTime.UtcNow;
 
-                await BroadcastPlaylist(lobby, player, WebSocketCommandNames.PlaylistPlay, new
-                {
-                    playlistId = existing.PlaylistId,
-                    mode = existing.Mode,
-                    shuffle = existing.Shuffle,
-                    repeat = existing.Repeat,
-                    trackOrder = existing.TrackOrder,
-                    currentTrackIndex = existing.CurrentTrackIndex,
-                    currentTrackStartedAtUtc = existing.CurrentTrackStartedAtUtc,
-                    isPaused = false,
-                });
+                await BroadcastPlaylist(lobby, player, WebSocketCommandNames.PlaylistPlay, existing.ToMessage());
 
                 return CommandResponse.Ok;
             }
@@ -59,20 +49,12 @@ namespace DNDOnePlaceManager.Services.Implementations
                     CurrentTrackIndex = 0,
                     IsPaused = false,
                     CurrentTrackStartedAtUtc = DateTime.UtcNow,
+                    Volume = result.Volume,
+                    TrackVolumes = result.TrackVolumes,
                 };
                 lobby.ActivePlaylistPlaybacks[playlistId] = state;
 
-                await BroadcastPlaylist(lobby, player, WebSocketCommandNames.PlaylistPlay, new
-                {
-                    playlistId = state.PlaylistId,
-                    mode = state.Mode,
-                    shuffle = state.Shuffle,
-                    repeat = state.Repeat,
-                    trackOrder = state.TrackOrder,
-                    currentTrackIndex = state.CurrentTrackIndex,
-                    currentTrackStartedAtUtc = state.CurrentTrackStartedAtUtc,
-                    isPaused = false,
-                });
+                await BroadcastPlaylist(lobby, player, WebSocketCommandNames.PlaylistPlay, state.ToMessage());
             }
 
             return result.Response;

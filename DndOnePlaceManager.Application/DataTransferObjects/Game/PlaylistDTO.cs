@@ -14,6 +14,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public bool Shuffle { get; set; }
         public bool Repeat { get; set; }
         public PlaylistKind Kind { get; set; }
+        public double Volume { get; set; } = 1;
         public List<ResourceDTO> Resources { get; set; } = new();
     }
 }

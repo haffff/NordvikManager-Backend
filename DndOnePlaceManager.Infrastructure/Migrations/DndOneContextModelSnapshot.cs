@@ -565,6 +565,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<bool>("Shuffle")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("Volume")
+                        .HasColumnType("REAL");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GameId");
@@ -614,6 +617,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
 
                     b.Property<string>("ThumbnailSourceVersion")
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("Volume")
+                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 

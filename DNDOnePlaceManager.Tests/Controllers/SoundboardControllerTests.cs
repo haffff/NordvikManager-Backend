@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Soundboard.GetSoundVolume;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Soundboard.PlaySound;
 using DndOnePlaceManager.Application.Commands.Soundboard.StopSound;
@@ -215,6 +216,26 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             Assert.IsType<OkObjectResult>(result);
             connection.Verify(c => c.SendMessageToPlayer(It.IsAny<object>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task PlaySound_SendsTheGmsVolume_FileTimesSoundboard()
+        {
+            var connection = new Mock<IPlayerConnection>();
+            WebSocketCommand? sent = null;
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => sent = m as WebSocketCommand).ReturnsAsync(true);
+            var lobby = MakeLobby(_mediator);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var resourceId = Guid.NewGuid();
+            var soundboardId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<PlaySoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+            _mediator.Setup(m => m.Send(It.Is<GetSoundVolumeCommand>(c => c.ResourceId == resourceId && c.SoundboardId == soundboardId), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(0.3);
+
+            await controller.PlaySound(Guid.NewGuid(), new ResourceIdRequest { ResourceId = resourceId, SoundboardId = soundboardId });
+
+            Assert.Equal(0.3, sent!.Data["volume"]!.ToObject<double>());
         }
     }
 }

@@ -52,6 +52,7 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.AddPlaylist
                 Repeat      = request.Repeat,
                 Kind        = request.Kind,
                 Resources   = resources,
+                Volume      = VolumeRules.Clamp(request.Volume ?? 1),
             };
 
             await dbContext.Playlists.AddAsync(model, cancellationToken);

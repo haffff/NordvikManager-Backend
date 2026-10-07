@@ -77,6 +77,7 @@ namespace DNDOnePlaceManager.Controllers
                 Repeat      = request.Repeat,
                 Kind        = request.Kind,
                 ResourceIds = request.ResourceIds,
+                Volume      = request.Volume,
             });
 
             await NotifyPlaylistChange(gameId, playerResult.Player, "add", id);
@@ -106,7 +107,17 @@ namespace DNDOnePlaceManager.Controllers
                 Repeat      = request.Repeat,
                 Kind        = request.Kind,
                 ResourceIds = request.ResourceIds,
+                Volume      = request.Volume,
             });
+
+            // Playing now: everyone hears the new volume straight away.
+            if (result == CommandResponse.Ok && request.Volume.HasValue
+                && _lobbyService.GetLobby(gameId)?.ActivePlaylistPlaybacks.TryGetValue(request.Id, out var playing) == true)
+            {
+                playing.Volume = Math.Clamp(request.Volume.Value, 0, 1);
+                await BroadcastPlaylist(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.PlaylistVolume,
+                    new { playlistId = request.Id, volume = playing.Volume });
+            }
 
             await NotifyPlaylistChange(gameId, playerResult.Player, "update", request.Id);
 
@@ -282,17 +293,7 @@ namespace DNDOnePlaceManager.Controllers
             // Deliberately bypasses MediatR — direct read of in-memory GameLobby state,
             // no DB/business logic involved, mirroring the CmdDebugModeGet precedent.
             var lobby = _lobbyService.GetLobby(gameId);
-            var data = lobby?.ActivePlaylistPlaybacks.Values.Select(s => new
-            {
-                playlistId = s.PlaylistId,
-                mode = s.Mode,
-                shuffle = s.Shuffle,
-                repeat = s.Repeat,
-                trackOrder = s.TrackOrder,
-                currentTrackIndex = s.CurrentTrackIndex,
-                isPaused = s.IsPaused,
-                currentTrackStartedAtUtc = s.CurrentTrackStartedAtUtc,
-            }).ToList() ?? new();
+            var data = lobby?.ActivePlaylistPlaybacks.Values.Select(s => s.ToMessage()).ToList() ?? new();
 
             return Ok(data);
         }

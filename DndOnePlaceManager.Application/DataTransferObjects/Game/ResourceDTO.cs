@@ -18,6 +18,9 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? Id { get; set; }
         public byte[]? Data { get; set; }
         public string MimeType { get; set; }
+
+        /// <summary>For audio: how loud this file plays, 0..1. Null = full (on update: unchanged).</summary>
+        public double? Volume { get; set; }
         public Guid PlayerId { get; set; }
         public string? PlayerName { get; set; }
     }

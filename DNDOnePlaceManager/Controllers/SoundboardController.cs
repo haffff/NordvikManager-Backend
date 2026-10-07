@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Soundboard.GetSoundVolume;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Soundboard.PlaySound;
 using DndOnePlaceManager.Application.Commands.Soundboard.StopSound;
@@ -46,10 +47,19 @@ namespace DNDOnePlaceManager.Controllers
 
             if (result == CommandResponse.Ok)
             {
+                // The GM's volume: the file's own, times the soundboard's it was played from.
+                var volume = await mediator.Send(new GetSoundVolumeCommand
+                {
+                    GameId = gameId,
+                    ResourceId = request.ResourceId,
+                    SoundboardId = request.SoundboardId,
+                });
+
                 await BroadcastSound(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.SoundPlay, new
                 {
                     resourceId = request.ResourceId,
                     playedBy = playerResult.Player.Id,
+                    volume,
                 });
             }
 

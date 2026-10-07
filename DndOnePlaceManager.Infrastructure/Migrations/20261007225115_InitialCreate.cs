@@ -210,7 +210,8 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     Mode = table.Column<int>(type: "INTEGER", nullable: false),
                     Shuffle = table.Column<bool>(type: "INTEGER", nullable: false),
                     Repeat = table.Column<bool>(type: "INTEGER", nullable: false),
-                    Kind = table.Column<int>(type: "INTEGER", nullable: false)
+                    Kind = table.Column<int>(type: "INTEGER", nullable: false),
+                    Volume = table.Column<double>(type: "REAL", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -388,6 +389,7 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     Storage = table.Column<int>(type: "INTEGER", nullable: false),
                     Path = table.Column<string>(type: "TEXT", nullable: true),
                     PlayerId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Volume = table.Column<double>(type: "REAL", nullable: true),
                     AddonModelId = table.Column<Guid>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>

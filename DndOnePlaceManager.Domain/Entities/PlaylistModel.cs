@@ -25,6 +25,9 @@ namespace DndOnePlaceManager.Domain.Entities
         public bool Repeat { get; set; } = true;
         public PlaylistKind Kind { get; set; } = PlaylistKind.Music;
 
+        /// <summary>How loud the GM wants it, 0..1 (each player's own volume applies on top).</summary>
+        public double Volume { get; set; } = 1;
+
         public List<ResourceModel> Resources { get; set; } = new();
     }
 }

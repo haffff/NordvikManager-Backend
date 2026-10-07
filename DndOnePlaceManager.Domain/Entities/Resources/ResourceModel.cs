@@ -48,5 +48,8 @@ namespace DndOnePlaceManager.Domain.Entities.Resources
         public PlayerModel Player { get; set; }
 
         public List<PlaylistModel> Playlists { get; set; } = new();
+
+        /// <summary>For audio: how loud this file plays, 0..1, wherever it's used (e.g. one recorded too loud). Null = full.</summary>
+        public double? Volume { get; set; }
     }
 }
