@@ -143,6 +143,16 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TurnOrder
             Assert.Equal(18, (await State())!.Entries[0].Initiative);
         }
 
+        [Fact]
+        public async Task Update_ByToken_FindsItsEntry()
+        {
+            await Add(new TurnOrderEntryInput { ElementId = hero }, new TurnOrderEntryInput { ElementId = goblin });
+
+            await Run(new TurnOrderCommand { Operation = TurnOrderOperation.Update, ElementId = goblin, Initiative = 9 });
+
+            Assert.Equal(9, (await State())!.Entries.Single(e => e.ElementId == goblin).Initiative);
+        }
+
         // ── Turns and rounds ─────────────────────────────────────────────────
 
         [Fact]

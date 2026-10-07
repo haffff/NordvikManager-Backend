@@ -82,5 +82,10 @@
 
         [HookMeta("Card Deleted", "Fires when a card is removed.", "Card", Variables = "Data,Player,Command")]
         CardDelete,
+
+        // ── Turn order ──────────────────────────────────────────────────────
+        // (Appended: hooks are stored by number in addon actions.)
+        [HookMeta("Turn Changed", "Fires when the turn passes to another entry of a map's turn order, or the round changes. Data: mapId, round, currentEntryId and elementId (the current token), both empty when that entry is hidden from players.", "Turn order", Variables = "Data,Player,Command")]
+        TurnChange,
     }
 }

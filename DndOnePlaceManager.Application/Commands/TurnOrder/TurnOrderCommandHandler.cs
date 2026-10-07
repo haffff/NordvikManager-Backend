@@ -155,7 +155,7 @@ namespace DndOnePlaceManager.Application.Commands.TurnOrder
 
         private static void Update(TurnOrderModel order, TurnOrderCommand request)
         {
-            var entry = order.Entries.FirstOrDefault(e => e.Id == request.EntryId)
+            var entry = order.Entries.FirstOrDefault(e => request.EntryId.HasValue ? e.Id == request.EntryId : e.ElementId == request.ElementId && request.ElementId.HasValue)
                 ?? throw new WrongArgumentsException(nameof(request.EntryId));
             if (!string.IsNullOrWhiteSpace(request.Name))
                 entry.Name = request.Name;

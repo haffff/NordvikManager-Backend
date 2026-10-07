@@ -37,31 +37,6 @@ namespace DNDOnePlaceManager.Services.Implementations
     {
         private IServiceScopeFactory serviceScopeFactory;
 
-        private readonly Dictionary<string, Hook> commandsToHooks = new Dictionary<string, Hook>()
-        {
-            { WebSocketCommandNames.ElementAdd,      Hook.ElementAdd },
-            { WebSocketCommandNames.ElementUpdate,   Hook.ElementUpdate },
-            { WebSocketCommandNames.ElementRemove,   Hook.ElementRemove },
-            { WebSocketCommandNames.CmdChatPush,     Hook.ChatMessage },
-            // WebSocketCommandNames.CmdChatPush, Hook.ChatCommand
-            { WebSocketCommandNames.MapAdd,          Hook.MapAdd },
-            { WebSocketCommandNames.MapUpdate,       Hook.MapUpdate },
-            { WebSocketCommandNames.MapRemove,       Hook.MapRemove },
-            { WebSocketCommandNames.MapChange,       Hook.MapChange },
-            { WebSocketCommandNames.PlayerJoin,      Hook.PlayerJoin },
-            { WebSocketCommandNames.PlayerLeave,     Hook.PlayerLeave },
-            { WebSocketCommandNames.PropertyAdd,     Hook.PropertyAdd },
-            { WebSocketCommandNames.PropertyUpdate,  Hook.PropertyUpdate },
-            { WebSocketCommandNames.PropertyRemove,  Hook.PropertyRemove },
-            { WebSocketCommandNames.CardAdd,         Hook.CardAdd },
-            { WebSocketCommandNames.CardUpdate,      Hook.CardUpdate },
-            { WebSocketCommandNames.CardDelete,      Hook.CardDelete },
-            { WebSocketCommandNames.SettingsGame,    Hook.GameUpdate }
-        };
-
-        // Frontend tags a drag's element_update with Action = "drag" (OnNativeObjectModifiedClientBehavior).
-        private const string ElementDragAction = "drag";
-
         // Stripped from hook data before actions see it (settings_game carries the new game password).
         private static readonly string[] SensitiveHookDataKeys = { "password" };
 
@@ -160,13 +135,7 @@ namespace DNDOnePlaceManager.Services.Implementations
         {
             try
             {
-                var hooks = new List<Hook>();
-                if (commandsToHooks.TryGetValue(webSocketCommand.Command, out var hook))
-                    hooks.Add(hook);
-                if (webSocketCommand.Command == WebSocketCommandNames.ElementUpdate &&
-                    string.Equals(webSocketCommand.Action, ElementDragAction, StringComparison.OrdinalIgnoreCase))
-                    hooks.Add(Hook.ElementMove);
-
+                var hooks = CommandHooks.HooksFor(webSocketCommand);
                 if (hooks.Count == 0)
                     return;
 
@@ -544,6 +513,59 @@ namespace DNDOnePlaceManager.Services.Implementations
                 return;
             foreach (var item in hookArg.GetType().GetProperties())
                 variables[item.Name] = item.GetValue(hookArg);
+        }
+    }
+
+    /// <summary>Which hooks a processed WebSocket command fires.</summary>
+    public static class CommandHooks
+    {
+        private static readonly Dictionary<string, Hook> commandsToHooks = new Dictionary<string, Hook>()
+        {
+            { WebSocketCommandNames.ElementAdd,      Hook.ElementAdd },
+            { WebSocketCommandNames.ElementUpdate,   Hook.ElementUpdate },
+            { WebSocketCommandNames.ElementRemove,   Hook.ElementRemove },
+            { WebSocketCommandNames.CmdChatPush,     Hook.ChatMessage },
+            // WebSocketCommandNames.CmdChatPush, Hook.ChatCommand
+            { WebSocketCommandNames.MapAdd,          Hook.MapAdd },
+            { WebSocketCommandNames.MapUpdate,       Hook.MapUpdate },
+            { WebSocketCommandNames.MapRemove,       Hook.MapRemove },
+            { WebSocketCommandNames.MapChange,       Hook.MapChange },
+            { WebSocketCommandNames.PlayerJoin,      Hook.PlayerJoin },
+            { WebSocketCommandNames.PlayerLeave,     Hook.PlayerLeave },
+            { WebSocketCommandNames.PropertyAdd,     Hook.PropertyAdd },
+            { WebSocketCommandNames.PropertyUpdate,  Hook.PropertyUpdate },
+            { WebSocketCommandNames.PropertyRemove,  Hook.PropertyRemove },
+            { WebSocketCommandNames.CardAdd,         Hook.CardAdd },
+            { WebSocketCommandNames.CardUpdate,      Hook.CardUpdate },
+            { WebSocketCommandNames.CardDelete,      Hook.CardDelete },
+            { WebSocketCommandNames.SettingsGame,    Hook.GameUpdate },
+            // Only when the turn really changed (see HooksFor).
+            { WebSocketCommandNames.TurnOrderAdd,     Hook.TurnChange },
+            { WebSocketCommandNames.TurnOrderRemove,  Hook.TurnChange },
+            { WebSocketCommandNames.TurnOrderAdvance, Hook.TurnChange },
+            { WebSocketCommandNames.TurnOrderEndTurn, Hook.TurnChange },
+            { WebSocketCommandNames.TurnOrderReset,   Hook.TurnChange },
+        };
+
+        // Frontend tags a drag's element_update with Action = "drag" (OnNativeObjectModifiedClientBehavior).
+        private const string ElementDragAction = "drag";
+
+        /// <summary>The hooks a processed command fires.</summary>
+        public static List<Hook> HooksFor(WebSocketCommand webSocketCommand)
+        {
+            var hooks = new List<Hook>();
+            if (commandsToHooks.TryGetValue(webSocketCommand.Command ?? string.Empty, out var hook))
+            {
+                // A turn order change fires Turn Changed only when the turn or round moved.
+                var turnChanged = (webSocketCommand.Data as JObject)?["turnChanged"] is JValue { Type: JTokenType.Boolean } flag
+                    && flag.Value<bool>();
+                if (hook != Hook.TurnChange || turnChanged)
+                    hooks.Add(hook);
+            }
+            if (webSocketCommand.Command == WebSocketCommandNames.ElementUpdate &&
+                string.Equals(webSocketCommand.Action, ElementDragAction, StringComparison.OrdinalIgnoreCase))
+                hooks.Add(Hook.ElementMove);
+            return hooks;
         }
     }
 }

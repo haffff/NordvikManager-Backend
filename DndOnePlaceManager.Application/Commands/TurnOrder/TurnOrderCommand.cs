@@ -32,6 +32,9 @@ namespace DndOnePlaceManager.Application.Commands.TurnOrder
         /// <summary>Update: the entry; Advance: jump to this entry instead of stepping.</summary>
         public Guid? EntryId { get; set; }
 
+        /// <summary>Update: the entry of this token (instead of EntryId).</summary>
+        public Guid? ElementId { get; set; }
+
         /// <summary>Update: new values (null = unchanged; ClearInitiative removes it).</summary>
         public string? Name { get; set; }
         public double? Initiative { get; set; }

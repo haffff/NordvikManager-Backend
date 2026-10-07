@@ -62,6 +62,16 @@
         public const string SoundPlay = "sound_play";
         public const string SoundStop = "sound_stop";
 
+        //Turn order (each broadcasts a TurnOrderNotice; clients fetch what they may see)
+        public const string TurnOrderAdd = "turnorder_add";
+        public const string TurnOrderUpdate = "turnorder_update";
+        public const string TurnOrderRemove = "turnorder_remove";
+        public const string TurnOrderReorder = "turnorder_reorder";
+        public const string TurnOrderSort = "turnorder_sort";
+        public const string TurnOrderAdvance = "turnorder_advance";
+        public const string TurnOrderEndTurn = "turnorder_end_turn";
+        public const string TurnOrderReset = "turnorder_reset";
+
         //Playlist
         public const string PlaylistNotify = "playlist_notify";
         public const string PlaylistPlay = "playlist_play";
