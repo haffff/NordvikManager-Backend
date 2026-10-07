@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Commands.Actions.ActionGetData;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
@@ -21,6 +22,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<GetDataStepData>();
+
+            // Stored under this name below; without it .NET reported "Value cannot be null. (Parameter 'key')".
+            if (string.IsNullOrWhiteSpace(stepData.Output))
+                throw new ActionProcessException("Get Data: 'Output' is required: the name of the variable to store the result in.");
 
             ActionGetDataCommand command = new ActionGetDataCommand()
             {

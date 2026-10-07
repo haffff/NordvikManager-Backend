@@ -6,7 +6,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class GetDataStepData
     {
-        [Description("Type of data to retrieve, e.g. 'Character', 'Item', 'Map'.")]
+        [UIType("entitytype")]
+        [Description("What to get: Map, Card, Layout, Action, Element or Property.")]
         public string? Type { get; set; }
 
         [Description("Name of the entity to retrieve. Used when looking up by name.")]

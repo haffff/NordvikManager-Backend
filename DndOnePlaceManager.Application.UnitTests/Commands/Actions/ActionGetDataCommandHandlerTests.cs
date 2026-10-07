@@ -179,5 +179,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
 
             Assert.Equal(element.Id, ((ElementDTO)Assert.Single(byElement)).Id);
         }
+
+        // The step's description used to suggest "Map", "Card"..., which matched nothing:
+        // the lookup only knew "MapModel" etc. Both forms now work, in any case.
+        [Theory]
+        [InlineData("Map")]
+        [InlineData("map")]
+        [InlineData("MapModel")]
+        [InlineData("mapmodel")]
+        public async Task Handle_ShortOrModelTypeName_FindsMaps(string entityType)
+        {
+            var game = BuildGame();
+            SeedMap(game, "Default");
+
+            var result = await Handler().Handle(new ActionGetDataCommand { GameID = game.Id, EntityType = entityType, Name = "Default" }, CancellationToken.None);
+
+            Assert.Equal("Default", ((MapDTO)Assert.Single(result)).Name);
+        }
     }
 }
