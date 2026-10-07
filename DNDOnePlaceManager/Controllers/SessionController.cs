@@ -1,3 +1,4 @@
+﻿using DndOnePlaceManager.Application.Commands.Game.GameExists;
 using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
 using DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
@@ -55,9 +56,18 @@ namespace DNDOnePlaceManager.Controllers
         {
             var user = HttpContext.Items["User"] as User;
 
+            // 401 only for a missing login: the client sends the user to log in on 401,
+            // then retries the same game — a missing game or a non-member answered 401
+            // too, which made that an endless login loop.
+            if (user == null)
+                return Unauthorized(new { error = "Not logged in." });
+
+            if (!await _mediator.Send(new GameExistsCommand { GameId = gameId }))
+                return NotFound(new { error = "This game no longer exists." });
+
             var playerResponse = await _mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });
             if (playerResponse.Player == null)
-                return Unauthorized(new { error = "You are not a player in this game." });
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "You are not a player in this game." });
 
             var centralToken = await GetOrRefreshCentralTokenAsync();
             if (string.IsNullOrEmpty(centralToken))
