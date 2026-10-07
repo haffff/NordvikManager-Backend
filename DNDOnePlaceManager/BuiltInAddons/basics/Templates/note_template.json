@@ -1,0 +1,13 @@
+{
+  "name": "Note",
+  "description": "An empty note. Only you and the GM can see it.",
+  "key": "note",
+  "mainResource": "basics_note_index.html",
+  "genericPermission": 1,
+  "properties": [
+    {
+      "name": "note_text",
+      "value": ""
+    }
+  ]
+}

@@ -17,6 +17,8 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using DndOnePlaceManager.Application.Services;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
 {
@@ -452,6 +454,35 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             Assert.DoesNotContain(Db.ChangeTracker.Entries<CardModel>(), e => e.Entity.Name.StartsWith("Card "));
             Assert.DoesNotContain(Db.ChangeTracker.Entries<ActionModel>(), e => e.Entity.Name.StartsWith("Action "));
             Assert.Empty(Db.ChangeTracker.Entries<PropertyModel>());
+        }
+
+        // ---- The built-in Basics addon, as shipped ----
+
+        // The source folder, found from this file's own path (the build output may be elsewhere).
+        private static string BuiltInAddonsRoot([CallerFilePath] string thisFile = "") =>
+            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", "..", "DNDOnePlaceManager", "BuiltInAddons"));
+
+        [Fact]
+        public async Task Handle_BuiltInBasicsAddon_InstallsTokenNoteTemplateAndActions()
+        {
+            var game = BuildGame();
+            var basics = Assert.Single(new BuiltInAddons(BuiltInAddonsRoot()).GetAll(), a => a.FileName == "basics.zip");
+
+            var (response, result) = await Handler().Handle(ValidCommand(game, Player(), basics.Data), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal("basics", result.AddonKey);
+            var addon = Db.Addons
+                .Include(a => a.Resources).Include(a => a.Actions).Include(a => a.Templates)
+                .Single(a => a.Key == "basics");
+            Assert.Equal(
+                new[] { "basics_note_index.html", "basics_token_generic.json" },
+                addon.Resources!.Select(r => r.Key).Order(StringComparer.Ordinal));
+            Assert.Equal(new[] { "add_token", "create_menus" }, addon.Actions!.Select(a => a.Name).Order(StringComparer.Ordinal));
+            var note = Assert.Single(addon.Templates!);
+            Assert.Equal("Note", note.Name);
+            // shared with every player (Read), so they can make their own notes from it
+            PermissionsMock.Verify(p => p.SetGenericPermissions(It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e.Id == note.Id), Permission.Read), Times.Once);
         }
     }
 }

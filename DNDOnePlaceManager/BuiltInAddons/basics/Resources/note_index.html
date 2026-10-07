@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Note</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      background: #1e1e1e;
+      color: #f0f0f0;
+      font-family: system-ui, sans-serif;
+    }
+    textarea {
+      flex: 1;
+      box-sizing: border-box;
+      margin: 8px;
+      padding: 10px 12px;
+      resize: none;
+      border: 1px solid #414141;
+      border-radius: 4px;
+      background: #262626;
+      color: inherit;
+      font: 14px/1.5 inherit;
+      outline: none;
+    }
+    textarea:focus { border-color: #6478b4; }
+    textarea:disabled { opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <textarea id="note" placeholder="Write your note here…" disabled></textarea>
+  <script>
+    (function () {
+      const PROP = 'note_text';
+      const note = document.getElementById('note');
+      let saveTimer = null;
+      let lastSaved = '';
+
+      function save(api) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+        if (note.value === lastSaved) return;
+        lastSaved = note.value;
+        api.Properties.Set(PROP, note.value);
+      }
+
+      async function start(api) {
+        await api.Properties.Init(PROP, '');
+        const prop = await api.Properties.Get(PROP);
+        note.value = lastSaved = prop?.value ?? '';
+        note.disabled = false;
+
+        // Saved half a second after typing stops, and when leaving the field.
+        note.addEventListener('input', () => {
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => save(api), 500);
+        });
+        note.addEventListener('blur', () => save(api));
+
+        // The same note open elsewhere (another window, the GM): take its text,
+        // unless this one is being typed in.
+        api.Properties.Subscribe(PROP, (changed) => {
+          const value = changed?.value ?? '';
+          if (document.activeElement === note || saveTimer) return;
+          note.value = lastSaved = value;
+        });
+      }
+
+      // window.CardAPI exists from the start, but only works once the host has sent
+      // INIT (cardapi:ready, after which cardId is set).
+      if (window.CardAPI?.cardId) start(window.CardAPI);
+      else window.addEventListener('cardapi:ready', (e) => start(e.detail || window.CardAPI), { once: true });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "create_menus",
+  "hook": 5,
+  "prefix": "basics",
+  "isEnabled": true,
+  "content": [
+    {
+      "id": "b4a51c00-0000-4000-8000-000000000001",
+      "Data": {
+        "Label": "Map right-click > Add > Generic token",
+        "Location": "battlemap_add",
+        "Name": "basics_generic_token",
+        "UiName": "Generic token",
+        "Action": "basics/add_token",
+        "Icon": "FaChessPawn"
+      },
+      "Type": "AddMenuItem"
+    }
+  ]
+}

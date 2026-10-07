@@ -31,6 +31,13 @@
     <Folder Include="Services\Events\" />
   </ItemGroup>
 
+  <!-- Addons installed into every new game (IBuiltInAddons zips each folder at runtime). -->
+  <ItemGroup>
+    <Content Remove="BuiltInAddons\**" />
+    <None Remove="BuiltInAddons\**" />
+    <None Include="BuiltInAddons\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\DndOnePlaceManager.Application\DndOnePlaceManager.Application.csproj" />
     <ProjectReference Include="..\DndOnePlaceManager.Infrastructure\DndOnePlaceManager.Infrastructure.csproj" />

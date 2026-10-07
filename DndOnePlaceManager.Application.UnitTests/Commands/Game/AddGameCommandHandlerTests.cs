@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
+﻿using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Layouts.AddLayout;
@@ -6,6 +6,7 @@ using DndOnePlaceManager.Application.Commands.Map.AddMap;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;
@@ -37,6 +38,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
                      .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            _builtIns.Setup(b => b.GetAll()).Returns(Array.Empty<BuiltInAddon>());
         }
 
         // Featured-addon installation now runs as a fire-and-forget background task (mirrors
@@ -50,11 +52,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
                 .BuildServiceProvider()
                 .GetRequiredService<IServiceScopeFactory>();
 
+        private readonly Mock<IBuiltInAddons> _builtIns = new();
+
         private AddGameCommandHandler Handler(IConfiguration? config = null) =>
             new(Db, Mapper, _mediator.Object,
                 config ?? new ConfigurationBuilder().Build(),
                 NullLogger<AddGameCommandHandler>.Instance,
-                BuildBackgroundScopeFactory(_mediator));
+                BuildBackgroundScopeFactory(_mediator),
+                _builtIns.Object);
 
         private static User ValidUser() => new() { Id = Guid.NewGuid().ToString(), UserName = "gm" };
 
@@ -195,6 +200,27 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
 
             Assert.NotNull(gameId);
             _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_BuiltInAddons_AreInstalledIntoEveryNewGame()
+        {
+            // No registry configured and nothing selected: built-ins ship with the server.
+            var file = new byte[] { 1, 2, 3 };
+            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics.zip", file) });
+            var installed = new TaskCompletionSource<InstallAddonCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, InstallAddonCommandResponse)>, CancellationToken>((c, _) => installed.TrySetResult((InstallAddonCommand)c))
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+
+            var gameId = await Handler().Handle(ValidCommand(), CancellationToken.None);
+
+            // installed in the background, after Handle returns
+            var cmd = await installed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(gameId, cmd.GameID);
+            Assert.Same(file, cmd.AddonFile);
+            Assert.Equal("basics.zip", cmd.AddonFileName);
+            Assert.Null(cmd.AddonSourceKey);
         }
 
         [Fact]
