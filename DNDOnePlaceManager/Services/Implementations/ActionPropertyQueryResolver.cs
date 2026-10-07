@@ -2,6 +2,7 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -9,7 +10,8 @@ using System.Threading.Tasks;
 namespace DNDOnePlaceManager.Services.Implementations
 {
     /// <summary>
-    /// Resolves %q:{varOrGuid}.propName%, %qn:type-"name".propName%, and %v:varName.path%
+    /// Resolves %q:{varOrGuid}.propName%, %qn:type-"name".propName% (type: game, card, player,
+    /// action, map, resource), and %v:varName.path%
     /// patterns before the standard %varName% pass in Prepare().
     /// </summary>
     public class ActionPropertyQueryResolver
@@ -175,6 +177,11 @@ namespace DNDOnePlaceManager.Services.Implementations
                 case "map":
                     var m = await _db.Maps.FirstOrDefaultAsync(x => x.Name == entityName && x.Game.Id == _gameId);
                     return m?.Id;
+                case "resource":
+                    // By key first (an addon's resources are keyed "<addon>_<file>"), then by
+                    // name. Only the id is read, never the file bytes.
+                    var byKey = await _db.Resources.Where(x => x.Key == entityName && x.GameId == _gameId).Select(x => (Guid?)x.Id).FirstOrDefaultAsync();
+                    return byKey ?? await _db.Resources.Where(x => x.Name == entityName && x.GameId == _gameId).Select(x => (Guid?)x.Id).FirstOrDefaultAsync();
                 default:
                     return null;
             }
