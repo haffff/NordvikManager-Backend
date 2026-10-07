@@ -476,11 +476,17 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
                 .Include(a => a.Resources).Include(a => a.Actions).Include(a => a.Templates)
                 .Single(a => a.Key == "basics");
             Assert.Equal(
-                new[] { "basics_note_index.html", "basics_token_generic.json" },
+                new[] { "basics_note_index.html", "basics_quill.js", "basics_quill.snow.css", "basics_token_generic.json" },
                 addon.Resources!.Select(r => r.Key).Order(StringComparer.Ordinal));
             Assert.Equal(new[] { "add_token", "create_menus" }, addon.Actions!.Select(a => a.Name).Order(StringComparer.Ordinal));
             var note = Assert.Single(addon.Templates!);
             Assert.Equal("Note", note.Name);
+            // the editor's script and stylesheet load with the note, and it opts into the app's styles
+            var quillIds = addon.Resources!.Where(r => r.Key!.StartsWith("basics_quill")).Select(r => r.Id).ToList();
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c =>
+                c.IsTemplate
+                && c.Dto.AdditionalResources != null && c.Dto.AdditionalResources.Count == 2 && quillIds.All(c.Dto.AdditionalResources.Contains)
+                && c.Dto.Properties.Any(p => p.Name == "app_styles" && p.Value == "true")), It.IsAny<CancellationToken>()), Times.Once);
             // shared with every player (Read), so they can make their own notes from it
             PermissionsMock.Verify(p => p.SetGenericPermissions(It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e.Id == note.Id), Permission.Read), Times.Once);
         }
