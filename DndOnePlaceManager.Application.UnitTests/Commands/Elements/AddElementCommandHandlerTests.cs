@@ -59,6 +59,68 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Elements
             await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
+        private static ElementDTO TokenDto(Guid mapId) => new()
+        {
+            MapID = mapId,
+            Object = "{\"width\":100}",
+            Properties = new List<PropertyDTO> { new() { Name = "isToken", Value = "true" } },
+        };
+
+        // Map permissions as a player who has exactly the given flags on the map.
+        private void GrantOnMap(params Permission[] granted)
+        {
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is MapModel), It.IsAny<Permission>()))
+                .Returns((Guid _, DndOnePlaceManager.Domain.Entities.Interfaces.IEntity _, Permission wanted) => granted.Contains(wanted));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithControlOnMap_AddsIt()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
+        [Fact]
+        public async Task Handle_NonTokenWithOnlyControlOnMap_ThrowsPermissionException()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = ValidDto(map.Id) };
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithOnlyReadOnMap_ThrowsPermissionException()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithEditOnMap_AddsIt()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Edit);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
         [Fact]
         public async Task Handle_ValidRequest_CreatesElementWithParsedDetails()
         {

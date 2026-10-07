@@ -18,7 +18,15 @@ namespace DndOnePlaceManager.Application.Commands.Elements
         public override bool CheckPermissions(GameModel game, AddElementCommand request)
         {
             var map = dbContext.Maps.Find(request.Dto.MapID);
-            map.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
+            // Placing a token only needs Control on the map, so a GM can let players drop
+            // their tokens without also letting them draw on or change the map (Edit).
+            // Permissions are separate flags (Edit doesn't imply Control), so a token is
+            // allowed with either.
+            var playerId = request.Player.Id ?? default;
+            var isToken = request.Dto.Properties?.Any(p => p.Name == "isToken" && p.Value == "true") == true;
+            if (isToken && map.HasPermission(playerId, Permission.Control))
+                return true;
+            map.ThrowIfNoPermission(playerId, Permission.Edit);
             return true;
         }
 
