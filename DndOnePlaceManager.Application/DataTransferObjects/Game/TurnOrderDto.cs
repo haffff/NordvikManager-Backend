@@ -12,6 +12,12 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         /// <summary>For players: it's the turn of an entry they can't see.</summary>
         public bool CurrentHidden { get; set; }
 
+        /// <summary>This player may end the current turn: the GM, or whoever controls the current token.</summary>
+        public bool CanEndTurn { get; set; }
+
+        /// <summary>This player may change the turn order (Edit on the map).</summary>
+        public bool CanEdit { get; set; }
+
         public List<TurnOrderEntryDto> Entries { get; set; } = new();
     }
 

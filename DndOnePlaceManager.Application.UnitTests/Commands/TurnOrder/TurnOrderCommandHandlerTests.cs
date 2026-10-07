@@ -237,6 +237,18 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TurnOrder
         }
 
         [Fact]
+        public async Task State_SaysWhetherThisPlayerMayEndTheCurrentTurn()
+        {
+            await Add(new TurnOrderEntryInput { ElementId = hero }, new TurnOrderEntryInput { ElementId = goblin });
+
+            Assert.True((await State(As(player)))!.CanEndTurn);   // their hero's turn
+            Assert.True((await State())!.CanEndTurn);             // the GM always may
+
+            await Run(new TurnOrderCommand { Operation = TurnOrderOperation.Advance });
+            Assert.False((await State(As(player)))!.CanEndTurn);  // the goblin's turn
+        }
+
+        [Fact]
         public async Task EndTurn_OnSomeoneElsesTurn_IsRefused()
         {
             await Add(new TurnOrderEntryInput { ElementId = goblin }, new TurnOrderEntryInput { ElementId = hero });

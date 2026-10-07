@@ -39,16 +39,24 @@ namespace DndOnePlaceManager.Application.Commands.TurnOrder
             var order = await dbContext.TurnOrders.AsNoTracking().Include(t => t.Entries)
                 .FirstOrDefaultAsync(t => t.MapId == map.Id, cancellationToken);
             if (order == null)
-                return new TurnOrderDto { MapId = map.Id };
+                return new TurnOrderDto { MapId = map.Id, CanEdit = seesHidden };
 
             var current = order.Entries.FirstOrDefault(e => e.Id == order.CurrentEntryId);
             var currentHidden = !seesHidden && current is { Hidden: true };
+
+            // Same rule as EndTurn: the GM, or whoever controls the current token.
+            var canEndTurn = current != null && (seesHidden || (current.ElementId is Guid elementId
+                && await dbContext.Elements.AsNoTracking().FirstOrDefaultAsync(e => e.Id == elementId, cancellationToken) is { } token
+                && token.HasPermission(playerId, Permission.Control)));
+
             return new TurnOrderDto
             {
                 MapId = map.Id,
                 Round = order.Round,
                 CurrentEntryId = currentHidden ? null : order.CurrentEntryId,
                 CurrentHidden = currentHidden,
+                CanEndTurn = canEndTurn,
+                CanEdit = seesHidden,
                 Entries = order.Entries
                     .Where(e => seesHidden || !e.Hidden)
                     .OrderBy(e => e.Position)
