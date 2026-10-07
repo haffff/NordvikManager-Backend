@@ -3,6 +3,7 @@ using CardModel = DndOnePlaceManager.Domain.Entities.BattleMap.CardModel;
 using DndOnePlaceManager.Domain.Entities.Security;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using ElementDetailModel = DndOnePlaceManager.Domain.Entities.BattleMap.ElementDetailModel;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
 {
@@ -229,6 +230,100 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
 
             Assert.Equal(4, result.Count);
             Assert.All(result, x => Assert.Equal("mine", x.Name));
+        }
+
+        // ── Card values a token shows, for players who can see the token ─────
+
+        private const string BarTokenData =
+            "{\"cardId\":\"CARD\",\"propDeps\":[{\"dtoProperty\":\"tokenImage\",\"objectProperty\":\"src\",\"source\":\"card\"}]}";
+        private const string BarAdditions =
+            "[{\"name\":\"bar1_fill\",\"tokenData\":{\"propDeps\":[" +
+            "{\"expression\":\"FromTo(%bar1_value%, 0, %bar1_max%, 0, 100)\",\"objectProperty\":\"width\",\"source\":\"card\"}," +
+            "{\"dtoProperty\":\"own_note\",\"objectProperty\":\"text\",\"source\":\"element\"}]}}]";
+
+        // A token placed for the card, on a map of this game; readable by everyone unless told otherwise.
+        private Guid SeedToken(Guid cardId, bool readable = true, string? tokenData = BarTokenData, string? additions = BarAdditions)
+        {
+            using var seed = SeedContext();
+            var game = seed.Games.Find(gameId)!;
+            var map = new MapModel { Id = Guid.NewGuid(), Name = "Map", Game = game };
+            var element = new ElementModel
+            {
+                Id = Guid.NewGuid(),
+                Map = map,
+                Selectable = true,
+                Details = new List<ElementDetailModel>
+                {
+                    new() { Key = "cardId", Value = cardId.ToString(), Type = "String" },
+                    new() { Key = "isToken", Value = "True", Type = "Boolean" },
+                },
+            };
+            if (tokenData != null)
+                element.Details.Add(new() { Key = "tokenData", Value = tokenData.Replace("CARD", cardId.ToString()), Type = "Object" });
+            if (additions != null)
+                element.Details.Add(new() { Key = "tokenUiElements", Value = additions, Type = "Array" });
+            seed.Maps.Add(map);
+            seed.Elements.Add(element);
+            if (readable)
+                seed.Permissions.Add(new PermissionModel { ModelID = element.Id, All = true, Permission = Permission.Read });
+            seed.SaveChanges();
+            return element.Id;
+        }
+
+        private GetPropertiesByQueryCommand QueryCard(Guid cardId) => new() { GameId = gameId, Player = Player(), ParentIDs = new[] { cardId } };
+
+        [Fact]
+        public async Task Handle_PrivateCardWithAVisibleToken_ReturnsOnlyTheValuesTheTokenShows()
+        {
+            var cardId = Guid.NewGuid();
+            SeedProperty(cardId, "bar1_value", "7", readable: false);
+            SeedProperty(cardId, "bar1_max", "10", readable: false);
+            SeedProperty(cardId, "tokenImage", "img", readable: false);
+            SeedProperty(cardId, "secret_backstory", "…", readable: false);
+            SeedProperty(cardId, "own_note", "element-sourced name, not the card's", readable: false);
+            SeedToken(cardId);
+
+            var result = await Handler().Handle(QueryCard(cardId), CancellationToken.None);
+
+            Assert.Equal(new[] { "bar1_max", "bar1_value", "tokenImage" }, result.Select(p => p.Name).Order(StringComparer.Ordinal));
+        }
+
+        [Fact]
+        public async Task Handle_PrivateCardWhoseTokenIsHidden_ReturnsNothing()
+        {
+            var cardId = Guid.NewGuid();
+            SeedProperty(cardId, "bar1_value", "7", readable: false);
+            SeedToken(cardId, readable: false);
+
+            var result = await Handler().Handle(QueryCard(cardId), CancellationToken.None);
+
+            Assert.Empty(result);
+        }
+
+        [Fact]
+        public async Task Handle_PrivateCardWithoutATokenOfItsOwn_IsNotOpenedByAnotherCardsToken()
+        {
+            var cardId = Guid.NewGuid();
+            var otherCardId = Guid.NewGuid();
+            SeedProperty(cardId, "bar1_value", "7", readable: false);
+            SeedProperty(otherCardId, "bar1_value", "3", readable: false);
+            SeedToken(otherCardId);
+
+            var result = await Handler().Handle(QueryCard(cardId), CancellationToken.None);
+
+            Assert.Empty(result);
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithBrokenDefinition_GrantsNothing()
+        {
+            var cardId = Guid.NewGuid();
+            SeedProperty(cardId, "bar1_value", "7", readable: false);
+            SeedToken(cardId, tokenData: "{ not json", additions: "also not json");
+
+            var result = await Handler().Handle(QueryCard(cardId), CancellationToken.None);
+
+            Assert.Empty(result);
         }
     }
 }

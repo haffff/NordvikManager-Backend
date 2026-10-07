@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
+using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
@@ -274,6 +275,36 @@ namespace DNDOnePlaceManager.Services.Implementations
         }
 
         /// <summary>
+        /// A card value changed (property_add/update/remove) that some players can't read:
+        /// those who can see a token placed for the card that shows it get the change too
+        /// (they could load it already, see GetPropertiesByQuery), e.g. its bars.
+        /// </summary>
+        private async Task SendToTokenViewers(IMediator cmdMediator, WebSocketCommand webSocketCommand, List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>> notReading)
+        {
+            var command = webSocketCommand.Command;
+            if (notReading.Count == 0
+                || (command != WebSocketCommandNames.PropertyAdd && command != WebSocketCommandNames.PropertyUpdate && command != WebSocketCommandNames.PropertyRemove)
+                || webSocketCommand.Data.Type != JTokenType.Object
+                || !Guid.TryParse(webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToString(), out var parentId)
+                || webSocketCommand.Data["name"]?.ToString() is not { Length: > 0 } name)
+                return;
+
+            var viewers = await cmdMediator.Send(new GetTokenViewersCommand
+            {
+                GameId = GameId,
+                CardId = parentId,
+                PropertyName = name,
+                PlayerIds = notReading.Select(p => p.Key.Id ?? Guid.Empty).ToList(),
+            });
+            if (viewers == null || viewers.Count == 0)
+                return;
+
+            webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)Permission.Read;
+            foreach (var item in notReading.Where(p => viewers.Contains(p.Key.Id ?? Guid.Empty)))
+                await item.Value.SendMessageToPlayer(webSocketCommand);
+        }
+
+        /// <summary>
         /// Broadcasts or routes a processed command to the appropriate connected players.
         /// </summary>
         public async Task HandlePostCommand(PlayerDTO player, WebSocketCommand webSocketCommand)
@@ -327,6 +358,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                             return;
                         }
 
+                        var notReading = new List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>>();
                         foreach (var item in ConnectedPlayers)
                         {
                             if (permissions.TryGetValue(item.Key.Id ?? Guid.Empty, out var permission) ||
@@ -336,9 +368,13 @@ namespace DNDOnePlaceManager.Services.Implementations
                                 {
                                     webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)permission;
                                     item.Value.SendMessageToPlayer(webSocketCommand);
+                                    continue;
                                 }
                             }
+                            notReading.Add(item);
                         }
+
+                        await SendToTokenViewers(cmdMediator, webSocketCommand, notReading);
                     }
                     else
                     {

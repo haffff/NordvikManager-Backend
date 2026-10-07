@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Helpers;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using System;
@@ -54,8 +55,19 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
             }
 
             var properties = collection.ToList();
-            var readableParents = permissionService.GetPermittedIds(request.Player?.Id ?? Guid.Empty, properties.Select(x => x.ParentID), Domain.Enums.Permission.Read);
-            var collectionList = properties.Where(x => readableParents.Contains(x.ParentID));
+            var playerId = request.Player?.Id ?? Guid.Empty;
+            var readableParents = permissionService.GetPermittedIds(playerId, properties.Select(x => x.ParentID), Domain.Enums.Permission.Read);
+
+            // A card the player can't read may still have a token they can see: they get
+            // the values that token displays (its bars, status icons), not the rest.
+            var unreadable = properties.Select(x => x.ParentID).Where(id => !readableParents.Contains(id)).Distinct().ToList();
+            var shownByTokens = unreadable.Count > 0
+                ? TokenShownProperties.ShownByVisibleTokens(dbContext, permissionService, request.GameId, playerId, unreadable)
+                : new Dictionary<Guid, HashSet<string>>();
+
+            var collectionList = properties.Where(x =>
+                readableParents.Contains(x.ParentID)
+                || (x.Name != null && shownByTokens.TryGetValue(x.ParentID, out var shown) && shown.Contains(x.Name)));
 
             return collectionList.Select(x =>
             {
