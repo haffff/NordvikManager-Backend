@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.BattleMap;
+﻿using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Domain.Entities.Auth;
@@ -211,7 +211,8 @@ namespace DNDOnePlaceManager.WebRTC
                         // Resolve from DB, auto-creating if not found (mirrors AddPlayer flow).
                         using var scope = _serviceScopeFactory.CreateScope();
                         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-                        var user = new User { Id = args.UserId };
+                        // Username too: a player created below is named after it.
+                        var user = new User { Id = args.UserId, UserName = args.Username };
 
                         var response = await mediator.Send(new GetPlayerCommand
                         {
