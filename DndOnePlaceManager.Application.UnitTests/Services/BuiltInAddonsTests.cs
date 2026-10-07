@@ -28,7 +28,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Services
         [Fact]
         public void GetAll_ZipsEachFolderWithItsFilesAtTheArchiveRoot()
         {
-            WriteFile("basics/info.json", "{\"key\":\"basics\"}");
+            WriteFile("basics/info.json", "{\"key\":\"basics\",\"name\":\"Basics\",\"description\":\"Tokens and notes\",\"version\":\"0.1.0\"}");
             WriteFile("basics/Resources/token_generic.json", "{}");
             WriteFile("basics/Templates/note_template.json", "{}");
 
@@ -36,6 +36,10 @@ namespace DndOnePlaceManager.Application.UnitTests.Services
 
             var basics = Assert.Single(addons);
             Assert.Equal("basics.zip", basics.FileName);
+            Assert.Equal("basics", basics.Key);
+            Assert.Equal("Basics", basics.Name);
+            Assert.Equal("Tokens and notes", basics.Description);
+            Assert.Equal("0.1.0", basics.Version);
             // The installer matches folders case-insensitively, but separators must be "/"
             // (as in a zip made by pnpm run pack), also when packed on Windows.
             Assert.Equal(
@@ -47,6 +51,15 @@ namespace DndOnePlaceManager.Application.UnitTests.Services
         public void GetAll_SkipsFoldersWithoutInfoJson()
         {
             WriteFile("half-done/Resources/a.json", "{}");
+
+            Assert.Empty(new BuiltInAddons(_root).GetAll());
+        }
+
+        [Fact]
+        public void GetAll_SkipsFoldersWhoseInfoJsonIsBrokenOrHasNoKey()
+        {
+            WriteFile("broken/info.json", "{ not json");
+            WriteFile("nokey/info.json", "{\"name\":\"No key\"}");
 
             Assert.Empty(new BuiltInAddons(_root).GetAll());
         }

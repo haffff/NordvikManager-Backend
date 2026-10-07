@@ -201,11 +201,12 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             await mediator.Send(addLayoutCommand);
 
-            // Built-in addons (shipped with the server, e.g. Basics) go into every game;
-            // featured ones only when picked and a registry is configured.
-            var builtIns = builtInAddons.GetAll();
-            var featured = request.AddonsSelected != null && mainRepositoryUrl != null
-                ? request.AddonsSelected
+            // Picked addons: a built-in one (shipped with the server, e.g. Basics) is
+            // installed from that copy; the rest come from the registry, if one is set.
+            var selected = request.AddonsSelected ?? Array.Empty<string>();
+            var builtIns = builtInAddons.GetAll().Where(b => selected.Contains(b.Key)).ToList();
+            var featured = mainRepositoryUrl != null
+                ? selected.Where(key => builtIns.All(b => b.Key != key)).ToArray()
                 : Array.Empty<string>();
 
             if (builtIns.Count > 0 || featured.Length > 0)

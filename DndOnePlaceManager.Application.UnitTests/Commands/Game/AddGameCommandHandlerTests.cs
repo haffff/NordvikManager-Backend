@@ -202,25 +202,71 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
             _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
-        [Fact]
-        public async Task Handle_BuiltInAddons_AreInstalledIntoEveryNewGame()
+        private static readonly byte[] BasicsFile = { 1, 2, 3 };
+
+        private TaskCompletionSource<InstallAddonCommand> CaptureFirstInstall()
         {
-            // No registry configured and nothing selected: built-ins ship with the server.
-            var file = new byte[] { 1, 2, 3 };
-            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics.zip", file) });
+            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", BasicsFile) });
             var installed = new TaskCompletionSource<InstallAddonCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .Callback<IRequest<(CommandResponse, InstallAddonCommandResponse)>, CancellationToken>((c, _) => installed.TrySetResult((InstallAddonCommand)c))
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            return installed;
+        }
 
-            var gameId = await Handler().Handle(ValidCommand(), CancellationToken.None);
+        [Fact]
+        public async Task Handle_SelectedBuiltInAddon_IsInstalledFromTheShippedCopy()
+        {
+            // No registry configured: a built-in ships with the server.
+            var installed = CaptureFirstInstall();
+            var cmd = ValidCommand();
+            cmd.AddonsSelected = new[] { "basics" };
+
+            var gameId = await Handler().Handle(cmd, CancellationToken.None);
 
             // installed in the background, after Handle returns
-            var cmd = await installed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(gameId, cmd.GameID);
-            Assert.Same(file, cmd.AddonFile);
-            Assert.Equal("basics.zip", cmd.AddonFileName);
-            Assert.Null(cmd.AddonSourceKey);
+            var install = await installed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(gameId, install.GameID);
+            Assert.Same(BasicsFile, install.AddonFile);
+            Assert.Equal("basics.zip", install.AddonFileName);
+            Assert.Null(install.AddonSourceKey);
+        }
+
+        [Fact]
+        public async Task Handle_BuiltInAddonNotSelected_IsNotInstalled()
+        {
+            var installed = CaptureFirstInstall();
+
+            await Handler().Handle(ValidCommand(), CancellationToken.None);
+
+            await Task.Delay(200);
+            Assert.False(installed.Task.IsCompleted);
+        }
+
+        [Fact]
+        public async Task Handle_SelectedBuiltInAndRegistryAddons_BuiltInIsNotFetchedFromTheRegistry()
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["AddonsConfiguration:MainRepository"] = "https://repo.example/addons" })
+                .Build();
+            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", BasicsFile) });
+            var sent = new List<InstallAddonCommand>();
+            var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, InstallAddonCommandResponse)>, CancellationToken>((c, _) =>
+                     {
+                         lock (sent) { sent.Add((InstallAddonCommand)c); if (sent.Count == 2) both.TrySetResult(); }
+                     })
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            var cmd = ValidCommand();
+            cmd.AddonsSelected = new[] { "basics", "dnd5e" };
+
+            await Handler(config).Handle(cmd, CancellationToken.None);
+
+            await both.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains(sent, c => c.AddonFile == BasicsFile && c.AddonSourceKey == null);
+            Assert.Contains(sent, c => c.AddonSourceKey == "dnd5e");
+            Assert.DoesNotContain(sent, c => c.AddonSourceKey == "basics");
         }
 
         [Fact]

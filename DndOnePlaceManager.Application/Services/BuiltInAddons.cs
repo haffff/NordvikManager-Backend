@@ -1,14 +1,15 @@
 using System.IO.Compression;
+using System.Text.Json;
 
 namespace DndOnePlaceManager.Application.Services
 {
-    /// <summary>An addon shipped with the server, packed like a release zip.</summary>
-    public record BuiltInAddon(string FileName, byte[] Data);
+    /// <summary>An addon shipped with the server (from its info.json), packed like a release zip.</summary>
+    public record BuiltInAddon(string Key, string? Name, string? Description, string? Version, string FileName, byte[] Data);
 
     /// <summary>
-    /// Addons that ship with the server and are installed into every new game, so they
-    /// work without reaching the addon registry. They stay ordinary addons afterwards
-    /// (a GM can uninstall or update them).
+    /// Addons that ship with the server. They're offered when a game is created (ticked
+    /// by default) and installed from this copy, so they work without reaching the addon
+    /// registry. They stay ordinary addons afterwards (a GM can uninstall or update them).
     /// </summary>
     public interface IBuiltInAddons
     {
@@ -33,16 +34,41 @@ namespace DndOnePlaceManager.Application.Services
             _root = root;
         }
 
-        public IReadOnlyList<BuiltInAddon> GetAll()
+        // The files don't change while the server runs: read and zip them once.
+        private IReadOnlyList<BuiltInAddon>? _loaded;
+
+        public IReadOnlyList<BuiltInAddon> GetAll() => _loaded ??= Load();
+
+        private IReadOnlyList<BuiltInAddon> Load()
         {
             if (!Directory.Exists(_root))
                 return Array.Empty<BuiltInAddon>();
 
-            return Directory.GetDirectories(_root)
-                .Where(dir => File.Exists(Path.Combine(dir, "info.json")))
-                .OrderBy(dir => dir, StringComparer.Ordinal)
-                .Select(dir => new BuiltInAddon(Path.GetFileName(dir) + ".zip", Zip(dir)))
-                .ToList();
+            var addons = new List<BuiltInAddon>();
+            foreach (var dir in Directory.GetDirectories(_root).OrderBy(d => d, StringComparer.Ordinal))
+            {
+                var info = ReadInfo(Path.Combine(dir, "info.json"));
+                if (info?.Key is not { Length: > 0 } key)
+                    continue; // no info.json, or one the installer would reject anyway
+                addons.Add(new BuiltInAddon(key, info.Name, info.Description, info.Version, Path.GetFileName(dir) + ".zip", Zip(dir)));
+            }
+            return addons;
+        }
+
+        private sealed record Info(string? Key, string? Name, string? Description, string? Version);
+
+        private static Info? ReadInfo(string path)
+        {
+            if (!File.Exists(path))
+                return null;
+            try
+            {
+                return JsonSerializer.Deserialize<Info>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
 
         private static byte[] Zip(string dir)
