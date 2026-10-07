@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Card.UpdateCard;
+﻿using DndOnePlaceManager.Application.Commands.Card.UpdateCard;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -98,6 +98,24 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
 
             var updated = Db.Cards.Find(card.Id);
             Assert.False(updated!.FirstOpen);
+        }
+
+        [Theory]
+        [InlineData(false, true, true)]
+        [InlineData(true, false, false)]
+        [InlineData(true, null, true)] // left out: unchanged
+        public async Task Handle_IsHidden_SetOrKept(bool before, bool? sent, bool after)
+        {
+            var game = BuildGame();
+            var card = SeedCard(game.Id);
+            card.IsHidden = before;
+            Db.SaveChanges();
+            var dto = UpdateDto(card.Id);
+            dto.IsHidden = sent;
+
+            await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Equal(after, Db.Cards.Find(card.Id)!.IsHidden);
         }
     }
 }

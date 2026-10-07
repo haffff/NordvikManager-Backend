@@ -453,5 +453,20 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             Assert.DoesNotContain(Db.ChangeTracker.Entries<ActionModel>(), e => e.Entity.Name.StartsWith("Action "));
             Assert.Empty(Db.ChangeTracker.Entries<PropertyModel>());
         }
+
+        // Addons can hide internal templates (e.g. a template only cloned by an importer)
+        // from template lists with "hidden": true.
+        [Theory]
+        [InlineData("{\"name\":\"Internal\",\"description\":\"d\",\"hidden\":true}", true)]
+        [InlineData("{\"name\":\"Monster\",\"description\":\"d\"}", false)]
+        public async Task Handle_Template_HiddenFlagCarriedIntoTheCard(string templateJson, bool hidden)
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("templates/t.json", templateJson));
+
+            await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c => c.IsTemplate && (c.Dto.IsHidden ?? false) == hidden), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 }

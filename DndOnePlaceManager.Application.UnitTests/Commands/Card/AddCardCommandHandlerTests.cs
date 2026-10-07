@@ -304,5 +304,39 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             Db.ChangeTracker.Clear();
             Assert.Equal(game.Id, Db.Cards.Find(id)!.GameId);
         }
+
+        [Fact]
+        public async Task Handle_HiddenInDto_CardIsHidden()
+        {
+            var game = SeedGameWithCards();
+
+            var (_, id) = await Handler().Handle(new AddCardCommand
+            {
+                GameID = game.Id, Player = Player(), IsTemplate = true,
+                Dto = new CardDto { Name = "Internal", IsHidden = true, Properties = new List<PropertyDTO>() },
+            }, CancellationToken.None);
+
+            Assert.True(Db.Cards.Find(id)!.IsHidden);
+        }
+
+        // An importer clones a hidden internal template into a real one: the copy must
+        // show up in template lists.
+        [Fact]
+        public async Task Handle_FromAHiddenTemplate_TheNewCardIsNotHidden()
+        {
+            var (game, templateId) = SeedTemplateAmongOtherCards();
+            var template = Db.Cards.Find(templateId)!;
+            template.IsHidden = true;
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+
+            var (_, id) = await Handler().Handle(new AddCardCommand
+            {
+                GameID = game.Id, Player = Player(), IsTemplate = true,
+                Dto = new CardDto { Name = "Imported Sheet", TemplateId = templateId, Properties = new List<PropertyDTO>() },
+            }, CancellationToken.None);
+
+            Assert.False(Db.Cards.Find(id)!.IsHidden);
+        }
     }
 }

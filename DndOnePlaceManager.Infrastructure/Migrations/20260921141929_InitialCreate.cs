@@ -303,6 +303,7 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     AdditionalResources = table.Column<string>(type: "TEXT", nullable: true),
                     IsCustomUi = table.Column<bool>(type: "INTEGER", nullable: false),
                     IsTemplate = table.Column<bool>(type: "INTEGER", nullable: false),
+                    IsHidden = table.Column<bool>(type: "INTEGER", nullable: false),
                     IsR20Card = table.Column<bool>(type: "INTEGER", nullable: false),
                     FirstOpen = table.Column<bool>(type: "INTEGER", nullable: true),
                     Key = table.Column<string>(type: "TEXT", nullable: true),

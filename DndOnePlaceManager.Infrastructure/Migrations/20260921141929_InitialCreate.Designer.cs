@@ -377,6 +377,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<bool>("IsCustomUi")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsR20Card")
                         .HasColumnType("INTEGER");
 
