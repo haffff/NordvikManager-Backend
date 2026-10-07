@@ -9,6 +9,8 @@ using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Domain.Entities.Interfaces;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
 {
@@ -303,6 +305,85 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             Assert.Equal(id, Assert.Single(Db.ChangeTracker.Entries<CardModel>()).Entity.Id);
             Db.ChangeTracker.Clear();
             Assert.Equal(game.Id, Db.Cards.Find(id)!.GameId);
+        }
+
+        // ── Players creating cards from templates shared with them ──────────
+
+        private readonly Guid _masterId = Guid.NewGuid();
+
+        // A game where the tester is a plain player (no Edit on the game) and the GM is
+        // someone else, plus one template.
+        private (GameModel game, CardModel template) SeedPlayerGameWithTemplate(bool playerCanReadTemplate)
+        {
+            var game = SeedGameWithCards();
+            game.MasterId = _masterId;
+            var template = new CardModel { Id = Guid.NewGuid(), Name = "Note", IsTemplate = true, GameId = game.Id, Properties = new List<PropertyModel>() };
+            Db.Cards.Add(template);
+            Db.SaveChanges();
+
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<IEntity>(e => e is GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<IEntity>(e => e.Id == template.Id), It.IsAny<Permission>()))
+                .Returns((Guid _, IEntity _, Permission wanted) => playerCanReadTemplate && wanted == Permission.Read);
+            return (game, template);
+        }
+
+        private AddCardCommand PlayerCreates(GameModel game, Guid? templateId, bool isTemplate = false) => new()
+        {
+            GameID = game.Id,
+            Player = Player(),
+            IsTemplate = isTemplate,
+            Dto = new CardDto { Name = "My note", TemplateId = templateId, Properties = new List<PropertyDTO>() },
+        };
+
+        [Fact]
+        public async Task Handle_PlayerWithReadOnTemplate_CreatesPrivateCardTheGmCanSee()
+        {
+            var (game, template) = SeedPlayerGameWithTemplate(playerCanReadTemplate: true);
+
+            var (response, id) = await Handler().Handle(PlayerCreates(game, template.Id), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            PermissionsMock.Verify(p => p.SetPermissions(PlayerId, It.Is<IEntity>(e => e.Id == id), Permission.All), Times.Once);
+            PermissionsMock.Verify(p => p.SetPermissions(_masterId, It.Is<IEntity>(e => e.Id == id), Permission.All), Times.Once);
+            // no "everyone" row: other players can't see it
+            PermissionsMock.Verify(p => p.SetGenericPermissions(It.Is<IEntity>(e => e.Id == id), It.IsAny<Permission>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_PlayerWithoutReadOnTemplate_ThrowsPermissionException()
+        {
+            var (game, template) = SeedPlayerGameWithTemplate(playerCanReadTemplate: false);
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(PlayerCreates(game, template.Id), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_PlayerWithoutTemplate_ThrowsPermissionException()
+        {
+            var (game, _) = SeedPlayerGameWithTemplate(playerCanReadTemplate: true);
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(PlayerCreates(game, null), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_PlayerCreatingATemplate_ThrowsPermissionException()
+        {
+            var (game, template) = SeedPlayerGameWithTemplate(playerCanReadTemplate: true);
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(PlayerCreates(game, template.Id, isTemplate: true), CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_PlayerWithTemplateOfAnotherGame_ThrowsPermissionException()
+        {
+            var (game, _) = SeedPlayerGameWithTemplate(playerCanReadTemplate: true);
+            var foreign = new CardModel { Id = Guid.NewGuid(), Name = "Elsewhere", IsTemplate = true, GameId = Guid.NewGuid(), Properties = new List<PropertyModel>() };
+            Db.Cards.Add(foreign);
+            Db.SaveChanges();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<IEntity>(e => e.Id == foreign.Id), It.IsAny<Permission>())).Returns(true);
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(PlayerCreates(game, foreign.Id), CancellationToken.None));
         }
     }
 }

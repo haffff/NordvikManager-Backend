@@ -29,6 +29,27 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             return dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
         }
 
+        public override bool CheckPermissions(GameModel game, AddCardCommand request)
+        {
+            var playerId = request.Player.Id ?? Guid.Empty;
+            if (game.HasPermission(playerId, Permission.Edit))
+                return true;
+
+            // A player without Edit on the game may still make their own card from a
+            // template the GM shared with them (Read on it), e.g. a note or a character.
+            // Not a template or a custom view, and never a blank card.
+            var templateId = request.Dto?.TemplateId;
+            if (templateId != null && !request.IsTemplate && !request.IsCustomUi)
+            {
+                var template = dbContext.Cards.FirstOrDefault(x => x.Id == templateId && x.GameId == game.Id && x.IsTemplate);
+                if (template != null && template.HasPermission(playerId, Permission.Read))
+                    return true;
+            }
+
+            game.ThrowIfNoPermission(playerId, Permission.Edit);
+            return true;
+        }
+
         public override void AddToGame(GameModel game, CardModel model, AddCardCommand request)
         {
             model.Game = game;
@@ -95,7 +116,13 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             model.SetPermissions(request.Player.Id ?? Guid.Empty, Permission.All);
             model.SetPermissions(game.SystemPlayerId, Permission.All);
 
-            if (request.Dto.Owner.HasValue && request.Dto.Owner != request.Player.Id)
+            // A card a player makes for themselves (a note, a character) is still the
+            // GM's to see and manage.
+            if (game.MasterId != Guid.Empty && request.Player.Id != game.MasterId)
+                model.SetPermissions(game.MasterId, Permission.All);
+
+            // The GM, as owner, already has full rights from above (or is the creator).
+            if (request.Dto.Owner.HasValue && request.Dto.Owner != request.Player.Id && request.Dto.Owner != game.MasterId)
             {
                 // Permission is a bit-flag enum (Read=1, Edit=8, ...) — Edit does not
                 // imply Read. GetAllCardsCommandHandler's visibility filter requires
@@ -104,14 +131,9 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
                 // — so granting Edit-only here made the owner unable to see their own
                 // card.
                 //
-                // The GM gets full rights (including Remove) on cards they own, since
-                // as GM they can already delete anything — but a non-GM owner only gets
-                // Edit+Read: delete stays a GM-granted decision, not implied by being
-                // handed a card.
-                var ownerPermission = request.Dto.Owner.Value == game.MasterId
-                    ? Permission.All
-                    : Permission.Edit | Permission.Read;
-                model.SetPermissions(request.Dto.Owner.Value, ownerPermission);
+                // A non-GM owner only gets Edit+Read: delete stays a GM-granted
+                // decision, not implied by being handed a card.
+                model.SetPermissions(request.Dto.Owner.Value, Permission.Edit | Permission.Read);
             }
         }
 
