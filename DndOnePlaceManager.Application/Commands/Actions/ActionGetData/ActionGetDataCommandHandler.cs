@@ -18,13 +18,18 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
         {
         }
 
+        // What the Get Data step's Type may say: the short name the editor offers ("Map")
+        // or the model name ("MapModel"), in any case.
+        private static readonly Dictionary<string, string> TypeNames = new[]
+            { "MapModel", "CardModel", "LayoutModel", "ActionModel", "ElementModel", "PropertyModel" }
+            .SelectMany(model => new[] { (Key: model, Model: model), (Key: model[..^"Model".Length], Model: model) })
+            .ToDictionary(x => x.Key, x => x.Model, StringComparer.OrdinalIgnoreCase);
+
         public async override Task<List<IGameDataTransferObject>> Handle(ActionGetDataCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var type = request.EntityType.ToEntityType();
-
-            // ToEntityType doesn't know every type (e.g. ActionModel); fall back to the name as given.
-            var typeName = type?.Name ?? request.EntityType;
+            // "Map" or "MapModel", any case. Unknown names pass through and find nothing.
+            var typeName = TypeNames.GetValueOrDefault(request.EntityType ?? "") ?? request.EntityType;
 
             // By id too, only within this game.
             if (request.ID != null)
@@ -33,7 +38,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
             if (!String.IsNullOrEmpty(request.Property))
             {
                 var ownerIds = dbContext.Properties
-                    .Where(x => x.EntityName == request.EntityType && x.Name == request.Property)
+                    .Where(x => x.EntityName == typeName && x.Name == request.Property)
                     .Select(x => x.ParentID)
                     .ToList();
                 return Find(typeName, request.GameID, name: null, ownerIds);

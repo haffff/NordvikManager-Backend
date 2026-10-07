@@ -1,4 +1,4 @@
-using DNDOnePlaceManager.Enums;
+﻿using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using System;
 using System.Linq;
@@ -99,6 +99,13 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(hooks.Where(h => h.Variables.Length == 0).Select(h => h.Key));
             Assert.Equal(new[] { "ChatCommand", "ChatArgs", "ChatText", "Player" },
                 hooks.Single(h => h.Key == nameof(Hook.ChatCommand)).Variables);
+        }
+
+        // The editor offers a list of entity types instead of a free-text Type.
+        [Fact]
+        public void GetData_Type_IsAnEntityTypePicker()
+        {
+            Assert.Equal("entitytype", Arg("GetData", "Type").Arg.Type);
         }
     }
 }
