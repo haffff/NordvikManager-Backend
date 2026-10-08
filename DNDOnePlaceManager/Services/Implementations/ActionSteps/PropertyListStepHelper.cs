@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
+﻿using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.Exceptions;
 using MediatR;
 using Newtonsoft.Json;
@@ -26,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var result = await mediator.Send(new GetPropertiesByQueryCommand
             {
+                GameId = gameLobby.GameId,
                 Player = gameLobby.SystemPlayer,
                 ParentIDs = new[] { parentId },
                 PropertyNames = new[] { propertyName },

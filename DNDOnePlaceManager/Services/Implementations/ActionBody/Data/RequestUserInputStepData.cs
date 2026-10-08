@@ -29,6 +29,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Maximum time to wait for user input before the step times out.")]
         public TimeSpan? Timeout { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the user's input will be stored.")]
         public string? Output { get; set; }
     }

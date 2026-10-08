@@ -1,6 +1,7 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -17,14 +18,15 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
         {
             await base.Handle(request, cancellationToken);
 
-            var game = dbContext.Games.Include(x => x.Resources).FirstOrDefault(x => x.Id == request.GameId);
+            var masterId = dbContext.Games.Where(x => x.Id == request.GameId).Select(x => (Guid?)x.MasterId).FirstOrDefault();
             var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
 
             var canSeeAll = player.System == true
-                || (game != null && request.Player.Id.HasValue && game.MasterId == request.Player.Id.Value);
+                || (masterId != null && request.Player.Id.HasValue && masterId == request.Player.Id.Value);
 
             var resources = dbContext.Resources
                 .Where(r => r.GameId == request.GameId && (r.PlayerId == request.Player.Id || canSeeAll))
+                .WithoutFileData()
                 .ToList();
 
             var playerIds = resources.Select(r => r.PlayerId).Distinct().ToList();

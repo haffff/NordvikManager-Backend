@@ -15,7 +15,11 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
         where TDto : class, IGameDataTransferObject
     {
         private readonly IMediator mediator;
-        protected bool OmitTreeCreation { get; set; } = false;
+        /// <summary>
+        /// Folder tree the new entity goes into (see TreeEntryTypes); defaults to the model's
+        /// name. Handlers whose model is shown in several panels set it per request.
+        /// </summary>
+        protected string? TreeEntryType { get; set; }
 
         public GenericAddHandlerWithTreeEntry(IDbContext dbContext, IMapper mapper, IMediator mediator) : base(dbContext, mapper)
         {
@@ -26,7 +30,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
         {
             var result = await base.Handle(request, cancellationToken);
 
-            if (result.Item1 != CommandResponse.Ok || OmitTreeCreation)
+            if (result.Item1 != CommandResponse.Ok)
             {
                 return result;
             }
@@ -36,7 +40,7 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
             TreeEntryDto treeEntry = new TreeEntryDto
             {
                 Name = model.Name,
-                EntryType = typeof(TModel).Name,
+                EntryType = TreeEntryType ?? typeof(TModel).Name,
                 IsFolder = false,
                 TargetId = result.Item2
             };

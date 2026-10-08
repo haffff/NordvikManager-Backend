@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
@@ -33,13 +33,15 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist
             if (!permissionService.CheckIfHasPermissions(playerId, game, Permission.Edit))
                 throw new PermissionException(Permission.Edit);
 
+            // Only the settings and track ids: loading the tracks would read their file bytes.
             var playlist = await dbContext.Playlists
-                .Include(p => p.Resources)
-                .FirstOrDefaultAsync(p => p.Id == request.PlaylistId && p.GameId == request.GameId, cancellationToken);
+                .Where(p => p.Id == request.PlaylistId && p.GameId == request.GameId)
+                .Select(p => new { p.Mode, p.Shuffle, p.Repeat, p.Volume, TrackIds = p.Resources.Select(r => r.Id).ToList(), TrackVolumes = p.Resources.Where(r => r.Volume != null).Select(r => new { r.Id, r.Volume }).ToList() })
+                .FirstOrDefaultAsync(cancellationToken);
 
             Guard.NotFound(playlist, "Playlist", request.PlaylistId);
 
-            var order = playlist.Resources.Select(r => r.Id).ToList();
+            var order = playlist.TrackIds;
 
             if (order.Count == 0)
                 return new PlayPlaylistResult { Response = CommandResponse.NoResource };
@@ -55,6 +57,8 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist
                 Shuffle = playlist.Shuffle,
                 Repeat = playlist.Repeat,
                 TrackOrder = order,
+                Volume = playlist.Volume,
+                TrackVolumes = playlist.TrackVolumes.ToDictionary(t => t.Id, t => t.Volume!.Value),
             };
         }
     }

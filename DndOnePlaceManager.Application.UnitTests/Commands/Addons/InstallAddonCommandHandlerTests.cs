@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions;
+﻿using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
@@ -17,6 +17,8 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using DndOnePlaceManager.Application.Services;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
 {
@@ -141,6 +143,60 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             RepositoryService.Verify(r => r.GetAddonByKey("dnd5e"), Times.Once);
         }
 
+        // ---- Already-installed guard ----
+        // Regression coverage: installing an addon that's already present for this game (e.g.
+        // it arrived as another addon's dependency, then got selected directly too) used to
+        // create a second AddonModel row and blindly re-run AddActions/AddTemplates/AddViews,
+        // which have no existence check of their own — duplicating every action and card.
+
+        [Fact]
+        public async Task Handle_AlreadyInstalled_WithoutReinstall_ReturnsAlreadyExistsAndDoesNotDuplicate()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+
+            var (firstResponse, firstResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var (secondResponse, secondResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, firstResponse);
+            Assert.Equal(CommandResponse.AlreadyExists, secondResponse);
+            Assert.Equal(firstResult.AddonId, secondResult.AddonId);
+
+            Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
+            Mediator.Verify(m => m.Send(It.IsAny<AddActionCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_AlreadyInstalled_WithReinstall_UninstallsExistingFirstThenInstallsOnce()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+            var (_, firstResult) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            // Mirrors UninstallAddonCommandHandler's real effect (remove the addon and its
+            // actions) against the same InMemory Db the rest of this test class already shares —
+            // Mediator is a full mock here, so this call needs its own real side effect wired up.
+            Mediator.Setup(m => m.Send(It.Is<DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == firstResult.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Actions).First(a => a.Id == cmd.AddonId);
+                    Db.Actions.RemoveRange(addon.Actions);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new DndOnePlaceManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+
+            var reinstallCmd = ValidCommand(game, Player(), archive);
+            reinstallCmd.Reinstall = true;
+            var (response, result) = await Handler().Handle(reinstallCmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.NotEqual(firstResult.AddonId, result.AddonId);
+            Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
+            Assert.Single(Db.Actions.Where(a => a.Prefix == "dnd5e"));
+        }
+
         // ---- Archive / info.json parsing ----
 
         [Fact]
@@ -245,6 +301,24 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
         }
 
+        // Regression test: ActionDto.IsEnabled has no explicit default (unlike
+        // AddonDto/AddonModel, which default to true), so it deserializes to false
+        // unless the addon's own JSON happens to say "isEnabled": true. Addon authors
+        // have no reason to write that — an addon's actions are meant to work
+        // immediately after install — so without forcing it here, every hook the
+        // addon declares (Install included) would silently never run.
+        [Fact]
+        public async Task Handle_InstalledActionIsEnabledByDefault_EvenWhenJsonOmitsTheField()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
+            var cmd = ValidCommand(game, Player(), archive);
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task Handle_ScriptAlreadyExists_ReinstallFalse_SkipsWithoutCallingAddResource()
         {
@@ -339,6 +413,82 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             var cmd = ValidCommand(game, Player(), archive);
 
             await Assert.ThrowsAsync<InvalidOperationException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        // The handler used to load every resource (file bytes included), tree entry, card,
+        // action and property of the game up front. Installing into a game that already has
+        // content must leave all of it unloaded, and key references must still resolve.
+        [Fact]
+        public async Task Handle_DoesNotLoadTheGamesExistingContent()
+        {
+            var game = BuildGame();
+            var sharedMapId = Guid.NewGuid();
+            var existing = new List<Guid> { sharedMapId };
+            Db.Resources.Add(new ResourceModel { Id = sharedMapId, Name = "map.png", Key = "shared_map.png", GameId = game.Id, PlayerId = PlayerId, Data = new byte[4096] });
+            for (int i = 0; i < 3; i++)
+            {
+                var resourceId = Guid.NewGuid();
+                existing.Add(resourceId);
+                Db.Resources.Add(new ResourceModel { Id = resourceId, Name = $"r{i}.png", Key = $"other_{i}", GameId = game.Id, PlayerId = PlayerId, Data = new byte[4096] });
+                Db.Cards.Add(new CardModel { Id = Guid.NewGuid(), Name = $"Card {i}", GameId = game.Id, Properties = new List<PropertyModel> { new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "1" } } });
+                Db.Actions.Add(new ActionModel { Id = Guid.NewGuid(), Name = $"Action {i}", Content = "[]", Prefix = "x", Game = game });
+            }
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+
+            var archive = BuildAddonZip(BasicInfoJson,
+                ("resources/icon.png", "fake-binary"),
+                ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"),
+                ("templates/monster.json", "{\"name\":\"Monster\",\"description\":\"d\",\"mainResource\":\"dnd5e_icon.png\",\"additionalResources\":[\"shared_map.png\"]}"),
+                ("views/panel.json", "{\"name\":\"Panel\",\"description\":\"d\"}"));
+
+            var (response, result) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            var iconId = Db.Resources.AsNoTracking().Single(r => r.Key == "dnd5e_icon.png").Id;
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c => c.IsTemplate
+                && c.Dto.MainResource == iconId
+                && c.Dto.AdditionalResources!.SequenceEqual(new[] { sharedMapId })), It.IsAny<CancellationToken>()), Times.Once);
+
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<ResourceModel>(), e => existing.Contains(e.Entity.Id));
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<CardModel>(), e => e.Entity.Name.StartsWith("Card "));
+            Assert.DoesNotContain(Db.ChangeTracker.Entries<ActionModel>(), e => e.Entity.Name.StartsWith("Action "));
+            Assert.Empty(Db.ChangeTracker.Entries<PropertyModel>());
+        }
+
+        // ---- The built-in Basics addon, as shipped ----
+
+        // The source folder, found from this file's own path (the build output may be elsewhere).
+        private static string BuiltInAddonsRoot([CallerFilePath] string thisFile = "") =>
+            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", "..", "DNDOnePlaceManager", "BuiltInAddons"));
+
+        [Fact]
+        public async Task Handle_BuiltInBasicsAddon_InstallsTokenNoteTemplateAndActions()
+        {
+            var game = BuildGame();
+            var basics = Assert.Single(new BuiltInAddons(BuiltInAddonsRoot()).GetAll(), a => a.FileName == "basics.zip");
+
+            var (response, result) = await Handler().Handle(ValidCommand(game, Player(), basics.Data), CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal("basics", result.AddonKey);
+            var addon = Db.Addons
+                .Include(a => a.Resources).Include(a => a.Actions).Include(a => a.Templates)
+                .Single(a => a.Key == "basics");
+            Assert.Equal(
+                new[] { "basics_note_index.html", "basics_quill.js", "basics_quill.snow.css", "basics_token_generic.json" },
+                addon.Resources!.Select(r => r.Key).Order(StringComparer.Ordinal));
+            Assert.Equal(new[] { "add_token", "create_menus" }, addon.Actions!.Select(a => a.Name).Order(StringComparer.Ordinal));
+            var note = Assert.Single(addon.Templates!);
+            Assert.Equal("Note", note.Name);
+            // the editor's script and stylesheet load with the note, and it opts into the app's styles
+            var quillIds = addon.Resources!.Where(r => r.Key!.StartsWith("basics_quill")).Select(r => r.Id).ToList();
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c =>
+                c.IsTemplate
+                && c.Dto.AdditionalResources != null && c.Dto.AdditionalResources.Count == 2 && quillIds.All(c.Dto.AdditionalResources.Contains)
+                && c.Dto.Properties.Any(p => p.Name == "app_styles" && p.Value == "true")), It.IsAny<CancellationToken>()), Times.Once);
+            // shared with every player (Read), so they can make their own notes from it
+            PermissionsMock.Verify(p => p.SetGenericPermissions(It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e.Id == note.Id), Permission.Read), Times.Once);
         }
     }
 }

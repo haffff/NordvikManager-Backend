@@ -35,7 +35,9 @@ namespace DNDOnePlaceManager.Enums
                     Key = field.Name,
                     Name = meta.Name,
                     Description = meta.Description,
-                    Category = meta.Category
+                    Category = meta.Category,
+                    Variables = meta.Variables
+                        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                 });
             }
 

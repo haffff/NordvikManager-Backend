@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -220,13 +221,17 @@ namespace DNDOnePlaceManager
 
             ApplicationLayerModule.AfterBuild(app.ApplicationServices);
 
-            // One-time schema bootstrap for columns added after this table already existed for
-            // earlier users (no EF migrations pipeline here — see EnsureResourceStorageColumns'
-            // own comment for why this must run once at startup, not from DndOneContext's
-            // constructor, which fires on every scoped resolution).
+            // Apply any pending EF Core migrations once at startup — not from DndOneContext's
+            // own constructor, which is a scoped DI service re-constructed per request/WS message.
+            // MySQL has no migrations of its own yet (see DndOneContext's constructor comment)
+            // and already got its schema via EnsureCreated() in that constructor — calling
+            // Migrate() here too would try to apply the SQLite-flavored migrations against it.
             using (var scope = app.ApplicationServices.CreateScope())
             {
-                scope.ServiceProvider.GetRequiredService<DndOneContext>().EnsureResourceStorageColumns();
+                var dbContext = scope.ServiceProvider.GetRequiredService<DndOneContext>();
+                var isMySql = dbContext.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true;
+                if (!isMySql)
+                    dbContext.Database.Migrate();
             }
         }
     }

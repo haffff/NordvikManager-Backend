@@ -2,11 +2,13 @@
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using ActionModel = DndOnePlaceManager.Domain.Entities.BattleMap.ActionModel;
+using CardModel = DndOnePlaceManager.Domain.Entities.BattleMap.CardModel;
 using Microsoft.EntityFrameworkCore;
-using System.Xml.Linq;
 
 namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
 {
@@ -16,108 +18,72 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
         {
         }
 
+        // What the Get Data step's Type may say: the short name the editor offers ("Map")
+        // or the model name ("MapModel"), in any case.
+        private static readonly Dictionary<string, string> TypeNames = new[]
+            { "MapModel", "CardModel", "LayoutModel", "ActionModel", "ElementModel", "PropertyModel" }
+            .SelectMany(model => new[] { (Key: model, Model: model), (Key: model[..^"Model".Length], Model: model) })
+            .ToDictionary(x => x.Key, x => x.Model, StringComparer.OrdinalIgnoreCase);
+
         public async override Task<List<IGameDataTransferObject>> Handle(ActionGetDataCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            var type = request.EntityType.ToEntityType();
+            // "Map" or "MapModel", any case. Unknown names pass through and find nothing.
+            var typeName = TypeNames.GetValueOrDefault(request.EntityType ?? "") ?? request.EntityType;
 
+            // By id too, only within this game.
             if (request.ID != null)
-            {
-                var model = dbContext.Find(type, request.ID);
-                var destinationType = type.GetDTOType();
-                var dto = mapper.Map(model, type, destinationType);
-                return new List<IGameDataTransferObject> { dto as IGameDataTransferObject };
-            }
+                return Find(typeName, request.GameID, name: null, new List<Guid> { request.ID.Value });
 
             if (!String.IsNullOrEmpty(request.Property))
             {
-                return FindByProperty(request, type);
+                var ownerIds = dbContext.Properties
+                    .Where(x => x.EntityName == typeName && x.Name == request.Property)
+                    .Select(x => x.ParentID)
+                    .ToList();
+                return Find(typeName, request.GameID, name: null, ownerIds);
             }
 
-            // AsSplitQuery() — see InstallAddonCommandHandler.Handle's own comment
-            // for why chaining multiple collection .Include()s without it is a
-            // cartesian-explosion risk. Six collections here (same shape as the
-            // 276s/disk-full failure), and this runs on every action/macro
-            // execution that resolves data by name — a hot gameplay path.
-            var game = dbContext.Games
-                .Include(x => x.Maps).ThenInclude(x => x.Elements)
-                .Include(x => x.Actions)
-                .Include(x => x.BattleMaps)
-                .Include(x => x.Cards)
-                .Include(x => x.Layouts)
-                .Include(x => x.Properties)
-                .AsSplitQuery()
-                .FirstOrDefault(x => x.Id == request.GameID);
+            return Find(typeName, request.GameID, request.Name, ids: null);
+        }
 
-            if (request.Name != null)
-            {
-                return FindByName(request.Name, type, game);
-            }
-
-            switch (request.EntityType)
+        // Loads only the requested type, of this game, with the name/id filters applied in SQL.
+        // Maps come with their elements, as action scripts have always received them.
+        private List<IGameDataTransferObject> Find(string? entityType, Guid gameId, string? name, List<Guid>? ids)
+        {
+            switch (entityType)
             {
                 case "MapModel":
-                    return game.Maps.ToList().Select(x => mapper.Map<MapDTO>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return Query<MapModel, MapDTO>(dbContext.Maps.Include(x => x.Elements).Where(x => x.Game.Id == gameId), name, ids);
                 case "CardModel":
-                    return game.Cards.ToList().Select(x => mapper.Map<CardDto>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return Query<CardModel, CardDto>(dbContext.Cards.Where(x => x.GameId == gameId), name, ids);
                 case "LayoutModel":
-                    return game.Layouts.ToList().Select(x => mapper.Map<LayoutDTO>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return Query<LayoutModel, LayoutDTO>(dbContext.Layouts.Where(x => x.GameModelId == gameId), name, ids);
                 case "ActionModel":
-                    return game.Actions.ToList().Select(x => mapper.Map<ActionDto>(x)).Cast<IGameDataTransferObject>().ToList();
+                    return Query<ActionModel, ActionDto>(dbContext.Actions.Where(x => x.Game.Id == gameId), name, ids);
+                case "PropertyModel":
+                    return Query<PropertyModel, PropertyDTO>(dbContext.Properties.InGame(gameId), name, ids);
                 case "ElementModel":
-                    return game.Maps.SelectMany(x => x.Elements).ToList().Select(x => mapper.Map<ElementDTO>(x)).Cast<IGameDataTransferObject>().ToList();
+                    if (name != null)
+                        return new List<IGameDataTransferObject>(); // elements have no name
+                    var elements = dbContext.Elements.Where(x => x.Map!.Game.Id == gameId);
+                    if (ids != null)
+                        elements = elements.Where(x => ids.Contains(x.Id));
+                    return elements.AsEnumerable().Select(x => (IGameDataTransferObject)mapper.Map<ElementDTO>(x)).ToList();
                 default:
-                    break;
+                    return new List<IGameDataTransferObject>();
             }
-
-            return new List<IGameDataTransferObject>();
         }
 
-        private List<IGameDataTransferObject> FindByProperty(ActionGetDataCommand request, Type? type)
+        private List<IGameDataTransferObject> Query<TModel, TDto>(IQueryable<TModel> query, string? name, List<Guid>? ids)
+            where TModel : class, INamedEntity
+            where TDto : IGameDataTransferObject
         {
-            var list = new List<IGameDataTransferObject>();
-
-            var entities = dbContext.GetEntitiesList(request.GameID, request.EntityType);
-
-            foreach (var property in dbContext.Properties.Where(x => x.EntityName == request.EntityType && x.Name == request.Property))
-            {
-                var entity = entities.FirstOrDefault(x => x.Id == property.ParentID);
-                if (entity != null)
-                {
-                    list.Add(MapToDTO(entity));
-                }
-            }
-
-            return list;
-        }
-
-        private IGameDataTransferObject MapToDTO(IEntity entity)
-        {
-            var type = entity.GetType();
-            var dtoType = type.GetDTOType();
-            return mapper.Map(entity, type, dtoType) as IGameDataTransferObject;
-        }
-
-        private List<IGameDataTransferObject> FindByName(string name, Type? type, GameModel game)
-        {
-            var dtoType = type.GetDTOType();
-
-            switch (type.Name)
-            {
-                case "MapModel":
-                    return game.Maps.Where(x => x.Name == name).ToList().Select(x => mapper.Map<MapDTO>(x)).Cast<IGameDataTransferObject>().ToList();
-                case "CardModel":
-                    return game.Cards.Where(x => x.Name == name).ToList().Select(x => mapper.Map<CardDto>(x)).Cast<IGameDataTransferObject>().ToList();
-                case "LayoutModel":
-                    return game.Layouts.Where(x => x.Name == name).ToList().Select(x => mapper.Map<LayoutDTO>(x)).Cast<IGameDataTransferObject>().ToList();
-                case "ActionModel":
-                    return game.Actions.Where(x => x.Name == name).ToList().Select(x => mapper.Map<ActionDto>(x)).Cast<IGameDataTransferObject>().ToList();
-                default:
-                    break;
-            }
-
-            return new List<IGameDataTransferObject>();
+            if (name != null)
+                query = query.Where(x => x.Name == name);
+            if (ids != null)
+                query = query.Where(x => ids.Contains(x.Id));
+            return query.AsEnumerable().Select(x => (IGameDataTransferObject)mapper.Map<TDto>(x)!).ToList();
         }
     }
 }
-

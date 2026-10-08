@@ -14,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Category => "Data";
         public string Description => "Batch variable assignment. Each line in Assignments is 'variableName=value'. " +
                                      "Supports %q:% and %qn:% query syntax which is resolved before the step runs.";
+        public string? Summary => "Set {Assignments}";
         public Type DataType => typeof(QueryDataStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

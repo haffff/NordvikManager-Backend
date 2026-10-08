@@ -290,39 +290,67 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
-        public async Task UninstallAddon_ReturnsOk_WhenAddonIdProvided()
+        public async Task UninstallAddon_ReturnsOkWithOperationId_WhenAddonIdProvided()
         {
-            // Arrange
-            // UninstallAddon looks up the existing addon first (for the hook call's key) —
-            // must be mocked or the controller short-circuits with "Addon not found."
+            // Arrange — UninstallAddon still looks up the existing addon synchronously (for
+            // the immediate 400 on a bad id and the hook call's key), but the uninstall itself
+            // now runs in the background (fire-and-forget, mirrors InstallAddon) — this just
+            // proves the kick-off response shape.
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new AddonDto { Key = "dnd5e" });
             _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
 
             // Act
-            var result = await _controller.UninstallAddon(Guid.NewGuid(),
+            var result = await controller.UninstallAddon(Guid.NewGuid(),
                 new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() });
 
             // Assert
-            Assert.IsType<OkResult>(result);
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
         }
 
         [Fact]
-        public async Task UninstallAddon_ReturnsOk_WhenKeyProvided()
+        public async Task UninstallAddon_ReturnsOkWithOperationId_WhenKeyProvided()
         {
             // Arrange
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new AddonDto { Key = "dnd5e" });
             _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
 
             // Act
-            var result = await _controller.UninstallAddon(Guid.NewGuid(),
+            var result = await controller.UninstallAddon(Guid.NewGuid(),
                 new AddonController.UninstallAddonRequest { AddonId = "dnd5e" });
 
             // Assert
-            Assert.IsType<OkResult>(result);
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
+        }
+
+        [Fact]
+        public async Task UninstallAddon_ReturnsOkImmediately_EvenWhenUninstallFailsInBackground()
+        {
+            // Arrange — a failure inside the backgrounded uninstall no longer propagates as an
+            // HTTP exception (it's reported via operation_failed instead), so the kick-off
+            // response should still come back Ok, exactly like InstallAddon's equivalent test.
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
+            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Addon", Guid.NewGuid()));
+
+            // Act
+            var result = await controller.UninstallAddon(Guid.NewGuid(),
+                new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() });
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
         }
 
         [Fact]

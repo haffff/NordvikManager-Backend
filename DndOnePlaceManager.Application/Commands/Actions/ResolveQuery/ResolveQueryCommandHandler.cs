@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -83,21 +83,17 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ResolveQuery
 
         private async Task<HashSet<Guid>> BuildAllowedIdsAsync(Guid gameId)
         {
-            var game = await dbContext.Games
-                .Include(g => g.Maps)
-                .Include(g => g.Cards)
-                .Include(g => g.Players)
-                .Include(g => g.Actions)
-                .FirstOrDefaultAsync(g => g.Id == gameId);
-
             var ids = new HashSet<Guid>();
-            if (game == null) return ids;
+            if (!await dbContext.Games.AnyAsync(g => g.Id == gameId))
+                return ids;
 
-            ids.Add(game.Id);
-            game.Maps?.ForEach(e => ids.Add(e.Id));
-            game.Cards?.ForEach(e => ids.Add(e.Id));
-            game.Players?.ForEach(e => ids.Add(e.Id));
-            game.Actions?.ForEach(e => ids.Add(e.Id));
+            // Ids only — the allowlist never needs the entities themselves.
+            var game = dbContext.Games.Where(g => g.Id == gameId);
+            ids.Add(gameId);
+            ids.UnionWith(await game.SelectMany(g => g.Maps, (g, x) => x.Id).ToListAsync());
+            ids.UnionWith(await game.SelectMany(g => g.Cards, (g, x) => x.Id).ToListAsync());
+            ids.UnionWith(await game.SelectMany(g => g.Players, (g, x) => x.Id).ToListAsync());
+            ids.UnionWith(await game.SelectMany(g => g.Actions, (g, x) => x.Id).ToListAsync());
             return ids;
         }
 

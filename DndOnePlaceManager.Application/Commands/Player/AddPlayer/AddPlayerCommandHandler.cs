@@ -1,6 +1,8 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
@@ -48,7 +50,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
                 var newPlayer = new PlayerModel()
                 {
-                    Name = "Player",
+                    // Named after the joining user; "Player" only when there's no username.
+                    Name = string.IsNullOrWhiteSpace(request.User?.UserName) ? "Player" : request.User.UserName.Trim(),
                     CentralServerUserId = request.User?.Id,
                     Color = $"rgba({red},{green},{blue},1)",
                     Image = string.Empty
@@ -58,6 +61,13 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 game.Players.Add(newPlayer);
 
                 await dbContext.SaveChangesAsync();
+
+                // Read-only, deliberately not Edit — players must never be able to
+                // edit game-level settings (see the Edit-gated check below). Without
+                // even Read here, a player can't see game-scoped shared data at all
+                // (e.g. an addon's game-wide config Property), because permission
+                // checks apply uniformly regardless of entity type.
+                game.SetPermissions(newPlayer.Id, Permission.Read);
 
                 await CreateDefaultCharacterSheetAsync(game, newPlayer, cancellationToken);
 

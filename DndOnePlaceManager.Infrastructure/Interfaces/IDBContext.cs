@@ -29,5 +29,7 @@ namespace DndOnePlaceManager.Infrastructure.Interfaces
         DbSet<ElementDetailModel> ElementsDetail { get; set; }
         DbSet<BannedUserModel> BannedUsers { get; }
         DbSet<PlaylistModel> Playlists { get; }
+        DbSet<TurnOrderModel> TurnOrders { get; }
+        DbSet<TurnOrderEntryModel> TurnOrderEntries { get; }
     }
 }

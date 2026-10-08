@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using DNDOnePlaceManager.Models;
+using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
@@ -13,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the detail/property to read from the entity.")]
         public string? DetailName { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the detail value will be stored.")]
         public string? Output { get; set; }
     }

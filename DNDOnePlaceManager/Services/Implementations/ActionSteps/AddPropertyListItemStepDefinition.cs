@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "AddPropertyListItem";
         public string Category => "Properties";
         public string Description => "Appends a new row to a list-typed property (the property must already exist).";
+        public string? Summary => "Add row to {PropertyName} of {ParentId}[ → {Output}]";
         public Type DataType => typeof(AddPropertyListItemStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -1,3 +1,4 @@
+﻿using DndOnePlaceManager.Application.Services;
 using AutoMapper;
 using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
 using DndOnePlaceManager.Application.DataTransferObjects;
@@ -70,6 +71,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.CreateResource
                 model.Data = request.Data;
                 model.Storage = ResourceStorageKind.Blob;
             }
+            model.ContentHash = ResourceVersions.HashOf(request.Data);
 
             await dbContext.Resources.AddAsync(model, cancellationToken);
             dbContext.SaveChanges();

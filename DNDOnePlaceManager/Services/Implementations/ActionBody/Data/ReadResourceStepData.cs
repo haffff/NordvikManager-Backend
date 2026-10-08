@@ -12,6 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Resource to read. Pick one, or type a GUID / %variable%. Used when Key is not set.")]
         public string ResourceId { get; set; }
 
+        [VariableOutput]
         [Description("Variable name to store the retrieved text content in.")]
         public string OutputVariable { get; set; }
     }

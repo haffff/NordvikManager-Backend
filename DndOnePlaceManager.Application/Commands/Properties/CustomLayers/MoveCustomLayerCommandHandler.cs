@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
@@ -24,12 +24,13 @@ namespace DndOnePlaceManager.Application.Commands.Properties
             await gate.WaitAsync(cancellationToken);
             try
             {
-                var game = dbContext.Games.Include(g => g.Properties).FirstOrDefault(g => g.Id == request.GameId);
+                var game = dbContext.Games.FirstOrDefault(g => g.Id == request.GameId);
                 Guard.NotFound(game, "GameModel", request.GameId);
 
                 game.ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
 
-                var listProp = game.Properties.FirstOrDefault(p => p.Name == AddCustomLayerCommandHandler.ListPropertyName);
+                // Only the layer list, not every property of the game.
+                var listProp = dbContext.Properties.FirstOrDefault(p => p.Game!.Id == game.Id && p.Name == AddCustomLayerCommandHandler.ListPropertyName);
                 Guard.NotFound(listProp, "Property", AddCustomLayerCommandHandler.ListPropertyName);
 
                 var items = PropertyListJson.Deserialize(listProp.Value);

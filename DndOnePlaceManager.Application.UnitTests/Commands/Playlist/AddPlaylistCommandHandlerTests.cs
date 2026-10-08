@@ -1,3 +1,7 @@
+using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
+using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
+using DndOnePlaceManager.Application.DataTransferObjects;
+using MediatR;
 using DndOnePlaceManager.Application.Commands.Playlist.AddPlaylist;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.UnitTests.Commands.Resources;
@@ -11,7 +15,25 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Playlist
 {
     public class AddPlaylistCommandHandlerTests : ResourceDataHandlerTestBase
     {
-        private AddPlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object);
+        private readonly Mock<IMediator> _mediator = new();
+        private AddPlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object, _mediator.Object);
+
+        // Playlists and soundboards are both PlaylistModel; each kind has its own folder tree.
+        [Theory]
+        [InlineData(PlaylistKind.Music, "Playlist")]
+        [InlineData(PlaylistKind.Soundboard, "Soundboard")]
+        public async Task Handle_ValidRequest_CreatesTreeEntryInTheTreeForItsKind(PlaylistKind kind, string entryType)
+        {
+            var game = BuildGame();
+            var cmd = new AddPlaylistCommand { GameId = game.Id, Player = Player(), Name = "Tavern", Description = "", Kind = kind };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(
+                It.Is<AddTreeEntryCommand>(c => c.TreeEntryDto.TargetId == id && c.TreeEntryDto.EntryType == entryType
+                    && c.TreeEntryDto.Name == "Tavern" && c.TreeEntryDto.IsFolder == false && c.GameId == game.Id),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
 
         [Fact]
         public async Task Handle_ValidRequest_CreatesPlaylistWithResourcesAndReturnsOk()

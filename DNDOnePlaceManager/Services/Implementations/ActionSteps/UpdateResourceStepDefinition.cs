@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value       => "UpdateResource";
         public string Category    => "Data";
         public string Description => "Overwrites the content of an existing text resource identified by key or ID. Creates the resource if it does not exist.";
+        public string? Summary  => "Update resource[ {Key}][ {ResourceId}]";
         public Type   DataType    => typeof(UpdateResourceStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

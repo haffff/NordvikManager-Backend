@@ -1,4 +1,5 @@
-﻿using DNDOnePlaceManager.Services.Implementations.ActionBody;
+﻿using DndOnePlaceManager.Application.Exceptions;
+using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
 using System;
@@ -18,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "If";
         public string Category => "Control Flow";
         public string Description => "Executes action based on condition";
+        public string? Summary => "If {Condition}[ → {OutputName}]";
         public Type DataType => typeof(IfStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -26,10 +28,16 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             var condition = isStep.Condition;
 
-            var result = GetDT().Compute(condition, "");
+            if (GetDT().Compute(condition, "") is not bool result)
+                throw new ActionProcessException($"If: condition '{condition}' did not evaluate to true/false.");
 
-            //await DebugLog(mediator, new { Step = step, Message = "Comparsion finished with:", Value = condition }, false);
-            string action = (bool)result ? isStep.ActionTrue : isStep.ActionFalse;
+            // Written before branching so the branch action (which gets a copy of variables) sees it too.
+            if (!string.IsNullOrWhiteSpace(isStep.OutputName))
+                variables[isStep.OutputName] = result;
+
+            string action = result ? isStep.ActionTrue : isStep.ActionFalse;
+            if (string.IsNullOrWhiteSpace(action))
+                return;
 
             await gameLobby.ActionProcessingService.ExecActionAsync(action, null, variables);
         }

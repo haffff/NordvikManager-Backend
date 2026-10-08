@@ -17,5 +17,11 @@ namespace DndOnePlaceManager.Application.Services
         bool SetPermission(Guid playerId, IEntity model, Permission permission);
         bool SetPermissions(Guid playerId, IEntity model, Permission? permission);
         bool UnsetPermission(Guid playerId, IEntity model, Permission permission);
+
+        /// <summary>
+        /// The ids among <paramref name="modelIds"/> the player has <paramref name="permission"/> on,
+        /// by the same rules as CheckIfHasPermissions, with one query for all of them.
+        /// </summary>
+        HashSet<Guid> GetPermittedIds(Guid playerId, IEnumerable<Guid> modelIds, Permission permission);
     }
 }

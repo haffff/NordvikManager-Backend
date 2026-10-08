@@ -27,6 +27,10 @@ namespace DNDOnePlaceManager.Services
             if (!lobby.CheckForPlayer(player))
             {
                 lobby.ConnectedPlayers[player] = new List<IPlayerConnection> { connection };
+                // Catch up any addon whose Install hook never ran (e.g. auto-installed at
+                // game creation, before this lobby existed) before PlayerJoin — anything
+                // that join-time logic expects an addon to have set up should be there.
+                await lobby.ActionProcessingService.RunPendingAddonInstallHooksAsync();
                 await lobby.ActionProcessingService.CallHookAsync(
                     Hook.PlayerJoin, new PlayerHookArgs { Player = player });
                 foreach (var kv in lobby.ConnectedPlayers)

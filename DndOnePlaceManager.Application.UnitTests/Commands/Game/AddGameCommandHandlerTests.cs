@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
+﻿using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Layouts.AddLayout;
@@ -6,11 +6,13 @@ using DndOnePlaceManager.Application.Commands.Map.AddMap;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -36,12 +38,28 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
                      .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
             _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            _builtIns.Setup(b => b.GetAll()).Returns(Array.Empty<BuiltInAddon>());
         }
+
+        // Featured-addon installation now runs as a fire-and-forget background task (mirrors
+        // AddonController.RunInstallInBackground) — installing something like dnd5e can take a
+        // long time, and awaiting it inline used to block AddGame itself. The background task
+        // resolves its own IMediator from this real (if minimal) DI container rather than the
+        // directly-injected mock, so it observes the same Setup()s.
+        private static IServiceScopeFactory BuildBackgroundScopeFactory(Mock<IMediator> mediatorMock) =>
+            new ServiceCollection()
+                .AddSingleton(mediatorMock.Object)
+                .BuildServiceProvider()
+                .GetRequiredService<IServiceScopeFactory>();
+
+        private readonly Mock<IBuiltInAddons> _builtIns = new();
 
         private AddGameCommandHandler Handler(IConfiguration? config = null) =>
             new(Db, Mapper, _mediator.Object,
                 config ?? new ConfigurationBuilder().Build(),
-                NullLogger<AddGameCommandHandler>.Instance);
+                NullLogger<AddGameCommandHandler>.Instance,
+                BuildBackgroundScopeFactory(_mediator),
+                _builtIns.Object);
 
         private static User ValidUser() => new() { Id = Guid.NewGuid().ToString(), UserName = "gm" };
 
@@ -152,8 +170,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
             _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
+        // Featured-addon installation is fire-and-forget (see BuildBackgroundScopeFactory
+        // above) — this proves Handle() returns the new game immediately without waiting on
+        // it, rather than verifying the eventual InstallAddonCommand calls synchronously
+        // (which would be a race against the background Task.Run). Matches the convention
+        // AddonControllerTests already uses for its own backgrounded installs. The actual
+        // per-addon install behavior is covered by InstallAddonCommandHandlerTests.
         [Fact]
-        public async Task Handle_AddonsSelectedWithRepositoryConfigured_InstallsEachAddon()
+        public async Task Handle_AddonsSelectedWithRepositoryConfigured_ReturnsGameIdWithoutBlockingOnInstall()
         {
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["AddonsConfiguration:MainRepository"] = "https://repo.example/addons" })
@@ -161,9 +185,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
             var cmd = ValidCommand();
             cmd.AddonsSelected = new[] { "dnd5e", "pathfinder" };
 
-            await Handler(config).Handle(cmd, CancellationToken.None);
+            var gameId = await Handler(config).Handle(cmd, CancellationToken.None);
 
-            _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            Assert.NotNull(gameId);
         }
 
         [Fact]
@@ -176,6 +200,73 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
 
             Assert.NotNull(gameId);
             _mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        private static readonly byte[] BasicsFile = { 1, 2, 3 };
+
+        private TaskCompletionSource<InstallAddonCommand> CaptureFirstInstall()
+        {
+            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", BasicsFile) });
+            var installed = new TaskCompletionSource<InstallAddonCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, InstallAddonCommandResponse)>, CancellationToken>((c, _) => installed.TrySetResult((InstallAddonCommand)c))
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            return installed;
+        }
+
+        [Fact]
+        public async Task Handle_SelectedBuiltInAddon_IsInstalledFromTheShippedCopy()
+        {
+            // No registry configured: a built-in ships with the server.
+            var installed = CaptureFirstInstall();
+            var cmd = ValidCommand();
+            cmd.AddonsSelected = new[] { "basics" };
+
+            var gameId = await Handler().Handle(cmd, CancellationToken.None);
+
+            // installed in the background, after Handle returns
+            var install = await installed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(gameId, install.GameID);
+            Assert.Same(BasicsFile, install.AddonFile);
+            Assert.Equal("basics.zip", install.AddonFileName);
+            Assert.Null(install.AddonSourceKey);
+        }
+
+        [Fact]
+        public async Task Handle_BuiltInAddonNotSelected_IsNotInstalled()
+        {
+            var installed = CaptureFirstInstall();
+
+            await Handler().Handle(ValidCommand(), CancellationToken.None);
+
+            await Task.Delay(200);
+            Assert.False(installed.Task.IsCompleted);
+        }
+
+        [Fact]
+        public async Task Handle_SelectedBuiltInAndRegistryAddons_BuiltInIsNotFetchedFromTheRegistry()
+        {
+            var config = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["AddonsConfiguration:MainRepository"] = "https://repo.example/addons" })
+                .Build();
+            _builtIns.Setup(b => b.GetAll()).Returns(new[] { new BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", BasicsFile) });
+            var sent = new List<InstallAddonCommand>();
+            var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, InstallAddonCommandResponse)>, CancellationToken>((c, _) =>
+                     {
+                         lock (sent) { sent.Add((InstallAddonCommand)c); if (sent.Count == 2) both.TrySetResult(); }
+                     })
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse()));
+            var cmd = ValidCommand();
+            cmd.AddonsSelected = new[] { "basics", "dnd5e" };
+
+            await Handler(config).Handle(cmd, CancellationToken.None);
+
+            await both.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Contains(sent, c => c.AddonFile == BasicsFile && c.AddonSourceKey == null);
+            Assert.Contains(sent, c => c.AddonSourceKey == "dnd5e");
+            Assert.DoesNotContain(sent, c => c.AddonSourceKey == "basics");
         }
 
         [Fact]

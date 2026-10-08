@@ -1,3 +1,7 @@
+using DndOnePlaceManager.Application.Commands.Folder.AddFolder;
+using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
+using DndOnePlaceManager.Application.DataTransferObjects;
+using MediatR;
 using DndOnePlaceManager.Application.Commands.Playlist.UpdatePlaylist;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.UnitTests.Commands.Resources;
@@ -12,7 +16,51 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Playlist
 {
     public class UpdatePlaylistCommandHandlerTests : ResourceDataHandlerTestBase
     {
-        private UpdatePlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object);
+        private readonly Mock<IMediator> _mediator = new();
+        private UpdatePlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object, _mediator.Object);
+
+        private PlaylistModel SeedPlaylist(GameModel game, PlaylistKind kind)
+        {
+            var playlist = new PlaylistModel { GameId = game.Id, Name = "Tavern", Description = "", Kind = kind };
+            Db.Playlists.Add(playlist);
+            Db.SaveChanges();
+            return playlist;
+        }
+
+        private UpdatePlaylistCommand Update(GameModel game, PlaylistModel p, PlaylistKind kind) => new()
+        {
+            GameId = game.Id, Player = Player(), PlaylistId = p.Id,
+            Name = p.Name, Description = p.Description, Kind = kind, ResourceIds = new List<Guid>(),
+        };
+
+        [Fact]
+        public async Task Handle_KindChanged_MovesTreeEntryToTheOtherTree()
+        {
+            // Switching a playlist to a soundboard moves it to the Soundboards panel, so its
+            // tree entry must leave the playlist tree and join the soundboard tree.
+            var game = BuildGame();
+            var playlist = SeedPlaylist(game, PlaylistKind.Music);
+
+            await Handler().Handle(Update(game, playlist, PlaylistKind.Soundboard), CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(
+                It.Is<RemoveTreeEntryCommand>(c => c.TargetId == playlist.Id), It.IsAny<CancellationToken>()), Times.Once);
+            _mediator.Verify(m => m.Send(
+                It.Is<AddTreeEntryCommand>(c => c.TreeEntryDto.TargetId == playlist.Id && c.TreeEntryDto.EntryType == "Soundboard"),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_KindUnchanged_LeavesTreeEntryAlone()
+        {
+            var game = BuildGame();
+            var playlist = SeedPlaylist(game, PlaylistKind.Music);
+
+            await Handler().Handle(Update(game, playlist, PlaylistKind.Music), CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(It.IsAny<RemoveTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            _mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
 
         [Fact]
         public async Task Handle_ValidRequest_ReplacesNameDescriptionAndResourcesReturnsOk()

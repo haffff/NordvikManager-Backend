@@ -4,7 +4,9 @@ using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.Resources;
+using DndOnePlaceManager.Domain.Entities.Security;
 using DndOnePlaceManager.Domain.Enums;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Moq;
 
@@ -42,19 +44,17 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             Assert.False(Db.Resources.Any(r => r.Id == resource.Id));
         }
 
-        // Known pre-existing bug (flagged during the Part 1 guard-clause work): `image` is
-        // dereferenced (image.PlayerId) before any null check, so a not-found resource crashes
-        // with NullReferenceException instead of reaching the ResourceNotFoundException at the
-        // bottom of the handler. This test pins down the CURRENT behavior — it is not a spec for
-        // what the handler should do. If the ordering bug is ever fixed, update this test to
-        // expect ResourceNotFoundException instead.
+        // Was a known pre-existing bug (flagged during the Part 1 guard-clause work): `image`
+        // was dereferenced (image.PlayerId) before any null check, so a not-found resource
+        // crashed with NullReferenceException instead of the real ResourceNotFoundException.
+        // Fixed as part of the addon install/uninstall triage — now asserts the real behavior.
         [Fact]
-        public async Task Handle_ResourceNotFound_ThrowsNullReferenceException_KnownBug()
+        public async Task Handle_ResourceNotFound_ThrowsResourceNotFoundException()
         {
             var game = BuildGame();
             var cmd = new RemoveResourceCommand { ID = Guid.NewGuid(), GameId = game.Id, Player = Player() };
 
-            await Assert.ThrowsAsync<NullReferenceException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
         [Fact]
@@ -142,6 +142,27 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             await Handler().Handle(cmd, CancellationToken.None);
 
             _mediator.Verify(m => m.Send(It.IsAny<RemoveTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        // Regression coverage from the addon install/uninstall triage: unlike RemoveCard/
+        // RemoveAction (both go through GenericDeleteHandler, which cleans these up), this
+        // hand-rolled handler never removed Properties/Permissions rows referencing the
+        // deleted resource — every addon uninstall (which removes many resources at once)
+        // was the largest source of that orphaned-row garbage.
+        [Fact]
+        public async Task Handle_RemovesAssociatedPropertiesAndPermissions()
+        {
+            var game = BuildGame();
+            var resource = SeedResource(game, PlayerId);
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = resource.Id, Name = "note", Value = "x" });
+            Db.Permissions.Add(new PermissionModel { Id = Guid.NewGuid(), ModelID = resource.Id, PlayerID = PlayerId, Permission = Permission.All });
+            Db.SaveChanges();
+
+            var cmd = new RemoveResourceCommand { ID = resource.Id, GameId = game.Id, Player = Player() };
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(Db.Properties.Any(p => p.ParentID == resource.Id));
+            Assert.False(Db.Permissions.Any(p => p.ModelID == resource.Id));
         }
     }
 }

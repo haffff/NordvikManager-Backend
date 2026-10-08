@@ -1,11 +1,13 @@
-﻿using System;
+﻿using DNDOnePlaceManager.Models;
+using System;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class GetDataStepData
     {
-        [Description("Type of data to retrieve, e.g. 'Character', 'Item', 'Map'.")]
+        [UIType("entitytype")]
+        [Description("What to get: Map, Card, Layout, Action, Element or Property.")]
         public string? Type { get; set; }
 
         [Description("Name of the entity to retrieve. Used when looking up by name.")]
@@ -14,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of a specific property to extract from the retrieved entity.")]
         public string? PropertyName { get; set; }
 
+        [VariableOutput]
         [Description("Name of the variable where the retrieved data will be stored.")]
         public string? Output { get; set; }
 

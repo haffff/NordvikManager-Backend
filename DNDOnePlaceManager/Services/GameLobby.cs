@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
+using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Enums;
@@ -129,6 +130,9 @@ namespace DNDOnePlaceManager.Services.Implementations
                     return message;
                 }
 
+                if (await TryHandleActionChatCommandAsync(message, player))
+                    return message;
+
                 using var handlerScope = serviceScopeFactory.CreateScope();
                 var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
 
@@ -156,24 +160,65 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             catch (PermissionException e)
             {
-                EventLog.Log("Error", "Permission", e.Message, player.Name);
+                EventLog.Log("Error", "Permission", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player);
             }
             catch (WrongArgumentsException e)
             {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player);
             }
             catch (ResourceNotFoundException e)
             {
-                EventLog.Log("Warning", "Command", e.Message, player.Name);
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player);
             }
             catch (Exception e)
             {
-                EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
+                EventLog.Log("Error", "System", e.Message, player.Name,
+                    new { exceptionType = e.GetType().Name, command = message.Command, data = message.Data });
                 return MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player);
             }
+        }
+
+        /// <summary>
+        /// Routes a non-built-in slash command ("/cast fireball") to Hook.ChatCommand actions.
+        /// Only claims the message when at least one such action is enabled — otherwise
+        /// ChatHandler answers as before ("Wrong command"). A claimed message is echoed to the
+        /// sender only and not stored in chat history.
+        /// </summary>
+        private async Task<bool> TryHandleActionChatCommandAsync(WebSocketCommand message, PlayerDTO player)
+        {
+            if (message.Command != WebSocketCommandNames.CmdChatPush || message.Data?.Type != JTokenType.String)
+                return false;
+
+            var text = message.Data.ToString().Trim();
+            if (!text.StartsWith('/') || text.Length < 2)
+                return false;
+
+            var space = text.IndexOf(' ');
+            var name = space < 0 ? text : text[..space];
+            if (ChatHandler.BuiltInCommands.Contains(name))
+                return false;
+
+            if (!await ActionProcessingService.HasEnabledHookAsync(Hook.ChatCommand))
+                return false;
+
+            var args = new ChatCommandHookArgs
+            {
+                Player = player,
+                ChatCommand = name[1..],
+                ChatArgs = space < 0 ? string.Empty : text[(space + 1)..].Trim(),
+                ChatText = text,
+            };
+            _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.ChatCommand, args));
+
+            message.OnlyToSender = true;
+            message.Result = WebSocketCommandNames.ResultOk;
+            return true;
         }
 
         // Use OrdinalIgnoreCase to avoid a string allocation from .ToLower()
@@ -230,6 +275,36 @@ namespace DNDOnePlaceManager.Services.Implementations
         }
 
         /// <summary>
+        /// A card value changed (property_add/update/remove) that some players can't read:
+        /// those who can see a token placed for the card that shows it get the change too
+        /// (they could load it already, see GetPropertiesByQuery), e.g. its bars.
+        /// </summary>
+        private async Task SendToTokenViewers(IMediator cmdMediator, WebSocketCommand webSocketCommand, List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>> notReading)
+        {
+            var command = webSocketCommand.Command;
+            if (notReading.Count == 0
+                || (command != WebSocketCommandNames.PropertyAdd && command != WebSocketCommandNames.PropertyUpdate && command != WebSocketCommandNames.PropertyRemove)
+                || webSocketCommand.Data.Type != JTokenType.Object
+                || !Guid.TryParse(webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToString(), out var parentId)
+                || webSocketCommand.Data["name"]?.ToString() is not { Length: > 0 } name)
+                return;
+
+            var viewers = await cmdMediator.Send(new GetTokenViewersCommand
+            {
+                GameId = GameId,
+                CardId = parentId,
+                PropertyName = name,
+                PlayerIds = notReading.Select(p => p.Key.Id ?? Guid.Empty).ToList(),
+            });
+            if (viewers == null || viewers.Count == 0)
+                return;
+
+            webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)Permission.Read;
+            foreach (var item in notReading.Where(p => viewers.Contains(p.Key.Id ?? Guid.Empty)))
+                await item.Value.SendMessageToPlayer(webSocketCommand);
+        }
+
+        /// <summary>
         /// Broadcasts or routes a processed command to the appropriate connected players.
         /// </summary>
         public async Task HandlePostCommand(PlayerDTO player, WebSocketCommand webSocketCommand)
@@ -265,7 +340,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                         ? webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId] ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId]
                         : null;
 
-                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.CmdPermissionsUpdate, StringComparison.Ordinal))
+                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.PermissionsUpdate, StringComparison.Ordinal))
                     {
                         var permissionsCommand = new GetPermissionsCommand()
                         {
@@ -283,6 +358,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                             return;
                         }
 
+                        var notReading = new List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>>();
                         foreach (var item in ConnectedPlayers)
                         {
                             if (permissions.TryGetValue(item.Key.Id ?? Guid.Empty, out var permission) ||
@@ -292,9 +368,13 @@ namespace DNDOnePlaceManager.Services.Implementations
                                 {
                                     webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)permission;
                                     item.Value.SendMessageToPlayer(webSocketCommand);
+                                    continue;
                                 }
                             }
+                            notReading.Add(item);
                         }
+
+                        await SendToTokenViewers(cmdMediator, webSocketCommand, notReading);
                     }
                     else
                     {
@@ -375,10 +455,17 @@ namespace DNDOnePlaceManager.Services.Implementations
                     ? argsObj.ToObject<Dictionary<string, object>>()
                     : null;
 
+                // The action editor's Run button asks for a per-step trace (sent only to this player).
+                ActionTrace trace = null;
+                if (parsedMsg.Data[WebSocketCommandNames.DataKeyTrace]?.Type == JTokenType.Boolean &&
+                    parsedMsg.Data.Value<bool>(WebSocketCommandNames.DataKeyTrace) &&
+                    Guid.TryParse(parsedMsg.Data[WebSocketCommandNames.DataKeyTraceId]?.ToString(), out var traceId))
+                    trace = new ActionTrace { TraceId = traceId, Player = player };
+
                 _ = Task.Run(() => ActionProcessingService.ExecActionAsync(
                     actionName,
                     new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject, Player = player },
-                    sharedVariables));
+                    sharedVariables, trace));
 
                 parsedMsg.OnlyToSender = true;
                 parsedMsg.Result = WebSocketCommandNames.ResultOk;

@@ -15,5 +15,8 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.UpdatePlaylist
         public bool Repeat { get; set; } = true;
         public PlaylistKind Kind { get; set; } = PlaylistKind.Music;
         public List<Guid> ResourceIds { get; set; } = new();
+
+        /// <summary>0..1; unchanged when not given.</summary>
+        public double? Volume { get; set; }
     }
 }

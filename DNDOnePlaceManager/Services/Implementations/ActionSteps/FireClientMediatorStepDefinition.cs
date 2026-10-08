@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "FireClientMediator";
         public string Category => "Client";
         public string Description => "Fires a client-side mediator event, allowing addons to trigger frontend event bus messages. The frontend sandbox must restrict which events are permitted.";
+        public string? Summary => "Client event {EventName}[ to {Player}]";
         public Type DataType => typeof(FireClientMediatorStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

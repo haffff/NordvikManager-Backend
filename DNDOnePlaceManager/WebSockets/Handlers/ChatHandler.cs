@@ -4,6 +4,7 @@ using DndOnePlaceManager.Application.Services.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using MediatR;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.WebSockets.Handlers
@@ -12,6 +13,10 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
     {
         private IMediator mediator;
         private IChatService chatService;
+
+        /// <summary>Slash commands handled here; any other "/name" goes to Hook.ChatCommand actions (see GameLobby).</summary>
+        public static readonly IReadOnlySet<string> BuiltInCommands =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "/r", "/roll", "/help" };
 
         public ChatHandler(IMediator mediator, IChatService chatService)
         {

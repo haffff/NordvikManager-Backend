@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
@@ -51,6 +51,9 @@ namespace DndOnePlaceManager.Application.UnitTests
             PermissionsMock.Setup(p => p.SetPermissions(
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission?>()))
                 .Returns(true);
+            PermissionsMock.Setup(p => p.GetPermittedIds(
+                    It.IsAny<Guid>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<Permission>()))
+                .Returns((Guid _, IEnumerable<Guid> ids, Permission _) => ids.ToHashSet());
             PermissionsMock.Setup(p => p.UnsetPermission(
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(true);

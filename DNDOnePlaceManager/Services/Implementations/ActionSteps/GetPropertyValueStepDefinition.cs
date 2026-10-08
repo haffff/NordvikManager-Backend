@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
+﻿using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -16,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "GetPropertyValue";
         public string Description => "Reads a single named property's value for one entity, falling back to DefaultValue when it doesn't exist.";
         public string Category => "Properties";
+        public string? Summary => "Read {PropertyName} of {ParentId}[ → {Output}]";
         public Type DataType => typeof(GetPropertyValueStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -33,6 +34,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
             var result = await mediator.Send(new GetPropertiesByQueryCommand
             {
+                GameId = gameLobby.GameId,
                 Player = gameLobby.SystemPlayer,
                 ParentIDs = new[] { parentGuid },
                 PropertyNames = new[] { stepData.PropertyName },

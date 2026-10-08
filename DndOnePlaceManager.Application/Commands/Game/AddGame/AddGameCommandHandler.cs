@@ -7,10 +7,12 @@ using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace DndOnePlaceManager.Application.Commands.BattleMap
@@ -20,11 +22,15 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         IMediator mediator;
         string? mainRepositoryUrl;
         ILogger<AddGameCommandHandler> logger;
+        IServiceScopeFactory serviceScopeFactory;
+        IBuiltInAddons builtInAddons;
 
-        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger) : base(battleMapContext, mapper)
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory, IBuiltInAddons builtInAddons) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
             this.logger = logger;
+            this.serviceScopeFactory = serviceScopeFactory;
+            this.builtInAddons = builtInAddons;
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
@@ -195,29 +201,70 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             await mediator.Send(addLayoutCommand);
 
-            if (request.AddonsSelected == null || mainRepositoryUrl == null)
-            {
-                return game.Id;
-            }
+            // Picked addons: a built-in one (shipped with the server, e.g. Basics) is
+            // installed from that copy; the rest come from the registry, if one is set.
+            var selected = request.AddonsSelected ?? Array.Empty<string>();
+            var builtIns = builtInAddons.GetAll().Where(b => selected.Contains(b.Key)).ToList();
+            var featured = mainRepositoryUrl != null
+                ? selected.Where(key => builtIns.All(b => b.Key != key)).ToArray()
+                : Array.Empty<string>();
 
-            foreach (var addon in request.AddonsSelected)
+            if (builtIns.Count > 0 || featured.Length > 0)
             {
-                try
+                var gameId = game.Id;
+                var installingPlayer = playerDTO;
+
+                // Fire-and-forget (mirrors AddonController.RunInstallInBackground) — installing
+                // a featured addon (e.g. dnd5e: many resources/cards/actions, each its own
+                // mediator round-trip) can take a long time. Awaiting it here used to block the
+                // whole AddGame request, which in turn delayed GameListController.AddGame's
+                // later WebRTC session start (StartSessionAsync) long enough to time out, even
+                // though the WebRTC handshake itself was never the slow part.
+                // Hook.Install for whatever gets installed here still runs — once a player
+                // actually joins the game, see ActionProcessingService.RunPendingAddonInstallHooksAsync.
+                _ = Task.Run(async () =>
                 {
-                    InstallAddonCommand installAddonCommand = new InstallAddonCommand()
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+
+                    // First, so a featured addon can rely on them.
+                    foreach (var builtIn in builtIns)
                     {
-                        AddonSourceKey = addon,
-                        GameID = game.Id,
-                        Player = playerDTO,
-                        AutoInstallDeps = true,
-                    };
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonFile = builtIn.Data,
+                                AddonFileName = builtIn.FileName,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install built-in addon '{Addon}' for game {GameId}", builtIn.FileName, gameId);
+                        }
+                    }
 
-                    await mediator.Send(installAddonCommand);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, game.Id);
-                }
+                    foreach (var addon in featured)
+                    {
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonSourceKey = addon,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, gameId);
+                        }
+                    }
+                });
             }
 
             return game.Id;

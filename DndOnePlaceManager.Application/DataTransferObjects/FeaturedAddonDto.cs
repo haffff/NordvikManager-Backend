@@ -14,5 +14,8 @@ namespace DndOnePlaceManager.Application.DataTransferObjects
         public string? Website { get; set; }
         public string? License { get; set; }
         public List<string>? Dependencies { get; set; }
+
+        /// <summary>Ships with the server; offered ticked when a game is created.</summary>
+        public bool BuiltIn { get; set; }
     }
 }

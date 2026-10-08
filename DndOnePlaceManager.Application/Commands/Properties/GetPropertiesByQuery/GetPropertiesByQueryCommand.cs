@@ -15,5 +15,8 @@ namespace DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuer
         public Guid[]? Ids { get; set; }
         public Func<PropertyDTO, bool>? Filter { get; set; }
         public string Prefix { get; set; }
+
+        /// <summary>Required: only properties of this game and its maps, elements and cards are returned.</summary>
+        public Guid GameId { get; set; }
     }
 }

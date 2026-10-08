@@ -12,6 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "SendCommand";
         public string Description => "Sends command to game lobby";
         public string Category => "WebSockets";
+        public string? Summary => "Send {Command}";
         public System.Type DataType => typeof(WebSocketCommand);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

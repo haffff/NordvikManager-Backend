@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "RequestUserInput";
         public string Description => "Request user input";
         public string Category => "Control Flow";
+        public string? Summary => "Ask[ {UserName}][ {UserID}]: {Message}[ → {Output}]";
         public Type DataType => typeof(RequestUserInputStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

@@ -35,6 +35,14 @@ namespace DndOnePlaceManager.Application.Services
                 dbPermission = new PermissionModel() { All = all, ModelID = model.Id, PlayerID = playerId ?? Guid.Empty, Permission = Permission.None };
                 battleMapContext.Permissions.Add(dbPermission);
             }
+            else
+            {
+                // Self-heal rows created by the old code path (e.g. the "everyone" row
+                // written with All=false before entity-wide grants routed through
+                // SetGenericPermissions) — every caller passes the All-ness this row
+                // should have, so bring a reused row in line with it.
+                dbPermission.All = all;
+            }
 
             return dbPermission;
         }
@@ -109,6 +117,29 @@ namespace DndOnePlaceManager.Application.Services
         }
 
         public bool CheckIfHasPermissions(Guid playerId, IEntity model, Permission permission) => CheckIfHasPermissions(playerId, model.Id, permission);
+
+        public HashSet<Guid> GetPermittedIds(Guid playerId, IEnumerable<Guid> modelIds, Permission permission)
+        {
+            var ids = modelIds.Distinct().ToList();
+            if (ids.Count == 0)
+                return new HashSet<Guid>();
+
+            var rows = battleMapContext.Permissions
+                .Where(x => ids.Contains(x.ModelID) && (x.PlayerID == playerId || x.All))
+                .Select(x => new { x.ModelID, x.PlayerID, x.All, x.Permission })
+                .ToList();
+
+            // Same rule as GetPermissionFromDB: the player's own row, else the "everyone" row.
+            return rows
+                .GroupBy(x => x.ModelID)
+                .Where(g =>
+                {
+                    var row = g.FirstOrDefault(x => x.PlayerID == playerId) ?? g.FirstOrDefault(x => x.All);
+                    return row != null && row.Permission.HasFlag(permission);
+                })
+                .Select(g => g.Key)
+                .ToHashSet();
+        }
 
         public bool CheckIfHasPermissions(PlayerDTO player, Guid modelId, Permission permission) => CheckIfHasPermissions(player.Id ?? Guid.Empty, modelId, permission);
     }

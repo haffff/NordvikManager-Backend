@@ -16,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "CreateCard";
         public string Description => "Creates a new card from a template, storing the new card's id in a variable.";
         public string Category => "Data";
+        public string? Summary => "New card {Name}[ from {TemplateId}][ → {Output}]";
         public Type DataType => typeof(CreateCardStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

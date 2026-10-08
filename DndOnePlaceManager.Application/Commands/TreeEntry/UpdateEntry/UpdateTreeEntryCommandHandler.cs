@@ -28,10 +28,16 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.UpdateEntry
             // cartesian-product result set. See InstallAddonCommandHandler.Handle's
             // own comment for the full story (a 6-collection version of this same
             // pattern took 276s and failed with a disk-full error on a loaded game).
+            // Only the tree this entry belongs to.
+            var entryType = await dbContext.TreeEntries
+                .Where(x => x.Id == request.TreeEntryDto.Id)
+                .Select(x => x.EntryType)
+                .FirstOrDefaultAsync(cancellationToken);
+
             var game = await dbContext.Games
                 .Include(x => x.Players)
-                .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Parent)
-                .Include(x => x.TreeEntries.Where(x => x.NewItem != true)).ThenInclude(x => x.Next)
+                .Include(x => x.TreeEntries.Where(x => x.NewItem != true && x.EntryType == entryType)).ThenInclude(x => x.Parent)
+                .Include(x => x.TreeEntries.Where(x => x.NewItem != true && x.EntryType == entryType)).ThenInclude(x => x.Next)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(x => request.GameId == x.Id && x.Players.Any(x => x.Id == playerId));
 

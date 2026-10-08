@@ -23,6 +23,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "PlayPlaylist";
         public string Category => "Audio";
         public string Description => "Starts (or resumes, if paused) a music playlist for everyone in the game.";
+        public string? Summary => "Play playlist {PlaylistId}";
         public Type DataType => typeof(PlaylistStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

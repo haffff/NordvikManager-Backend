@@ -1,10 +1,11 @@
-using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
+﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
+using DndOnePlaceManager.Application.Commands.Resources.GetResourceContent;
 using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -106,6 +108,52 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             // Assert
             Assert.IsType<FileContentResult>(result);
+        }
+
+        // =========================================================================
+        // GetResourceWebRTC — what players fetch over the data channel, with a version
+        // to cache it under (headers don't cross the tunnel, so it's in the body)
+        // =========================================================================
+
+        private static JObject Body(IActionResult result) => JObject.FromObject(Assert.IsType<OkObjectResult>(result).Value!);
+
+        [Fact]
+        public async Task GetResourceWebRTC_ReturnsDataWithItsVersion()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ResourceContent(new byte[] { 1, 2 }, MimeType.MP3, "v1", false));
+
+            var body = Body(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
+
+            Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2 }), body["data"]!.Value<string>());
+            Assert.Equal("audio/mpeg", body["mimeType"]!.Value<string>());
+            Assert.Equal("v1", body["version"]!.Value<string>());
+        }
+
+        [Fact]
+        public async Task GetResourceWebRTC_CachedVersionCurrent_ReturnsNotModifiedWithoutData()
+        {
+            GetResourceContentCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ResourceContent?>, CancellationToken>((c, _) => sent = (GetResourceContentCommand)c)
+                     .ReturnsAsync(new ResourceContent(null, MimeType.MP3, "v1", true));
+
+            var body = Body(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid(), thumbnail: true, ifVersion: "v1"));
+
+            Assert.Equal("v1", sent!.IfVersion);
+            Assert.True(sent.Thumbnail);
+            Assert.True(body["notModified"]!.Value<bool>());
+            Assert.Equal("v1", body["version"]!.Value<string>());
+            Assert.Null(body["data"]);
+        }
+
+        [Fact]
+        public async Task GetResourceWebRTC_Missing_ReturnsNotFound()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((ResourceContent?)null);
+
+            Assert.IsType<NotFoundResult>(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
         }
 
         // =========================================================================

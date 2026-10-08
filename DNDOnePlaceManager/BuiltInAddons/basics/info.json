@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/addon.json",
+  "key": "basics",
+  "name": "Basics",
+  "description": "Ships with NordvikManager and is added to every new game: a generic token with two bars (right-click the map, Add > Generic token) and a private Note card (Cards > Add > Note).",
+  "version": "0.1.0",
+  "author": "haffff",
+  "license": "MIT"
+}

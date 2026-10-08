@@ -12,18 +12,16 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddon
     {
         public override AddonModel GetEntity(GetAddonCommand request)
         {
-            var game = dbContext.Games
-                .Include(x => x.Addons).ThenInclude(x => x.Actions)
-                .Include(x => x.Addons).ThenInclude(x => x.Views)
-                .Include(x => x.Addons).ThenInclude(x => x.Resources)
-                .FirstOrDefault(x => x.Id == request.GameID);
+            var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
 
-            if (!game.HasPermission(request.Player.Id ?? default, Domain.Enums.Permission.Edit))
+            if (game == null || !game.HasPermission(request.Player.Id ?? default, Domain.Enums.Permission.Edit))
                 return null;
 
-            var addon = game.Addons.FirstOrDefault(x => x.Id == request.Id || x.Key == request.AddonKey);
-
-            return addon;
+            // Just the addon row: its actions, views and resources (file bytes included) aren't needed.
+            return dbContext.Games
+                .Where(x => x.Id == request.GameID)
+                .SelectMany(x => x.Addons, (g, a) => a)
+                .FirstOrDefault(x => x.Id == request.Id || x.Key == request.AddonKey);
         }
 
         public GetAddonCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)

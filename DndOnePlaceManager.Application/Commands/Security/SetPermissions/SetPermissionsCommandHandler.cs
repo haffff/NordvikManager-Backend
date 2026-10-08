@@ -35,7 +35,15 @@ namespace DndOnePlaceManager.Application.Commands.Security.SetPermissions
                 {
                     if (permission.Value == Permission.NotSet)
                     {
+                        // Works for the "everyone" row too: PermissionsService.SetPermissions
+                        // matches by PlayerID alone, regardless of the All flag.
                         entity.ClearPermissions(permission.Key);
+                    }
+                    else if (permission.Key == Guid.Empty)
+                    {
+                        // "Everyone" grants must set the All flag, or CheckIfHasPermissions'
+                        // fallback lookup (which matches on All, not PlayerID) never sees them.
+                        entity.SetGlobalPermission((Permission)permission.Value);
                     }
                     else
                     {

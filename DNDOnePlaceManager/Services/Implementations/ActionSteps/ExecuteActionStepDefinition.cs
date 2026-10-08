@@ -13,11 +13,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "ExecuteAction";
         public string Category => "Control Flow";
         public string Description => "Executes action provided as argument";
-        public Type DataType => typeof(ValueStepData);
+        public string? Summary => "Run {Value}";
+        public Type DataType => typeof(ExecuteActionStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
-            var stepValue = step.Data.ToObject<ValueStepData>()?.Value;
+            var stepValue = step.Data.ToObject<ExecuteActionStepData>()?.Value;
             //make it better?
             await gameLobby.ActionProcessingService.ExecActionAsync(stepValue, null, variables);
         }

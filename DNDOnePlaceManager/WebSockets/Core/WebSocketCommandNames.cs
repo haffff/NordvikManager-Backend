@@ -62,12 +62,23 @@
         public const string SoundPlay = "sound_play";
         public const string SoundStop = "sound_stop";
 
+        //Turn order (each broadcasts a TurnOrderNotice; clients fetch what they may see)
+        public const string TurnOrderAdd = "turnorder_add";
+        public const string TurnOrderUpdate = "turnorder_update";
+        public const string TurnOrderRemove = "turnorder_remove";
+        public const string TurnOrderReorder = "turnorder_reorder";
+        public const string TurnOrderSort = "turnorder_sort";
+        public const string TurnOrderAdvance = "turnorder_advance";
+        public const string TurnOrderEndTurn = "turnorder_end_turn";
+        public const string TurnOrderReset = "turnorder_reset";
+
         //Playlist
         public const string PlaylistNotify = "playlist_notify";
         public const string PlaylistPlay = "playlist_play";
         public const string PlaylistPause = "playlist_pause";
         public const string PlaylistStop = "playlist_stop";
         public const string PlaylistTrackChange = "playlist_track_change";
+        public const string PlaylistVolume = "playlist_volume";
 
         //Settings
         public const string SettingsGame = "settings_game";
@@ -125,13 +136,14 @@
 
         // Special / system commands
         public const string CmdClientScriptExecute = "clientscript_execute";
-        public const string CmdPermissionsUpdate = "permissions_update";
         public const string CmdPlayerList = "player_list";
         public const string CmdClientLoaded = "client_loaded";
         public const string CmdClientLayoutReady = "client_layout_ready";
         public const string CmdDebugModeGet = "debug_mode_get";
         public const string CmdDebugModeSet = "debug_mode_set";
         public const string CmdExecuteAction = "execute_action";
+        /// <summary>Per-step report of an action run, sent only to the player who ran it with Trace = true.</summary>
+        public const string CmdActionTrace = "action_trace";
         public const string CmdDebugActionResponse = "debug_action_response";
         public const string CmdInputValue = "input_value";
 
@@ -144,6 +156,8 @@
         public const string DataKeyPermission = "permission";
         public const string DataKeyAction = "Action";
         public const string DataKeyArgs = "Args";
+        public const string DataKeyTrace = "Trace";
+        public const string DataKeyTraceId = "TraceId";
 
         // Chat
         public const string CmdChatPush = "chat_push";
@@ -153,6 +167,7 @@
         public const string CmdAddMenuItem        = "menu_item_add";
         public const string CmdAddToolbarButton   = "toolbar_button_add";
         public const string CmdFireClientMediator = "client_mediator_fire";
+        public const string CmdRunClientCommand   = "run_client_command";
 
         // Debug / action engine
         public const string CmdDebugAction = "debug_action";

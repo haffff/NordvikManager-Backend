@@ -1,9 +1,11 @@
 using AutoMapper;
+using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Playlist.DeletePlaylist
@@ -11,11 +13,13 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.DeletePlaylist
     internal class DeletePlaylistCommandHandler : HandlerBase<DeletePlaylistCommand, CommandResponse>
     {
         private readonly IPermissionService permissionService;
+        private readonly IMediator mediator;
 
-        public DeletePlaylistCommandHandler(IDbContext dbContext, IMapper mapper, IPermissionService permissionService)
+        public DeletePlaylistCommandHandler(IDbContext dbContext, IMapper mapper, IPermissionService permissionService, IMediator mediator)
             : base(dbContext, mapper)
         {
             this.permissionService = permissionService;
+            this.mediator = mediator;
         }
 
         public override async Task<CommandResponse> Handle(DeletePlaylistCommand request, CancellationToken cancellationToken)
@@ -40,7 +44,17 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.DeletePlaylist
 
             dbContext.Remove(playlist);
 
-            return dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.NoChange;
+            var result = dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.NoChange;
+
+            // A missing entry (playlists made before they had folders) is a no-op.
+            await mediator.Send(new RemoveTreeEntryCommand
+            {
+                TargetId = playlist.Id,
+                GameId = request.GameId,
+                PlayerId = playerId,
+            }, cancellationToken);
+
+            return result;
         }
     }
 }

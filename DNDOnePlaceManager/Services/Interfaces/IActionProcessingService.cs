@@ -19,8 +19,10 @@ namespace DNDOnePlaceManager.Services.Interfaces
         ConcurrentDictionary<Guid, ActionRunEntry> RunningActions { get; }
 
         Task CallHookAsync(Hook hook, HookArgs hookArg);
+        Task RunPendingAddonInstallHooksAsync();
         Task CommandToHook(WebSocketCommand webSocketCommand);
-        Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null);
-        Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null);
+        Task<bool> HasEnabledHookAsync(Hook hook);
+        Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null);
+        Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, ActionTrace trace = null);
     }
 }

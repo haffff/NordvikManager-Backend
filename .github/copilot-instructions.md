@@ -102,14 +102,16 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 ## Database
 
-Controlled by `"UseSqlite": true` in appsettings. SQLite (two files: `data.db`, `usersdata.db`) is the default. MySQL is available for production. Two DbContexts: `DndOneContext` (app data) and `AuthContext` (ASP.NET Identity). Both call `Database.EnsureCreated()` on construction.
+Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext`.
+
+SQLite uses real EF Core Migrations (`DndOnePlaceManager.Infrastructure/Migrations/`), applied via `Database.Migrate()` once at startup. Any entity change needs `dotnet ef migrations add <Name>` (dotnet-ef is a local tool, `dotnet-tools.json`) before it reaches anyone's database — never hand-edit the schema. MySQL doesn't have migrations yet and still uses `Database.EnsureCreated()`; the InMemory test provider also uses `EnsureCreated()` (no migrations support at all there) — both intentional, see `DndOneContext`'s constructor comment.
 
 ## Configuration
 
 Key appsettings entries:
 - `FrontUrls:Client` — CORS origin (default `http://localhost:3000`)
 - `JWT:ValidIssuer`, `JWT:ValidAudience`, `JWT:ExpireTime`
-- `ConnectionStrings:DBData` / `ConnectionStrings:AuthData`
+- `ConnectionStrings:DBData`
 - `InitialAdminPassword` — seeded admin password on first run
 - `AddonsConfiguration:MainRepository` — addon registry URL
 

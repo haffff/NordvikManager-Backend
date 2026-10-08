@@ -59,6 +59,68 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Elements
             await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
+        private static ElementDTO TokenDto(Guid mapId) => new()
+        {
+            MapID = mapId,
+            Object = "{\"width\":100}",
+            Properties = new List<PropertyDTO> { new() { Name = "isToken", Value = "true" } },
+        };
+
+        // Map permissions as a player who has exactly the given flags on the map.
+        private void GrantOnMap(params Permission[] granted)
+        {
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is MapModel), It.IsAny<Permission>()))
+                .Returns((Guid _, DndOnePlaceManager.Domain.Entities.Interfaces.IEntity _, Permission wanted) => granted.Contains(wanted));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithControlOnMap_AddsIt()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
+        [Fact]
+        public async Task Handle_NonTokenWithOnlyControlOnMap_ThrowsPermissionException()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = ValidDto(map.Id) };
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithOnlyReadOnMap_ThrowsPermissionException()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_TokenWithEditOnMap_AddsIt()
+        {
+            var game = BuildGame();
+            var map = SeedMap(game);
+            GrantOnMap(Permission.Read, Permission.Edit);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+
+            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
         [Fact]
         public async Task Handle_ValidRequest_CreatesElementWithParsedDetails()
         {
@@ -74,8 +136,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Elements
             Assert.True(created!.Selectable);
             Assert.Equal(map.Id, created.MapId);
             Assert.Contains(created.Details!, d => d.Key == "width" && d.Value == "100");
-            // null-valued fabric.js props are filtered out by CreateModel
-            Assert.DoesNotContain(created.Details!, d => d.Key == "color");
+            // explicit JSON nulls (e.g. a freehand Path's `fill: null`) must survive,
+            // since fabric.js treats a missing key differently from a present null one
+            Assert.Contains(created.Details!, d => d.Key == "color" && d.Value == null);
         }
     }
 }

@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
+using DndOnePlaceManager.Application.Commands.Resources.GetResourceContent;
 using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
@@ -49,7 +50,7 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("Resource")]
-        public async Task<IActionResult> GetResource(Guid id, string? key, Guid? gameId)
+        public async Task<IActionResult> GetResource(Guid id, string? key, Guid? gameId, bool thumbnail = false)
         {
             var user = HttpContext.Items["User"] as User;
 
@@ -59,13 +60,27 @@ namespace DNDOnePlaceManager.Controllers
                 return BadRequest();
             }
 
-            GetResourceDataCommand imageCommand = new GetResourceDataCommand();
-            imageCommand.GameID = gameId;
-            imageCommand.Player = playerResult.Player;
-            imageCommand.ID = id;
-            imageCommand.Key = key;
+            (byte[], MimeType) result;
+            if (thumbnail)
+            {
+                result = await mediator.Send(new GetResourceThumbnailCommand
+                {
+                    GameID = gameId,
+                    Player = playerResult.Player,
+                    ID = id,
+                    Key = key,
+                });
+            }
+            else
+            {
+                GetResourceDataCommand imageCommand = new GetResourceDataCommand();
+                imageCommand.GameID = gameId;
+                imageCommand.Player = playerResult.Player;
+                imageCommand.ID = id;
+                imageCommand.Key = key;
 
-            var result = await mediator.Send(imageCommand);
+                result = await mediator.Send(imageCommand);
+            }
 
             if (result.Item1 == null)
             {
@@ -290,28 +305,36 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("ResourceWebRTC")]
-        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId)
+        public async Task<IActionResult> GetResourceWebRTC(Guid id, string? key, Guid? gameId, bool thumbnail = false, string? ifVersion = null)
         {
             var user = HttpContext.Items["User"] as User;
             var playerResult = await GetPlayerIfExists(gameId, user);
             if (playerResult?.Player == null)
                 return BadRequest();
 
-            var result = await mediator.Send(new GetResourceDataCommand
+            // The client sends the version it has cached; headers don't cross the WebRTC
+            // tunnel, so the version and "not modified" travel in the body.
+            var content = await mediator.Send(new GetResourceContentCommand
             {
-                GameID = gameId,
-                Player = playerResult.Player,
-                ID     = id,
-                Key    = key,
+                GameID     = gameId,
+                Player     = playerResult.Player,
+                ID         = id,
+                Key        = key,
+                Thumbnail  = thumbnail,
+                IfVersion  = ifVersion,
             });
 
-            if (result.Item1 == null)
+            if (content == null)
                 return NotFound();
+
+            if (content.NotModified)
+                return Ok(new { notModified = true, version = content.Version });
 
             return Ok(new
             {
-                data     = Convert.ToBase64String(result.Item1),
-                mimeType = result.Item2.GetDescriptionValue(),
+                data     = Convert.ToBase64String(content.Data!),
+                mimeType = content.MimeType.GetDescriptionValue(),
+                version  = content.Version,
             });
         }
 

@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
+﻿using DndOnePlaceManager.Application.Services;
+using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Application;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
@@ -133,28 +134,47 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
-        public async Task<IActionResult> GetFeaturedAddons()
+        public async Task<IActionResult> GetFeaturedAddons([FromServices] IBuiltInAddons builtInAddons)
         {
-            GetAddonsFromRepositoryCommand command = new GetAddonsFromRepositoryCommand();
-            var res = await mediator.Send(command);
-
-            var featuredAddonsConfig = configuration.GetSection("AddonsConfiguration:FeaturedAddons").Get<string[]>()
-                ?? Array.Empty<string>();
-
-            var featuredAddons = res
-                .Where(x => featuredAddonsConfig.Contains(x.Key))
+            // Built-in addons first (shipped with the server, offered ticked), then the
+            // registry's featured ones. The built-ins are listed even when the registry
+            // can't be reached.
+            var addons = builtInAddons.GetAll()
                 .Select(x => new FeaturedAddonDto
                 {
                     Name = x.Name,
                     Key = x.Key,
                     Description = x.Description,
                     Version = x.Version,
-                    Author = x.Author,
-                    License = x.License,
-                    Dependencies = x.Dependencies?.Select(d => d.Key).ToList()
-                });
+                    BuiltIn = true,
+                })
+                .ToList();
 
-            return Ok(featuredAddons);
+            var featuredAddonsConfig = configuration.GetSection("AddonsConfiguration:FeaturedAddons").Get<string[]>()
+                ?? Array.Empty<string>();
+
+            try
+            {
+                var res = await mediator.Send(new GetAddonsFromRepositoryCommand());
+                addons.AddRange(res
+                    .Where(x => featuredAddonsConfig.Contains(x.Key) && addons.All(a => a.Key != x.Key))
+                    .Select(x => new FeaturedAddonDto
+                    {
+                        Name = x.Name,
+                        Key = x.Key,
+                        Description = x.Description,
+                        Version = x.Version,
+                        Author = x.Author,
+                        License = x.License,
+                        Dependencies = x.Dependencies?.Select(d => d.Key).ToList()
+                    }));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Couldn't load featured addons from the registry");
+            }
+
+            return Ok(addons);
         }
 
         /// <summary>
@@ -335,6 +355,7 @@ namespace DNDOnePlaceManager.Controllers
 
             var getCharSheetDefaultsCommand = new GetPropertiesByQueryCommand()
             {
+                GameId = (Guid)gameId,
                 Player = systemPlayer,
                 ParentIDs = [(Guid)gameId],
                 PropertyNames = ["useDefaultCharacterSheets", "characterSheetTemplate"]

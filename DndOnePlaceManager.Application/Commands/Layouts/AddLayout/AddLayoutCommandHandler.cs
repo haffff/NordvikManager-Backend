@@ -34,9 +34,9 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.AddLayout
 
         public override GameModel GetGame(AddLayoutCommand request)
         {
+            // Only the setting CheckPermissions reads — not every layout's JSON or every property.
             return dbContext.Games
-                .Include(x => x.Layouts)
-                .Include(x => x.Properties)
+                .Include(x => x.Properties.Where(p => p.Name == "disallowPlayerLayouts"))
                 .FirstOrDefault(x => x.Id == request.GameID);
         }
 
@@ -52,7 +52,7 @@ namespace DndOnePlaceManager.Application.Commands.Layouts.AddLayout
             // (GenericAddHandler saves once, so this persists in the same transaction).
             if (request.Dto.Default == true)
             {
-                foreach (var other in game.Layouts.Where(x => x.Default))
+                foreach (var other in dbContext.Layouts.Where(x => x.GameModelId == game.Id && x.Default).ToList())
                     other.Default = false;
             }
 

@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Soundboard.GetSoundVolume;
 using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -18,6 +19,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "PlaySound";
         public string Category => "Audio";
         public string Description => "Plays a one-shot soundboard sound (an audio material) for a player or for everyone in the game.";
+        public string? Summary => "Play sound {ResourceId}[ for {Player}]";
         public Type DataType => typeof(PlaySoundStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -30,6 +32,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             // Key the id as "resourceId" (never "id"/"parentId") — HandlePostCommand
             // permission-filters the broadcast on those keys, and a Resource may carry
             // per-entity Read rows; this event must reach everyone connected.
+            // The GM's volume for this file (no soundboard here).
+            var volume = await mediator.Send(new GetSoundVolumeCommand { GameId = gameLobby.GameId, ResourceId = resourceId });
+
             var command = new WebSocketCommand
             {
                 Command = WebSocketCommandNames.SoundPlay,
@@ -39,6 +44,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 {
                     resourceId,
                     playedBy = gameLobby.SystemPlayer?.Id,
+                    volume,
                 }),
             };
 
