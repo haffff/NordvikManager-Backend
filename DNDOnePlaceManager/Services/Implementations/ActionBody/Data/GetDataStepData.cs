@@ -10,20 +10,20 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("What to get: Map, Card, Layout, Action, Element or Property.")]
         public string? Type { get; set; }
 
-        [Description("Name of the entity to retrieve. Used when looking up by name.")]
+        [Description("Find entities with exactly this name. Used only when Id and PropertyName are empty.")]
         public string? Name { get; set; }
 
-        [Description("Name of a specific property to extract from the retrieved entity.")]
+        [Description("Find the entities of this Type that have a property with this name (e.g. 'hp'). Used when Id is empty; Name is then ignored.")]
         public string? PropertyName { get; set; }
 
         [VariableOutput]
-        [Description("Name of the variable where the retrieved data will be stored.")]
+        [Description("Name of the variable for the result: a list of matching entities, or one entity when Single Element is on.")]
         public string? Output { get; set; }
 
-        [Description("ID of the entity to retrieve. Used when looking up by ID instead of Name.")]
+        [Description("GUID of the entity to get (or a %variable% holding one). Takes priority over PropertyName and Name.")]
         public string? Id { get; set; }
 
-        [Description("If true, retrieves a single element instead of a collection.")]
+        [Description("If true, stores only the first match (or nothing) instead of a list.")]
         public bool SingleElement { get; set; }
     }
 }

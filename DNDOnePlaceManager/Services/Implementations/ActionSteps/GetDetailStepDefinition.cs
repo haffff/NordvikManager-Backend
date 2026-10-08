@@ -15,7 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Get Detail";
         public string Value => "GetDetail";
         public string Category => "Data";
-        public string Description => "Get a detail from a DTO";
+        public string Description => "Reads one field of an object held in a variable (e.g. a card's Name from Get Data, or a map element's 'left') into another variable.";
         public string? Summary => "Read {DetailName} of {Input}[ → {Output}]";
         public Type DataType => typeof(GetDetailStepData);
 

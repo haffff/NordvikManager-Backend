@@ -16,7 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Query Properties";
         public string Value => "QueryProperties";
-        public string Description => "Query properties based on names and parentIds or ids";
+        public string Description => "Gets properties (Id, Name, Value, ParentID) filtered by owner entities, property names and/or property ids, and stores the list in a variable. For a single value, Get Property Value is simpler.";
         public string Category => "Properties";
         public string? Summary => "Query[ {PropertyNames}][ of {ParentIds}][ ids {Ids}][ → {Output}]";
         public Type DataType => typeof(QueryPropertiesStepData);

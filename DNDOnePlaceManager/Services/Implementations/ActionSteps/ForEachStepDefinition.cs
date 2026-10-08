@@ -14,7 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "For Each";
         public string Value => "ForEach";
         public string Category => "Control Flow";
-        public string Description => "Executes action for each item in collection";
+        public string Description => "Runs another action once for each item of a list variable (e.g. the output of Get Data). Inside it the current item is the variable named in Item Name. Each run gets a copy of the variables.";
         public string? Summary => "For each {ItemName} in {Collection}: run {Action}";
         public Type DataType => typeof(ForEachStepData);
 
