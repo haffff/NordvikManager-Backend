@@ -30,7 +30,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (string.IsNullOrWhiteSpace(raw) && !string.IsNullOrWhiteSpace(stepData.DefaultValue))
                 raw = stepData.DefaultValue.Prepare(variables);
 
-            var targetType = ResolveType(stepData.Type);
+            var targetType = ActionValueTypes.Resolve(stepData.Type);
 
             object? varValue;
             try
@@ -45,15 +45,5 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             variables[stepData.Name] = varValue;
             return Task.CompletedTask;
         }
-
-        private static Type ResolveType(string? typeName) => typeName?.Trim().ToLowerInvariant() switch
-        {
-            "int" or "int32"    => typeof(int),
-            "long" or "int64"   => typeof(long),
-            "float" or "single" => typeof(float),
-            "double"            => typeof(double),
-            "bool" or "boolean" => typeof(bool),
-            _                   => typeof(string),
-        };
     }
 }

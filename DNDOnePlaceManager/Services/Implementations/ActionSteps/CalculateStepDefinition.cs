@@ -18,7 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Calculate";
         public string Value => "Calculate";
         public string Category => "Math";
-        public string Description => "Performs calculation provided in Expression argument";
+        public string Description => "Evaluates a math expression (+ - * / %, parentheses, comparisons) and stores the result in a variable. %variables% are filled in first, e.g. '%hp% - %damage%'. For anything more complex use Run Script.";
 
         public string? Summary => "Calculate {Expression}[ → {OutputName}]";
         public Type DataType => typeof(CalculateStepData); public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

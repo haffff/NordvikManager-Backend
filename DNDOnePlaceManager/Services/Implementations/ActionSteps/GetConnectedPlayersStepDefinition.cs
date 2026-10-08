@@ -12,7 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Get Connected Players";
         public string Value => "GetConnectedPlayers";
         public string Category => "Data";
-        public string Description => "Gets all connected players and sets variable with name provided as argument";
+        public string Description => "Stores the list of players connected right now (each with Id and Name) in a variable, e.g. to loop over them with For Each.";
         public string? Summary => "Connected players[ → {Value}]";
         public Type DataType => typeof(GetConnectedPlayersStepData);
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)

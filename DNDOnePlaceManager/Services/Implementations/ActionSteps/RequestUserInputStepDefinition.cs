@@ -15,7 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Request User Input";
         public string Value => "RequestUserInput";
-        public string Description => "Request user input";
+        public string Description => "Asks one connected player for text input and waits for the answer (up to Timeout, 1 minute by default), then stores it in Output. Does nothing if the player isn't connected; on timeout Output stays unset.";
         public string Category => "Control Flow";
         public string? Summary => "Ask[ {UserName}][ {UserID}]: {Message}[ → {Output}]";
         public Type DataType => typeof(RequestUserInputStepData);

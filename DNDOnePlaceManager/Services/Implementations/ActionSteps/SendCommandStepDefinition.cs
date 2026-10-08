@@ -10,7 +10,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Send Command";
         public string Value => "SendCommand";
-        public string Description => "Sends command to game lobby";
+        public string Description => "Advanced: sends a raw game command to the server as if the system sent it (the same commands the client uses). Prefer the dedicated steps where one exists.";
         public string Category => "WebSockets";
         public string? Summary => "Send {Command}";
         public System.Type DataType => typeof(WebSocketCommand);

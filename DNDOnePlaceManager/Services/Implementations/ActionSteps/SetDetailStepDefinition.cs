@@ -15,7 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Set Detail";
         public string Value => "SetDetail";
-        public string Description => "Set a detail on an object";
+        public string Description => "Changes one field of an object held in a variable (e.g. a map element's 'left'). Only the variable changes; use Set Property, Move Element etc. to change the game.";
         public string Category => "Data";
         public string? Summary => "Set {DetailName} of {Input} = {Value}";
         public Type DataType => typeof(SetDetailStepData);
@@ -33,7 +33,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 throw new ActionProcessException($"SetDetail: variable '{stepData.Input}' not found.");
 
             var name = stepData.DetailName;
-            Type type = Type.GetType(stepData.Type) ?? typeof(string);
+            Type type = ActionValueTypes.Resolve(stepData.Type);
             var varValue = step.Data["Value"].ToObject(type);
 
             if (stepData.isElement)

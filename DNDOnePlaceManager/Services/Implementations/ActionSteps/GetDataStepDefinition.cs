@@ -15,7 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Get Data";
         public string Value => "GetData";
         public string Category => "Data";
-        public string Description => "Gets data from database and sets variable with name provided as output argument";
+        public string Description => "Finds game entities of one type (maps, cards, layouts, actions, map elements or properties) by id, by name, or by having a given property, and stores the list (or the first match) in a variable.";
         public string? Summary => "Get {Type}[ {Name}][ {Id}][ → {Output}]";
         public Type DataType => typeof(GetDataStepData);
 

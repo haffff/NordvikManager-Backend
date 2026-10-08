@@ -18,7 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Add Toolbar Button";
         public string Value => "AddToolbarButton";
         public string Category => "Client";
-        public string Description => "Adds a button to the client toolbar. Allows addons to create shortcuts or custom actions in the game toolbar.";
+        public string Description => "Adds a button to the main toolbar that runs an action, or, with a Menu Id, a dropdown menu that Add Menu Item steps can fill.";
         public string? Summary => "Toolbar button {UiName}[ → {Action}]";
         public Type DataType => typeof(AddToolbarButtonStepData);
 

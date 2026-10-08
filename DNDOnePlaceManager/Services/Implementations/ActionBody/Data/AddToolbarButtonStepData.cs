@@ -12,20 +12,20 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Display label for the button.")]
         public string UiName { get; set; }
 
-        [Description("Icon identifier for the button.")]
+        [Description("Not shown yet: toolbar buttons are text only.")]
         public string Icon { get; set; }
 
         [UIType("action")]
-        [Description("Action name to execute when button is clicked.")]
+        [Description("Action to run when the button is clicked, as 'prefix/name'. It receives ActionArgs as variables. Not used when MenuId is set (the button then opens a menu).")]
         public string Action { get; set; }
 
-        [Description("Toolbar section/group to place the button in.")]
+        [Description("Not used yet: buttons are always added at the end of the main toolbar.")]
         public string Location { get; set; }
 
-        [Description("If true, sends the button only to the triggering player.")]
+        [Description("If true, only the player who triggered this action gets the button; otherwise every connected player does.")]
         public bool OnlyOwner { get; set; }
 
-        [Description("If non-empty, this button becomes a dropdown menu with this viewId. Addon actions can then add items to it via AddMenuItemStep with Location set to this value.")]
+        [Description("If set, the button opens a dropdown menu with this id instead of running an action. Fill it with Add Menu Item steps that use this id as their Location, e.g. 'myaddon_menu'.")]
         public string MenuId { get; set; }
 
         [Description("Display name for the dropdown menu button (used when MenuId is set).")]

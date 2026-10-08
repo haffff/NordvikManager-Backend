@@ -5,7 +5,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class GetPropertyValueStepData
     {
-        [Description("Entity id (or {varName}-style variable reference) whose property to read.")]
+        [Description("GUID of the entity whose property to read, e.g. %v:Data.id% or %playerId%.")]
         public string ParentId { get; set; }
 
         [Description("Name of the property to read.")]

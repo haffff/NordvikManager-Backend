@@ -12,7 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "Execute Action";
         public string Value => "ExecuteAction";
         public string Category => "Control Flow";
-        public string Description => "Executes action provided as argument";
+        public string Description => "Runs another action, then continues with the next step. The other action gets a copy of the current variables; variables it sets don't come back.";
         public string? Summary => "Run {Value}";
         public Type DataType => typeof(ExecuteActionStepData);
 

@@ -166,6 +166,7 @@
         public const string CmdShowView           = "view_show";
         public const string CmdAddMenuItem        = "menu_item_add";
         public const string CmdAddToolbarButton   = "toolbar_button_add";
+        public const string CmdAddMapTool         = "map_tool_add";
         public const string CmdFireClientMediator = "client_mediator_fire";
         public const string CmdRunClientCommand   = "run_client_command";
 

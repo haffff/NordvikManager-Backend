@@ -18,7 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Name => "If";
         public string Value => "If";
         public string Category => "Control Flow";
-        public string Description => "Executes action based on condition";
+        public string Description => "Evaluates a true/false condition and runs one action when it is true, another when it is false. The chosen action gets a copy of the variables.";
         public string? Summary => "If {Condition}[ → {OutputName}]";
         public Type DataType => typeof(IfStepData);
 

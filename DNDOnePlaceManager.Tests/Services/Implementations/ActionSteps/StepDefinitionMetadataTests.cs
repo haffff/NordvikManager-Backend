@@ -43,6 +43,29 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(problems);
         }
 
+        // The editor shows these as help text; a field without one leaves addon authors guessing
+        // (e.g. Add Menu Item's Location gave no hint which menu ids exist).
+        [Fact]
+        public void EveryStepAndArgument_HasADescription()
+        {
+            var problems = AllSteps()
+                // Send Command passes a raw WebSocketCommand through — an advanced escape hatch,
+                // its fields are the wire format rather than step arguments.
+                .Where(s => s.Value != "SendCommand")
+                .Select(StepDefinitionMetadata.Build)
+                .SelectMany(d => (string.IsNullOrWhiteSpace(d.Description) ? new[] { $"{d.Value}: step description" } : Array.Empty<string>())
+                    .Concat(d.Arguments.Where(a => string.IsNullOrWhiteSpace(a.Description)).Select(a => $"{d.Value}.{a.Name}")))
+                .ToList();
+
+            Assert.Empty(problems);
+        }
+
+        [Fact]
+        public void AddMenuItem_Location_IsAMenuLocationPicker()
+        {
+            Assert.Equal("menulocation", Arg("AddMenuItem", "Location").Arg.Type);
+        }
+
         [Fact]
         public void EveryStep_HasASummary()
         {
