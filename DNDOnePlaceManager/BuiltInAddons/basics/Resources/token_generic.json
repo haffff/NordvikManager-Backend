@@ -29,9 +29,17 @@
   },
   "editableProps": [
     {
-      "name": "mask_bars_enabled",
-      "dtoProperty": "mask_bars_enabled",
-      "label": "Show bars",
+      "name": "mask_bar1_enabled",
+      "dtoProperty": "mask_bar1_enabled",
+      "label": "Show bar 1",
+      "source": "element",
+      "type": "boolean",
+      "default": true
+    },
+    {
+      "name": "mask_bar2_enabled",
+      "dtoProperty": "mask_bar2_enabled",
+      "label": "Show bar 2",
       "source": "element",
       "type": "boolean",
       "default": true
@@ -146,8 +154,8 @@
         "anchor": "bottom",
         "offsetX": 0,
         "offsetY": 4,
-        "maskGroup": "bars",
-        "label": "Bars"
+        "maskGroup": "bar1",
+        "label": "Bar 1"
       }
     },
     {
@@ -173,8 +181,8 @@
         "anchor": "bottom",
         "offsetX": 0,
         "offsetY": 4,
-        "maskGroup": "bars",
-        "label": "Bars",
+        "maskGroup": "bar1",
+        "label": "Bar 1",
         "propDeps": [
           {
             "expression": "FromTo(%bar1_value%, 0, %bar1_max%, 0, 100)",
@@ -214,8 +222,8 @@
         "anchor": "bottom",
         "offsetX": 0,
         "offsetY": 13,
-        "maskGroup": "bars",
-        "label": "Bars"
+        "maskGroup": "bar2",
+        "label": "Bar 2"
       }
     },
     {
@@ -241,8 +249,8 @@
         "anchor": "bottom",
         "offsetX": 0,
         "offsetY": 13,
-        "maskGroup": "bars",
-        "label": "Bars",
+        "maskGroup": "bar2",
+        "label": "Bar 2",
         "propDeps": [
           {
             "expression": "FromTo(%bar2_value%, 0, %bar2_max%, 0, 100)",
