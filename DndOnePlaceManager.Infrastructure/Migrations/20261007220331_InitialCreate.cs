@@ -353,6 +353,26 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "TurnOrders",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    MapId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Round = table.Column<int>(type: "INTEGER", nullable: false),
+                    CurrentEntryId = table.Column<Guid>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TurnOrders", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TurnOrders_Maps_MapId",
+                        column: x => x.MapId,
+                        principalTable: "Maps",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Resources",
                 columns: table => new
                 {
@@ -454,6 +474,29 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                         name: "FK_Properties_Maps_MapId",
                         column: x => x.MapId,
                         principalTable: "Maps",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TurnOrderEntries",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    TurnOrderId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    Position = table.Column<int>(type: "INTEGER", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false),
+                    Initiative = table.Column<double>(type: "REAL", nullable: true),
+                    ElementId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    Hidden = table.Column<bool>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TurnOrderEntries", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TurnOrderEntries_TurnOrders_TurnOrderId",
+                        column: x => x.TurnOrderId,
+                        principalTable: "TurnOrders",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -634,6 +677,17 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                 name: "IX_TreeEntries_ParentId",
                 table: "TreeEntries",
                 column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TurnOrderEntries_TurnOrderId",
+                table: "TurnOrderEntries",
+                column: "TurnOrderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TurnOrders_MapId",
+                table: "TurnOrders",
+                column: "MapId",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -670,6 +724,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                 name: "TreeEntries");
 
             migrationBuilder.DropTable(
+                name: "TurnOrderEntries");
+
+            migrationBuilder.DropTable(
                 name: "Playlists");
 
             migrationBuilder.DropTable(
@@ -680,6 +737,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "Elements");
+
+            migrationBuilder.DropTable(
+                name: "TurnOrders");
 
             migrationBuilder.DropTable(
                 name: "Players");
