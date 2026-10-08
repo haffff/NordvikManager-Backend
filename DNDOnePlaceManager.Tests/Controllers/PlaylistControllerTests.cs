@@ -14,6 +14,9 @@ using DNDOnePlaceManager.Controllers.Requests;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using DNDOnePlaceManager.Services;
 using DNDOnePlaceManager.Services.Implementations;
+using DNDOnePlaceManager.WebRTC;
+using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.Services.Interfaces;
 using MediatR;
 using Microsoft.AspNetCore.Http;
@@ -411,6 +414,47 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var ok = Assert.IsType<OkObjectResult>(result);
             var data = Assert.IsAssignableFrom<System.Collections.IEnumerable>(ok.Value).Cast<object>().ToList();
             Assert.Single(data);
+        }
+
+        // =========================================================================
+        // The GM's playlist volume
+        // =========================================================================
+
+        [Fact]
+        public async Task UpdatePlaylist_PassesTheVolume_AndTellsEveryoneWhileItPlays()
+        {
+            var connection = new Mock<IPlayerConnection>();
+            var sent = new List<WebSocketCommand>();
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => { if (m is WebSocketCommand c) sent.Add(c); }).ReturnsAsync(true);
+            var lobby = MakeLobby(_mediator);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var playlistId = Guid.NewGuid();
+            lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, Volume = 1 };
+            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+
+            await controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = playlistId, Name = "Tavern", Description = "", Volume = 0.4 });
+
+            _mediator.Verify(m => m.Send(It.Is<UpdatePlaylistCommand>(c => c.Volume == 0.4), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.Equal(0.4, lobby.ActivePlaylistPlaybacks[playlistId].Volume);
+            var volume = Assert.Single(sent, c => c.Command == WebSocketCommandNames.PlaylistVolume);
+            Assert.Equal((playlistId, 0.4), (volume.Data["playlistId"]!.ToObject<Guid>(), volume.Data["volume"]!.ToObject<double>()));
+        }
+
+        [Fact]
+        public async Task UpdatePlaylist_NotPlaying_SendsNoVolumeChange()
+        {
+            var connection = new Mock<IPlayerConnection>();
+            var sent = new List<WebSocketCommand>();
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => { if (m is WebSocketCommand c) sent.Add(c); }).ReturnsAsync(true);
+            var lobby = MakeLobby(_mediator);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+
+            await controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = Guid.NewGuid(), Name = "Tavern", Description = "", Volume = 0.4 });
+
+            Assert.DoesNotContain(sent, c => c.Command == WebSocketCommandNames.PlaylistVolume);
         }
     }
 }

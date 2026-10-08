@@ -13,5 +13,8 @@ namespace DNDOnePlaceManager.Controllers.Requests
         public bool Repeat { get; set; } = true;
         public PlaylistKind Kind { get; set; } = PlaylistKind.Music;
         public List<Guid> ResourceIds { get; set; } = new();
+
+        /// <summary>0..1; full when not given.</summary>
+        public double? Volume { get; set; }
     }
 }

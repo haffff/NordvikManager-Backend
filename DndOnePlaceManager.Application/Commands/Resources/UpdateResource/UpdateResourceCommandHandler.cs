@@ -54,6 +54,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResource
                 resourceModel.Key = newKey;
             }
 
+            if (request.Resource.Volume.HasValue)
+                resourceModel.Volume = VolumeRules.Clamp(request.Resource.Volume.Value);
+
             dbContext.SaveChanges();
 
             return CommandResponse.Ok;

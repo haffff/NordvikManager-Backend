@@ -78,6 +78,7 @@
         public const string PlaylistPause = "playlist_pause";
         public const string PlaylistStop = "playlist_stop";
         public const string PlaylistTrackChange = "playlist_track_change";
+        public const string PlaylistVolume = "playlist_volume";
 
         //Settings
         public const string SettingsGame = "settings_game";

@@ -19,6 +19,7 @@ namespace DndOnePlaceManager.Application.Extension
                 MimeType = r.MimeType,
                 Storage = r.Storage,
                 Path = r.Path,
+                Volume = r.Volume,
             });
     }
 }

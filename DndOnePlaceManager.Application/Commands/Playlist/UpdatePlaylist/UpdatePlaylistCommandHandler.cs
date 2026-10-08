@@ -57,6 +57,8 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.UpdatePlaylist
             var kindChanged = playlist.Kind != request.Kind;
             playlist.Kind = request.Kind;
             playlist.Resources = resources;
+            if (request.Volume.HasValue)
+                playlist.Volume = VolumeRules.Clamp(request.Volume.Value);
 
             var result = dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.NoChange;
 

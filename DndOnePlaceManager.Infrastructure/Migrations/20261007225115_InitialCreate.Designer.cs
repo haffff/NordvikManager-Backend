@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DndOnePlaceManager.Infrastructure.Migrations
 {
     [DbContext(typeof(DndOneContext))]
-    [Migration("20261007220331_InitialCreate")]
+    [Migration("20261007225115_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -568,6 +568,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<bool>("Shuffle")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("Volume")
+                        .HasColumnType("REAL");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GameId");
@@ -617,6 +620,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
 
                     b.Property<string>("ThumbnailSourceVersion")
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("Volume")
+                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 

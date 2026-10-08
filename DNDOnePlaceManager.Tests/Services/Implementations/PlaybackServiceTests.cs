@@ -174,5 +174,41 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
             Assert.Equal(CommandResponse.NoPermission, response);
             Assert.True(_lobby.ActivePlaylistPlaybacks.ContainsKey(playlistId));
         }
+
+        // ── The GM's volumes ────────────────────────────────────────────────────
+
+        private sealed class RecordingConnection : DNDOnePlaceManager.WebRTC.IPlayerConnection
+        {
+            public List<DNDOnePlaceManager.WebSockets.WebSocketCommand> Sent { get; } = new();
+            public Task<bool> SendMessageToPlayer(object message)
+            {
+                if (message is DNDOnePlaceManager.WebSockets.WebSocketCommand c) Sent.Add(c);
+                return Task.FromResult(true);
+            }
+        }
+
+        [Fact]
+        public async Task PlayPlaylistAsync_KeepsTheVolumes_AndSendsThemToEveryone()
+        {
+            var playlistId = Guid.NewGuid();
+            var loudTrack = Guid.NewGuid();
+            var everyone = new RecordingConnection();
+            _lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Someone" }] = new List<DNDOnePlaceManager.WebRTC.IPlayerConnection> { everyone };
+            _mediator.Setup(m => m.Send(It.IsAny<PlayPlaylistCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new PlayPlaylistResult
+                     {
+                         Response = CommandResponse.Ok, TrackOrder = new List<Guid> { loudTrack }, Volume = 0.8,
+                         TrackVolumes = new Dictionary<Guid, double> { [loudTrack] = 0.5 },
+                     });
+
+            await _service.PlayPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
+
+            var state = _lobby.ActivePlaylistPlaybacks[playlistId];
+            Assert.Equal(0.8, state.Volume);
+            Assert.Equal(0.5, state.TrackVolumes[loudTrack]);
+            var sent = Assert.Single(everyone.Sent);
+            Assert.Equal(0.8, sent.Data["volume"]!.ToObject<double>());
+            Assert.Equal(0.5, sent.Data["trackVolumes"]![loudTrack.ToString()]!.ToObject<double>());
+        }
     }
 }

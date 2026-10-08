@@ -36,7 +36,7 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist
             // Only the settings and track ids: loading the tracks would read their file bytes.
             var playlist = await dbContext.Playlists
                 .Where(p => p.Id == request.PlaylistId && p.GameId == request.GameId)
-                .Select(p => new { p.Mode, p.Shuffle, p.Repeat, TrackIds = p.Resources.Select(r => r.Id).ToList() })
+                .Select(p => new { p.Mode, p.Shuffle, p.Repeat, p.Volume, TrackIds = p.Resources.Select(r => r.Id).ToList(), TrackVolumes = p.Resources.Where(r => r.Volume != null).Select(r => new { r.Id, r.Volume }).ToList() })
                 .FirstOrDefaultAsync(cancellationToken);
 
             Guard.NotFound(playlist, "Playlist", request.PlaylistId);
@@ -57,6 +57,8 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.PlayPlaylist
                 Shuffle = playlist.Shuffle,
                 Repeat = playlist.Repeat,
                 TrackOrder = order,
+                Volume = playlist.Volume,
+                TrackVolumes = playlist.TrackVolumes.ToDictionary(t => t.Id, t => t.Volume!.Value),
             };
         }
     }
