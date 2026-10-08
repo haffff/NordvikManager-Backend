@@ -17,7 +17,7 @@ namespace DNDOnePlaceManager.WebRTC
     /// Relays WebRTC signaling events (offer, ICE candidates) between browser peers and the GM Backend.
     ///
     /// Central Server protocol:
-    ///   authenticate → { token, sessionId, role: "gm" }
+    ///   authenticate → { token, sessionId, role: "gm", protocol }
     ///   authenticated ← { peerId }
     ///   peer-joined   ← { peerId, userId, username, role }
     ///   peer-left     ← { peerId, username }
@@ -45,6 +45,18 @@ namespace DNDOnePlaceManager.WebRTC
             _centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
             _logger = logger;
         }
+
+        /// <summary>
+        /// Payload of the GM's "authenticate" event. <c>protocol</c> lets the Central Server
+        /// reject outdated backends and tell players which player build to use.
+        /// </summary>
+        public static object BuildGmAuthenticatePayload(string centralToken, string centralSessionId) => new
+        {
+            token = centralToken,
+            sessionId = centralSessionId,
+            role = "gm",
+            protocol = ProtocolVersion.Current
+        };
 
         public bool IsConnected(string gameId)
             => _clients.TryGetValue(gameId, out var client) && client.Connected && _authenticated.ContainsKey(gameId);
@@ -84,12 +96,7 @@ namespace DNDOnePlaceManager.WebRTC
                 _logger.LogInformation("Signaling authenticating as GM for game {GameId} session {SessionId}", gameId, centralSessionId);
                 await client.EmitAsync("authenticate", new object[]
                 {
-                    new
-                    {
-                        token = centralToken,
-                        sessionId = centralSessionId,
-                        role = "gm"
-                    }
+                    BuildGmAuthenticatePayload(centralToken, centralSessionId)
                 });
             };
 
@@ -125,7 +132,8 @@ namespace DNDOnePlaceManager.WebRTC
                     _logger.LogError("Signaling auth-error for game {GameId}", gameId);
                 }
                 _authenticated.TryRemove(gameId, out _);
-                authTcs.TrySetException(new Exception($"Signaling auth-error for game {gameId}: {msg}"));
+                // Central's message is meant for the GM (e.g. "server is outdated") — keep it as-is.
+                authTcs.TrySetException(new SignalingAuthException(msg));
             });
 
             // peer-joined: { peerId, userId, username, role }
@@ -227,6 +235,14 @@ namespace DNDOnePlaceManager.WebRTC
             try
             {
                 await authTcs.Task.WaitAsync(cts.Token);
+            }
+            catch (SignalingAuthException)
+            {
+                // Central refused us (e.g. outdated protocol) — retrying won't help, so drop this
+                // client instead of letting it reconnect and re-authenticate in a loop.
+                _clients.TryRemove(new KeyValuePair<string, SioClient>(gameId, client));
+                try { await client.DisconnectAsync(); } catch { /* best-effort */ }
+                throw;
             }
             catch (OperationCanceledException)
             {

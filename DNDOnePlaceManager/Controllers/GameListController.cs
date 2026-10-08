@@ -285,7 +285,15 @@ namespace DNDOnePlaceManager.Controllers
                 CentralSessionId = sessionId
             });
 
-            await _webRtcSessionService.StartSessionAsync(gameId, sessionId, centralToken);
+            try
+            {
+                await _webRtcSessionService.StartSessionAsync(gameId, sessionId, centralToken);
+            }
+            catch (SignalingAuthException ex)
+            {
+                // Central Server refused this backend (e.g. outdated protocol version).
+                return Conflict(new { error = ex.Message });
+            }
 
             return Ok(new { centralSessionId = sessionId });
         }

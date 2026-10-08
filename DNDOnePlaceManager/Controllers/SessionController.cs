@@ -53,6 +53,20 @@ namespace DNDOnePlaceManager.Controllers
         [HttpPost("{gameId}/start")]
         public async Task<IActionResult> StartSession(Guid gameId)
         {
+            try
+            {
+                return await StartSessionCore(gameId);
+            }
+            catch (SignalingAuthException ex)
+            {
+                // Central Server refused this backend (e.g. outdated protocol version).
+                // The GM UI shows "error" as-is.
+                return Conflict(new { error = ex.Message });
+            }
+        }
+
+        private async Task<IActionResult> StartSessionCore(Guid gameId)
+        {
             var user = HttpContext.Items["User"] as User;
 
             var playerResponse = await _mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });

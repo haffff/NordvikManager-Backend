@@ -124,6 +124,10 @@ Key appsettings entries:
 - `InitialAdminPassword` — seeded admin password on first run
 - `AddonsConfiguration:MainRepository` — addon registry URL
 
+## Protocol version
+
+`DNDOnePlaceManager/WebRTC/ProtocolVersion.cs` (`ProtocolVersion.Current`) is the player↔backend protocol number, sent to the Central Server in the GM's signaling `authenticate`. Central rejects backends below its `MIN_GM_PROTOCOL` (surfaced as `SignalingAuthException` → 409 `{ error }` from session start), and players are switched to the frozen player build for this number. Bump it only for changes an older player client can't handle, together with the frontend's `src/protocol.json` (CI checks they match).
+
 ## Testing Conventions
 
 - Test method naming: `MethodName_ExpectedResult_Condition`
