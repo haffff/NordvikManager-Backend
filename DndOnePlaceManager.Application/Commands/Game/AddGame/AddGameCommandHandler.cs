@@ -7,6 +7,7 @@ using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
@@ -22,12 +23,14 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         string? mainRepositoryUrl;
         ILogger<AddGameCommandHandler> logger;
         IServiceScopeFactory serviceScopeFactory;
+        IBuiltInAddons builtInAddons;
 
-        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory) : base(battleMapContext, mapper)
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory, IBuiltInAddons builtInAddons) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
             this.logger = logger;
             this.serviceScopeFactory = serviceScopeFactory;
+            this.builtInAddons = builtInAddons;
             mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
         }
 
@@ -198,9 +201,16 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
 
             await mediator.Send(addLayoutCommand);
 
-            if (request.AddonsSelected != null && mainRepositoryUrl != null)
+            // Picked addons: a built-in one (shipped with the server, e.g. Basics) is
+            // installed from that copy; the rest come from the registry, if one is set.
+            var selected = request.AddonsSelected ?? Array.Empty<string>();
+            var builtIns = builtInAddons.GetAll().Where(b => selected.Contains(b.Key)).ToList();
+            var featured = mainRepositoryUrl != null
+                ? selected.Where(key => builtIns.All(b => b.Key != key)).ToArray()
+                : Array.Empty<string>();
+
+            if (builtIns.Count > 0 || featured.Length > 0)
             {
-                var addonsToInstall = request.AddonsSelected;
                 var gameId = game.Id;
                 var installingPlayer = playerDTO;
 
@@ -217,7 +227,27 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                     using var scope = serviceScopeFactory.CreateScope();
                     var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-                    foreach (var addon in addonsToInstall)
+                    // First, so a featured addon can rely on them.
+                    foreach (var builtIn in builtIns)
+                    {
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonFile = builtIn.Data,
+                                AddonFileName = builtIn.FileName,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install built-in addon '{Addon}' for game {GameId}", builtIn.FileName, gameId);
+                        }
+                    }
+
+                    foreach (var addon in featured)
                     {
                         try
                         {

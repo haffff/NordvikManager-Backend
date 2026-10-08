@@ -162,10 +162,54 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(_mediator, realConfig, _lobbyService, RegularUser());
 
             // Act
-            var result = await controller.GetFeaturedAddons();
+            var result = await controller.GetFeaturedAddons(NoBuiltIns());
 
             // Assert
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        private static DndOnePlaceManager.Application.Services.IBuiltInAddons NoBuiltIns(params DndOnePlaceManager.Application.Services.BuiltInAddon[] addons)
+        {
+            var mock = new Mock<DndOnePlaceManager.Application.Services.IBuiltInAddons>();
+            mock.Setup(b => b.GetAll()).Returns(addons);
+            return mock.Object;
+        }
+
+        private static IConfiguration FeaturedConfig(params string[] keys) =>
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                .AddInMemoryCollection(keys.Select((k, i) => new KeyValuePair<string, string?>($"AddonsConfiguration:FeaturedAddons:{i}", k)))
+                .Build();
+
+        private static List<DndOnePlaceManager.Application.DataTransferObjects.FeaturedAddonDto> Listed(IActionResult result) =>
+            Assert.IsAssignableFrom<IEnumerable<DndOnePlaceManager.Application.DataTransferObjects.FeaturedAddonDto>>(Assert.IsType<OkObjectResult>(result).Value).ToList();
+
+        [Fact]
+        public async Task GetFeaturedAddons_ListsBuiltInsFirst_FlaggedBuiltIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e", Name = "D&D" }, new AddonDto { Key = "basics", Name = "Registry copy" } });
+            var controller = CreateController(_mediator, FeaturedConfig("dnd5e", "basics"), _lobbyService, RegularUser());
+            var builtIns = NoBuiltIns(new DndOnePlaceManager.Application.Services.BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", Array.Empty<byte>()));
+
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns));
+
+            Assert.Equal(new[] { "basics", "dnd5e" }, listed.Select(a => a.Key));
+            Assert.True(listed[0].BuiltIn);
+            Assert.Equal("Basics", listed[0].Name); // the shipped one, not the registry's
+            Assert.False(listed[1].BuiltIn);
+        }
+
+        [Fact]
+        public async Task GetFeaturedAddons_RegistryUnreachable_StillListsBuiltIns()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new HttpRequestException("offline"));
+            var controller = CreateController(_mediator, FeaturedConfig("dnd5e"), _lobbyService, RegularUser());
+            var builtIns = NoBuiltIns(new DndOnePlaceManager.Application.Services.BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", Array.Empty<byte>()));
+
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns));
+
+            Assert.Equal(new[] { "basics" }, listed.Select(a => a.Key));
         }
 
         // =========================================================================

@@ -20,6 +20,7 @@ namespace DndOnePlaceManager.Application
             services.AddSingleton<IDiceEngine, DiceEngine>();
             services.AddScoped<IChatService, ChatService>();
             services.AddSingleton<IRollSessionStore>(_ => new RollSessionStore());
+            services.AddSingleton<IBuiltInAddons>(_ => new BuiltInAddons());
 
             services.AddMediatR(Assembly.GetExecutingAssembly());
         }

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DndOnePlaceManager.Infrastructure.Migrations
 {
     [DbContext(typeof(DndOneContext))]
-    [Migration("20260921141929_InitialCreate")]
+    [Migration("20261007220331_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -434,6 +434,61 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.ToTable("ElementsDetail");
                 });
 
+            modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderEntryModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ElementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Hidden")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("Initiative")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TurnOrderId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TurnOrderId");
+
+                    b.ToTable("TurnOrderEntries");
+                });
+
+            modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderModel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CurrentEntryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("MapId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MapId")
+                        .IsUnique();
+
+                    b.ToTable("TurnOrders");
+                });
+
             modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.Chat.MessageModel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -801,6 +856,28 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Navigation("Element");
                 });
 
+            modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderEntryModel", b =>
+                {
+                    b.HasOne("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderModel", "TurnOrder")
+                        .WithMany("Entries")
+                        .HasForeignKey("TurnOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TurnOrder");
+                });
+
+            modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderModel", b =>
+                {
+                    b.HasOne("DNDOnePlaceManager.Domain.Entities.BattleMap.MapModel", "Map")
+                        .WithMany()
+                        .HasForeignKey("MapId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Map");
+                });
+
             modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.LayoutModel", b =>
                 {
                     b.HasOne("DNDOnePlaceManager.Domain.Entities.BattleMap.GameModel", "Game")
@@ -944,6 +1021,11 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
             modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.CardModel", b =>
                 {
                     b.Navigation("Properties");
+                });
+
+            modelBuilder.Entity("DndOnePlaceManager.Domain.Entities.BattleMap.TurnOrderModel", b =>
+                {
+                    b.Navigation("Entries");
                 });
 #pragma warning restore 612, 618
         }

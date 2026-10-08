@@ -166,6 +166,21 @@ namespace DNDOnePlaceManager.Data.Contexts
             modelBuilder.Entity<PlaylistModel>()
                 .HasMany(p => p.Resources)
                 .WithMany(r => r.Playlists);
+
+            // One turn order per map, gone with the map; entries gone with their order.
+            // Entries point at their token by ElementId only (no FK): removing a token
+            // removes its entry in RemoveElementCommandHandler, which also moves the turn on.
+            modelBuilder.Entity<TurnOrderModel>()
+                .HasOne(t => t.Map)
+                .WithMany()
+                .HasForeignKey(t => t.MapId)
+                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<TurnOrderModel>().HasIndex(t => t.MapId).IsUnique();
+            modelBuilder.Entity<TurnOrderEntryModel>()
+                .HasOne(e => e.TurnOrder)
+                .WithMany(t => t.Entries)
+                .HasForeignKey(e => e.TurnOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
 
         public DbSet<GameModel>? Games { get; set; }
@@ -185,5 +200,7 @@ namespace DNDOnePlaceManager.Data.Contexts
         public DbSet<ElementDetailModel>? ElementsDetail { get; set; }
         public DbSet<BannedUserModel> BannedUsers { get; set; }
         public DbSet<PlaylistModel>? Playlists { get; set; }
+        public DbSet<TurnOrderModel>? TurnOrders { get; set; }
+        public DbSet<TurnOrderEntryModel>? TurnOrderEntries { get; set; }
     }
 }

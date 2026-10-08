@@ -1,0 +1,18 @@
+{
+  "name": "Note",
+  "description": "A rich-text note. Only you and the GM can see it.",
+  "key": "note",
+  "mainResource": "basics_note_index.html",
+  "additionalResources": ["basics_quill.js", "basics_quill.snow.css"],
+  "genericPermission": 1,
+  "properties": [
+    {
+      "name": "note_text",
+      "value": ""
+    },
+    {
+      "name": "app_styles",
+      "value": "true"
+    }
+  ]
+}
