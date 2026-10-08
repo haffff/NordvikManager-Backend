@@ -5,8 +5,14 @@ This is the "GM Local Server" part of the Nordvik Manager VTT application — it
 ## How to run
 ### Backend:
 1. Change `JWTSecret` in `AppSettings.Development.json` (or leave unset — a secret is auto-generated at startup).
-2. If you want to use PostgreSQL instead of the SQLite default, change `UseSqlite` and the `ConnectionStrings` fields.
-3. `dotnet run --project DNDOnePlaceManager` — serves the API on `http://localhost:8213` / `https://localhost:8214` by default.
+2. If you want to use MySQL instead of the SQLite default, set `UseSqlite` to `false` and fill in `ConnectionStrings:DBData`.
+3. `dotnet run --project DNDOnePlaceManager` (.NET 10) — serves the API on `http://localhost:8213` / `https://localhost:8214` by default.
+
+### Database
+SQLite (`DNDOnePlaceManager/data.db`) is created and migrated automatically at startup with EF Core migrations. Until the first public release the schema is kept in a single `InitialCreate` migration that is regenerated when it changes — after pulling a schema change, delete `data.db` (and its `-wal`/`-shm` files) and start again. MySQL has no migrations yet: it creates its tables from the model on first start.
+
+### Built-in addons
+`DNDOnePlaceManager/BuiltInAddons/` holds addons that ship with the server and are offered when a game is created — today **Basics** (a rich-text Note template and a generic, card-less token with two bars and status icons).
 
 To run this alongside Central and both Frontend roles in one command instead, use `pnpm run dev` from the [main repo](https://github.com/haffff/NordvikManager#development-setup).
 
@@ -24,5 +30,7 @@ In-game traffic (REST calls tunneled over WebRTC, plus real-time broadcast comma
 - `SignalingService` holds one Socket.IO client per active session, connected to the Central server, and relays offer/answer/ICE messages to establish the peer-to-peer `RTCPeerConnection`.
 - `WebRTCInProcessDispatcher` replays tunneled REST requests through the real ASP.NET Core pipeline (so ordinary controllers/MediatR handlers serve them — no separate route mapping needed).
 - Real-time broadcast commands are dispatched through `DNDOnePlaceManager/WebSockets/Handlers/` (`IWebSocketHandler` implementations, auto-discovered via reflection). Despite the name, these no longer run over a raw WebSocket — that endpoint has been removed; they're invoked from `GameLobby` for messages arriving over the same WebRTC data channel via `WebRTCPlayerConnection`.
+
+Live playback state (which playlist is playing, its track and volume) lives in memory on the `GameLobby`; playlists, soundboards, their volumes and everything else are stored in the database.
 
 Rest of documentation in progress
