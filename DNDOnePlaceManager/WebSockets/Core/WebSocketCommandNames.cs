@@ -164,6 +164,7 @@
 
         // Client UI (addon sandbox)
         public const string CmdShowView           = "view_show";
+        public const string CmdShowPanel          = "show_panel";
         public const string CmdAddMenuItem        = "menu_item_add";
         public const string CmdAddToolbarButton   = "toolbar_button_add";
         public const string CmdAddMapTool         = "map_tool_add";

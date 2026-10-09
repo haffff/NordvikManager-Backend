@@ -411,6 +411,29 @@ namespace DNDOnePlaceManager.Services.Implementations
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
             }
+            // GM → players: open a panel (e.g. the battle map's "Show" menu). Data: { type, syncId,
+            // targetPlayerId? } — only the target when set, otherwise every other player.
+            if (parsedMsg.Command == WebSocketCommandNames.CmdShowPanel)
+            {
+                if (player.IsOwner != true)
+                {
+                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only the GM can show panels to players.", player), player);
+                    return true;
+                }
+
+                var target = parsedMsg.Data?.Type == JTokenType.Object ? parsedMsg.Data["targetPlayerId"]?.ToString() : null;
+                Guid? targetId = Guid.TryParse(target, out var parsedTarget) ? parsedTarget : null;
+                parsedMsg.Result = WebSocketCommandNames.ResultOk;
+
+                foreach (var item in ConnectedPlayers)
+                {
+                    var isRecipient = targetId != null ? item.Key.Id == targetId : item.Key.Id != player.Id;
+                    if (isRecipient)
+                        item.Value.SendMessageToPlayer(parsedMsg);
+                }
+                return true;
+            }
+
             if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
             {
                 parsedMsg.OnlyToSender = true;
