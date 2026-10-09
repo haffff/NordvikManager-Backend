@@ -87,6 +87,23 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
+        public async Task<IceServersResult?> GetIceServersAsync(string centralToken)
+        {
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.GetAsync($"{_centralServerUrl}/api/ice-servers"));
+                if (!response.IsSuccessStatusCode) return null;
+
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonConvert.DeserializeObject<IceServersResult>(json);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public async Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session)
         {
             var body = JsonConvert.SerializeObject(new
