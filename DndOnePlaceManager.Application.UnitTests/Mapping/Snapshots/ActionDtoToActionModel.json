@@ -1,0 +1,35 @@
+{
+  "emptyCollections": {
+    "Content": "text9",
+    "Description": "text5",
+    "Game": null,
+    "Hook": 1,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsEnabled": true,
+    "Name": "text3",
+    "Path": "text4",
+    "Prefix": "text7"
+  },
+  "filled": {
+    "Content": "text9",
+    "Description": "text5",
+    "Game": null,
+    "Hook": 1,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsEnabled": true,
+    "Name": "text3",
+    "Path": "text4",
+    "Prefix": "text7"
+  },
+  "fresh": {
+    "Content": null,
+    "Description": null,
+    "Game": null,
+    "Hook": 0,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsEnabled": false,
+    "Name": null,
+    "Path": null,
+    "Prefix": null
+  }
+}

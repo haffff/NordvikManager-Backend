@@ -1,0 +1,146 @@
+{
+  "emptyCollections": {
+    "Actions": [],
+    "Author": "text7",
+    "Dependencies": [],
+    "Description": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Installed": null,
+    "IsEnabled": true,
+    "Key": "text4",
+    "License": "text11",
+    "Name": "text3",
+    "Permission": null,
+    "ReleaseUrl": "text9",
+    "RepositoryUrl": "text10",
+    "Resources": [],
+    "Templates": [],
+    "Version": "text6",
+    "Views": [],
+    "Website": "text8"
+  },
+  "filled": {
+    "Actions": [
+      {
+        "Content": "text70",
+        "Description": "text68",
+        "GenericPermission": null,
+        "GmPermission": null,
+        "Hook": 1,
+        "Id": "00000000-0000-0000-0000-000000000065",
+        "IsEnabled": true,
+        "Name": "text66",
+        "Path": "text67",
+        "Permission": null,
+        "Prefix": "text71"
+      }
+    ],
+    "Author": "text7",
+    "Dependencies": [
+      {
+        "Actions": [],
+        "Author": "text21",
+        "Dependencies": [],
+        "Description": "text19",
+        "Id": "00000000-0000-0000-0000-000000000016",
+        "Installed": null,
+        "IsEnabled": true,
+        "Key": "text18",
+        "License": "text25",
+        "Name": "text17",
+        "Permission": null,
+        "ReleaseUrl": "text23",
+        "RepositoryUrl": "text24",
+        "Resources": [],
+        "Templates": [],
+        "Version": "text20",
+        "Views": [],
+        "Website": "text22"
+      }
+    ],
+    "Description": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Installed": null,
+    "IsEnabled": true,
+    "Key": "text4",
+    "License": "text11",
+    "Name": "text3",
+    "Permission": null,
+    "ReleaseUrl": "text9",
+    "RepositoryUrl": "text10",
+    "Resources": [
+      {
+        "Data": "AQID",
+        "Id": "00000000-0000-0000-0000-000000000076",
+        "Key": "text85",
+        "MimeType": "image/jpeg",
+        "Name": "text84",
+        "Path": "text87",
+        "PlayerId": "00000000-0000-0000-0000-000000000088",
+        "PlayerName": null,
+        "Storage": 1,
+        "Volume": 0.5
+      }
+    ],
+    "Templates": [
+      {
+        "AdditionalResources": [
+          "00000000-0000-0000-0000-000000000901"
+        ],
+        "Description": "text52",
+        "FirstOpen": true,
+        "GenericPermission": null,
+        "GmPermission": null,
+        "Id": "00000000-0000-0000-0000-000000000050",
+        "Key": "text59",
+        "MainResource": "00000000-0000-0000-0000-000000000053",
+        "Name": "text51",
+        "Owner": null,
+        "Permission": null,
+        "Properties": [],
+        "TemplateId": null
+      }
+    ],
+    "Version": "text6",
+    "Views": [
+      {
+        "AdditionalResources": [
+          "00000000-0000-0000-0000-000000000901"
+        ],
+        "Description": "text37",
+        "FirstOpen": true,
+        "GenericPermission": null,
+        "GmPermission": null,
+        "Id": "00000000-0000-0000-0000-000000000035",
+        "Key": "text44",
+        "MainResource": "00000000-0000-0000-0000-000000000038",
+        "Name": "text36",
+        "Owner": null,
+        "Permission": null,
+        "Properties": [],
+        "TemplateId": null
+      }
+    ],
+    "Website": "text8"
+  },
+  "fresh": {
+    "Actions": [],
+    "Author": null,
+    "Dependencies": [],
+    "Description": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Installed": null,
+    "IsEnabled": true,
+    "Key": null,
+    "License": null,
+    "Name": null,
+    "Permission": null,
+    "ReleaseUrl": null,
+    "RepositoryUrl": null,
+    "Resources": [],
+    "Templates": [],
+    "Version": null,
+    "Views": [],
+    "Website": null
+  }
+}

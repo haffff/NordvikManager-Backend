@@ -1,0 +1,29 @@
+{
+  "emptyCollections": {
+    "EntityName": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsProtected": true,
+    "Name": "text3",
+    "ParentID": "00000000-0000-0000-0000-000000000007",
+    "Permission": null,
+    "Value": "text6"
+  },
+  "filled": {
+    "EntityName": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsProtected": true,
+    "Name": "text3",
+    "ParentID": "00000000-0000-0000-0000-000000000007",
+    "Permission": null,
+    "Value": "text6"
+  },
+  "fresh": {
+    "EntityName": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsProtected": false,
+    "Name": null,
+    "ParentID": "00000000-0000-0000-0000-000000000000",
+    "Permission": null,
+    "Value": null
+  }
+}

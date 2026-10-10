@@ -1,0 +1,41 @@
+{
+  "emptyCollections": {
+    "Content": "text7",
+    "Description": "text5",
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Hook": 1,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsEnabled": true,
+    "Name": "text3",
+    "Path": "text4",
+    "Permission": null,
+    "Prefix": "text8"
+  },
+  "filled": {
+    "Content": "text7",
+    "Description": "text5",
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Hook": 1,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsEnabled": true,
+    "Name": "text3",
+    "Path": "text4",
+    "Permission": null,
+    "Prefix": "text8"
+  },
+  "fresh": {
+    "Content": null,
+    "Description": null,
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Hook": 0,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsEnabled": false,
+    "Name": null,
+    "Path": null,
+    "Permission": null,
+    "Prefix": null
+  }
+}

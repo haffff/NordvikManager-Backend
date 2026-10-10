@@ -1,0 +1,142 @@
+{
+  "emptyCollections": {
+    "Actions": [],
+    "Author": "text7",
+    "Dependencies": [],
+    "Description": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "InstallHookFired": false,
+    "IsEnabled": true,
+    "Key": "text4",
+    "License": "text11",
+    "Name": "text3",
+    "ReleaseUrl": "text9",
+    "RepositoryUrl": "text10",
+    "Resources": [],
+    "Templates": [],
+    "Version": "text6",
+    "Views": [],
+    "Website": "text8"
+  },
+  "filled": {
+    "Actions": [
+      {
+        "Content": "text74",
+        "Description": "text70",
+        "Game": null,
+        "Hook": 1,
+        "Id": "00000000-0000-0000-0000-000000000067",
+        "IsEnabled": true,
+        "Name": "text68",
+        "Path": "text69",
+        "Prefix": "text72"
+      }
+    ],
+    "Author": "text7",
+    "Dependencies": [
+      {
+        "Actions": [],
+        "Author": "text20",
+        "Dependencies": [],
+        "Description": "text18",
+        "Id": "00000000-0000-0000-0000-000000000015",
+        "InstallHookFired": false,
+        "IsEnabled": true,
+        "Key": "text17",
+        "License": "text24",
+        "Name": "text16",
+        "ReleaseUrl": "text22",
+        "RepositoryUrl": "text23",
+        "Resources": [],
+        "Templates": [],
+        "Version": "text19",
+        "Views": [],
+        "Website": "text21"
+      }
+    ],
+    "Description": "text5",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "InstallHookFired": false,
+    "IsEnabled": true,
+    "Key": "text4",
+    "License": "text11",
+    "Name": "text3",
+    "ReleaseUrl": "text9",
+    "RepositoryUrl": "text10",
+    "Resources": [
+      {
+        "ContentHash": null,
+        "Data": "AQID",
+        "Game": null,
+        "GameId": "00000000-0000-0000-0000-000000000000",
+        "Id": "00000000-0000-0000-0000-000000000084",
+        "Key": "text81",
+        "MimeType": 4,
+        "Name": "text80",
+        "Path": "text82",
+        "Player": null,
+        "PlayerId": "00000000-0000-0000-0000-000000000088",
+        "Playlists": [],
+        "Storage": 1,
+        "ThumbnailData": null,
+        "ThumbnailSourceVersion": null,
+        "Volume": 0.5
+      }
+    ],
+    "Templates": [
+      {
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000060\"]",
+        "Description": "text53",
+        "FirstOpen": true,
+        "Game": null,
+        "GameId": "00000000-0000-0000-0000-000000000000",
+        "Id": "00000000-0000-0000-0000-000000000051",
+        "IsCustomUi": false,
+        "IsR20Card": false,
+        "IsTemplate": false,
+        "Key": "text54",
+        "MainResource": "00000000-0000-0000-0000-000000000058",
+        "Name": "text52",
+        "Properties": []
+      }
+    ],
+    "Version": "text6",
+    "Views": [
+      {
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000044\"]",
+        "Description": "text37",
+        "FirstOpen": true,
+        "Game": null,
+        "GameId": "00000000-0000-0000-0000-000000000000",
+        "Id": "00000000-0000-0000-0000-000000000035",
+        "IsCustomUi": false,
+        "IsR20Card": false,
+        "IsTemplate": false,
+        "Key": "text38",
+        "MainResource": "00000000-0000-0000-0000-000000000042",
+        "Name": "text36",
+        "Properties": []
+      }
+    ],
+    "Website": "text8"
+  },
+  "fresh": {
+    "Actions": [],
+    "Author": null,
+    "Dependencies": [],
+    "Description": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "InstallHookFired": false,
+    "IsEnabled": true,
+    "Key": null,
+    "License": null,
+    "Name": null,
+    "ReleaseUrl": null,
+    "RepositoryUrl": null,
+    "Resources": [],
+    "Templates": [],
+    "Version": null,
+    "Views": [],
+    "Website": null
+  }
+}

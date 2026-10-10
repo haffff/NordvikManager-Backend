@@ -1,0 +1,38 @@
+{
+  "emptyCollections": {
+    "Description": "text25",
+    "GameId": "00000000-0000-0000-0000-000000000003",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Kind": 1,
+    "Mode": 1,
+    "Name": "text24",
+    "Repeat": true,
+    "Resources": [],
+    "Shuffle": true,
+    "Volume": 0.5
+  },
+  "filled": {
+    "Description": "text36",
+    "GameId": "00000000-0000-0000-0000-000000000003",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Kind": 1,
+    "Mode": 1,
+    "Name": "text35",
+    "Repeat": true,
+    "Resources": [],
+    "Shuffle": true,
+    "Volume": 0.5
+  },
+  "fresh": {
+    "Description": null,
+    "GameId": "00000000-0000-0000-0000-000000000000",
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Kind": 0,
+    "Mode": 0,
+    "Name": null,
+    "Repeat": true,
+    "Resources": [],
+    "Shuffle": false,
+    "Volume": 1.0
+  }
+}

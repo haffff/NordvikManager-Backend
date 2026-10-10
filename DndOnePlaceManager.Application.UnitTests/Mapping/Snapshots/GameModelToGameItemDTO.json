@@ -1,0 +1,41 @@
+{
+  "emptyCollections": {
+    "CentralSessionId": "text20",
+    "Color": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Image": null,
+    "IsOwner": false,
+    "IsPublic": true,
+    "LongDescription": null,
+    "Name": "text7",
+    "Password": "text8",
+    "PasswordRequired": false,
+    "ShortDescription": null
+  },
+  "filled": {
+    "CentralSessionId": "text152",
+    "Color": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Image": null,
+    "IsOwner": false,
+    "IsPublic": true,
+    "LongDescription": null,
+    "Name": "text30",
+    "Password": "text31",
+    "PasswordRequired": false,
+    "ShortDescription": null
+  },
+  "fresh": {
+    "CentralSessionId": null,
+    "Color": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Image": null,
+    "IsOwner": false,
+    "IsPublic": false,
+    "LongDescription": null,
+    "Name": null,
+    "Password": null,
+    "PasswordRequired": false,
+    "ShortDescription": null
+  }
+}

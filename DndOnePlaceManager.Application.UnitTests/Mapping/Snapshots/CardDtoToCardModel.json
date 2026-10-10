@@ -1,0 +1,61 @@
+{
+  "emptyCollections": {
+    "AdditionalResources": "[]",
+    "Description": "text4",
+    "FirstOpen": true,
+    "Game": null,
+    "GameId": "00000000-0000-0000-0000-000000000000",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsCustomUi": false,
+    "IsR20Card": false,
+    "IsTemplate": false,
+    "Key": "text5",
+    "MainResource": "00000000-0000-0000-0000-000000000009",
+    "Name": "text3",
+    "Properties": []
+  },
+  "filled": {
+    "AdditionalResources": "[\"00000000-0000-0000-0000-000000000011\"]",
+    "Description": "text4",
+    "FirstOpen": true,
+    "Game": null,
+    "GameId": "00000000-0000-0000-0000-000000000000",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsCustomUi": false,
+    "IsR20Card": false,
+    "IsTemplate": false,
+    "Key": "text5",
+    "MainResource": "00000000-0000-0000-0000-000000000009",
+    "Name": "text3",
+    "Properties": [
+      {
+        "Card": null,
+        "Description": null,
+        "Element": null,
+        "EntityName": "text20",
+        "Game": null,
+        "Id": "00000000-0000-0000-0000-000000000017",
+        "IsProtected": true,
+        "Map": null,
+        "Name": "text18",
+        "ParentID": "00000000-0000-0000-0000-000000000019",
+        "Value": "text21"
+      }
+    ]
+  },
+  "fresh": {
+    "AdditionalResources": "null",
+    "Description": null,
+    "FirstOpen": null,
+    "Game": null,
+    "GameId": "00000000-0000-0000-0000-000000000000",
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsCustomUi": false,
+    "IsR20Card": false,
+    "IsTemplate": false,
+    "Key": null,
+    "MainResource": null,
+    "Name": null,
+    "Properties": []
+  }
+}

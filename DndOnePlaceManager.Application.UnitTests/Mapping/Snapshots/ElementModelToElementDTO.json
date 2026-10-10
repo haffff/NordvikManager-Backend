@@ -1,0 +1,45 @@
+{
+  "emptyCollections": {
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsPublic": true,
+    "Layer": 139,
+    "MapID": "00000000-0000-0000-0000-000000000040",
+    "Object": "{}",
+    "Permission": null,
+    "Properties": [],
+    "Selectable": true,
+    "Visible": null
+  },
+  "filled": {
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsPublic": true,
+    "Layer": 160,
+    "MapID": "00000000-0000-0000-0000-000000000061",
+    "Object": "{\n  \"type\": \"rect\",\n  \"left\": 12.0,\n  \"visible\": true,\n  \"tokenData\": {\n    \"cardId\": \"c1\"\n  },\n  \"path\": [\n    1,\n    2\n  ],\n  \"fill\": null\n}",
+    "Permission": null,
+    "Properties": [
+      {
+        "EntityName": "text42",
+        "Id": "00000000-0000-0000-0000-000000000039",
+        "IsProtected": true,
+        "Name": "text40",
+        "ParentID": "00000000-0000-0000-0000-000000000044",
+        "Permission": null,
+        "Value": "text43"
+      }
+    ],
+    "Selectable": true,
+    "Visible": null
+  },
+  "fresh": {
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsPublic": null,
+    "Layer": 0,
+    "MapID": "00000000-0000-0000-0000-000000000000",
+    "Object": null,
+    "Permission": null,
+    "Properties": [],
+    "Selectable": null,
+    "Visible": null
+  }
+}
