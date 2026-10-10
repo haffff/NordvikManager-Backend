@@ -1,16 +1,15 @@
 using System.Collections;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using AutoMapper;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Chat;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Entities.Chat;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
-using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -45,15 +44,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Mapping
 
         private static string Name(Type source, Type target) => $"{source.Name}To{target.Name}";
 
-        private readonly IMapper mapper;
-
-        public MappingSnapshotTests()
-        {
-            var services = new ServiceCollection();
-            services.AddLogging();
-            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
-            mapper = services.BuildServiceProvider().GetRequiredService<IMapper>();
-        }
+        private readonly IMapper mapper = new AppMapper();
 
         // Through Map<T>(object), the only call the app makes.
         private object? Map(object? source, Type target) =>
@@ -75,6 +66,13 @@ namespace DndOnePlaceManager.Application.UnitTests.Mapping
                 ["emptyCollections"] = Capture(() => Map(Fixtures.Filled(source, emptyCollections: true), target)),
             };
             AssertSnapshot(pair, results);
+        }
+
+        [Fact]
+        public void Map_Throws_WhenThereIsNoMappingForThePair()
+        {
+            var error = Assert.Throws<ArgumentException>(() => mapper.Map<GameModel>(new PlayerDTO()));
+            Assert.Contains(nameof(GameModel), error.Message);
         }
 
         // Lists, as the list handlers map them (Map<List<ActionDto>>, Map<IEnumerable<TResponse>>).
