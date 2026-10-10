@@ -1,5 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Services;
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;

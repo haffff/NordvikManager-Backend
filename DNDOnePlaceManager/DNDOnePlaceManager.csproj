@@ -7,8 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AutoMapper" Version="16.1.1" />
     <PackageReference Include="Jint" Version="4.16.4" />
+    <!-- MediatR 13+ is commercial (a license key per installation); 11 is Apache-2.0. Do not upgrade. -->
+    <PackageReference Include="MediatR" Version="[11.0.0]" />
     <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">

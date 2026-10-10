@@ -1,5 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Services;
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;

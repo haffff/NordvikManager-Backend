@@ -1,4 +1,4 @@
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;

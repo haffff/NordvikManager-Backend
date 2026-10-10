@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;

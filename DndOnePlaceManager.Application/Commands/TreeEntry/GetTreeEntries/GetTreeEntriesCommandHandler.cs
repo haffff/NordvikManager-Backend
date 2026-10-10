@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Commands.TreeEntry.ConnectTreeEntry;
 using DndOnePlaceManager.Application.DataTransferObjects;

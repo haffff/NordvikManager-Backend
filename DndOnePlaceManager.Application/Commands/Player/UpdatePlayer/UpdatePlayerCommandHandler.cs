@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Player.UpdatePlayer;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;

@@ -1,4 +1,4 @@
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;

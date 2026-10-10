@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands;
 using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects;

@@ -1,4 +1,4 @@
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Layouts.AddLayout;

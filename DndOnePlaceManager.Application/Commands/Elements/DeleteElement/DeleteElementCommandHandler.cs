@@ -1,5 +1,5 @@
 
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.TurnOrder;
 using DndOnePlaceManager.Application.Generic.Handlers;
 using DndOnePlaceManager.Domain.Enums;

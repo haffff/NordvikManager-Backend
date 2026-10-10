@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using System;

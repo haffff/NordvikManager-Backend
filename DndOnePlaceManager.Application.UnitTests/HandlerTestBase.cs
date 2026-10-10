@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Interfaces;
@@ -13,7 +13,7 @@ using Moq;
 namespace DndOnePlaceManager.Application.UnitTests
 {
     /// <summary>
-    /// Shared base for handler tests — a fresh InMemory DB + real AutoMapper + a
+    /// Shared base for handler tests — a fresh InMemory DB + the real mapper + a
     /// permissive <see cref="IPermissionService"/> mock, constructed fresh per test
     /// method (xUnit creates a new instance of the test class for every [Fact]).
     /// </summary>
@@ -58,10 +58,10 @@ namespace DndOnePlaceManager.Application.UnitTests
                     It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(true);
 
-            // Wire AutoMapper (v16 requires DI) and PermissionsExtension's service locator
+            // Wire the mapper and PermissionsExtension's service locator
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
+            services.AddSingleton<IMapper, AppMapper>();
             services.AddSingleton(PermissionsMock.Object);
             var sp = services.BuildServiceProvider();
             TestServiceProvider = sp;

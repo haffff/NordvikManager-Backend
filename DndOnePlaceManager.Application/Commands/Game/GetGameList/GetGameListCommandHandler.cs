@@ -1,5 +1,5 @@
 
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;

@@ -1,4 +1,4 @@
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Helpers;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Domain.Entities.Resources;

@@ -87,9 +87,15 @@ game.ThrowIfNoPermission(playerId, Permission.Edit);  // throws if missing
 bool ok = _permissionService.CheckIfHasPermissions(playerId, entity, Permission.Read);
 ```
 
-## AutoMapper
+## Mapping (Mapperly)
 
-All DTO↔Model mappings are registered in `Application/AutoMapperProfile.cs`. DTOs live in `Application/DataTransferObjects/`.
+All DTO↔Model mappings are partial methods in `Application/Mapping/AppMapper.cs`, generated at compile time by [Mapperly](https://github.com/riok/mapperly). Handlers use the app's own `IMapper` (`Application/Mapping/IMapper.cs`, `mapper.Map<T>(source)`); lists map item by item, and null lists become empty ones. DTOs live in `Application/DataTransferObjects/`.
+
+- A new pair: add a `private partial TTarget ToDto(TSource source)` / `ToModel(...)` method, plus the pair in `Application.UnitTests/Mapping/MappingSnapshotTests.cs` (then `UPDATE_MAPPING_SNAPSHOTS=1 dotnet test --filter MappingSnapshotTests` and review the new golden file).
+- A target member nothing maps to fails the build (`RMG012`): map it (`[MapProperty]`, `[MapPropertyFromSource]`) or ignore it (`[MapperIgnoreTarget]`).
+- Navigation properties are declared non-nullable but are null unless loaded: flatten them through a helper (`source.Game?.Id`), not `"Game.Id"`.
+
+AutoMapper (commercial from v15) was replaced by this; the golden files in `Mapping/Snapshots/` pin the behaviour it had. **MediatR is pinned to 11.0.0** (`[11.0.0]` in the csproj files): 13+ is commercial and would need a license per installation, so don't upgrade it.
 
 ## Dependency Injection
 
@@ -139,6 +145,6 @@ Key appsettings entries:
 
 1. Entity model in `Domain/Entities/` implementing `IEntity` or `INamedEntity`
 2. Command + Handler pair in `Application/Commands/{Feature}/`
-3. DTO in `Application/DataTransferObjects/` + mapping in `AutoMapperProfile.cs`
+3. DTO in `Application/DataTransferObjects/` + mapping in `Mapping/AppMapper.cs` (and its snapshot pair)
 4. Controller action in `DNDOnePlaceManager/Controllers/` dispatching via `_mediator.Send()`
 5. Tests in `Application.UnitTests/Commands/` (handler) and `DNDOnePlaceManager.Tests/Controllers/` (controller)

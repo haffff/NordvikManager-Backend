@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 

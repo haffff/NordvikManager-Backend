@@ -1,4 +1,3 @@
-//using AutoMapper;
 //using DndOnePlaceManager.Infrastructure.Interfaces;
 //using DNDOnePlaceManager.Domain.Entities.Auth;
 //using MediatR;

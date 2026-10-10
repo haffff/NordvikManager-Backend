@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;

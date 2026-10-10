@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Generic.Handlers;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;

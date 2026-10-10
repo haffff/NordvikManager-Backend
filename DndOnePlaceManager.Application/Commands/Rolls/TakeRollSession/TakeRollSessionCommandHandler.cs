@@ -1,4 +1,4 @@
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Services.Rolls;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 

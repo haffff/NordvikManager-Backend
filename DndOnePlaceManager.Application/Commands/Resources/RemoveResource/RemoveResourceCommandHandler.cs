@@ -1,5 +1,5 @@
 
-using AutoMapper;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Guards;

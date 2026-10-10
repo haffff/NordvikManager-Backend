@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Application.Services.Dice;
 using DndOnePlaceManager.Application.Services.Implementations;
@@ -14,7 +15,7 @@ namespace DndOnePlaceManager.Application
     {
         public static void Register(IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
-            services.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
+            services.AddSingleton<IMapper, AppMapper>();
             services.AddScoped<IPermissionService, PermissionsService>();
             services.AddSingleton<IDiceRandomSource, DiceRandomSource>();
             services.AddSingleton<IDiceEngine, DiceEngine>();

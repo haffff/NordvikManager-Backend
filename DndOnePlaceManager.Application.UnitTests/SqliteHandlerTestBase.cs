@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -37,7 +37,7 @@ namespace DndOnePlaceManager.Application.UnitTests
 
             var collection = new ServiceCollection();
             collection.AddLogging();
-            collection.AddAutoMapper(x => x.AddProfile(typeof(AutoMapperProfile)));
+            collection.AddSingleton<IMapper, AppMapper>();
             collection.AddSingleton<IDbContext>(Db);
             collection.AddScoped<IPermissionService, PermissionsService>();
             services = collection.BuildServiceProvider();

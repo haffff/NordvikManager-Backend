@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects.Chat;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Infrastructure.Interfaces;
