@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
@@ -26,8 +26,12 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
             // cartesian-explosion risk (confirmed live: a 6-collection version of
             // this pattern took 276s and failed with a disk-full error).
             // Only the tree this entry belongs to.
+            // By id when one is given, else by target. Never "Id == X || TargetId == Y" with
+            // one of them null: EF turns "TargetId == null" into "TargetId IS NULL", which
+            // matches every folder, so another entry (even of another tree) was removed.
+            var byId = request.TreeEntryId.HasValue;
             var entryType = await dbContext.TreeEntries
-                .Where(x => x.Game.Id == request.GameId && (x.Id == request.TreeEntryId || x.TargetId == request.TargetId))
+                .Where(x => x.Game.Id == request.GameId && (byId ? x.Id == request.TreeEntryId : x.TargetId == request.TargetId))
                 .Select(x => x.EntryType)
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -41,7 +45,7 @@ namespace DndOnePlaceManager.Application.Commands.TreeEntry.RemoveTreeEntry
             Guard.NotFound(game, "Game", request.GameId);
             Guard.Argument(request.TargetId != null || request.TreeEntryId != null, nameof(request.TargetId), nameof(request.TreeEntryId));
 
-            var treeEntry = game.TreeEntries.FirstOrDefault(x => x.Id == request.TreeEntryId || x.TargetId == request.TargetId);
+            var treeEntry = game.TreeEntries.FirstOrDefault(x => byId ? x.Id == request.TreeEntryId : x.TargetId == request.TargetId);
 
             if (treeEntry == null)
             {
