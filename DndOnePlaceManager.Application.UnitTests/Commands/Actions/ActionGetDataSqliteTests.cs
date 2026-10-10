@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Entities;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using ElementDetailModel = DndOnePlaceManager.Domain.Entities.BattleMap.ElementDetailModel;
 using ActionModel = DndOnePlaceManager.Domain.Entities.BattleMap.ActionModel;
 using CardModel = DndOnePlaceManager.Domain.Entities.BattleMap.CardModel;
 
@@ -23,7 +24,15 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             {
                 Id = gameId, Name = "g", SystemPlayerId = Guid.NewGuid(),
                 Players = new List<PlayerModel> { new PlayerModel { Id = PlayerId, Name = "p" } },
-                Maps = new List<MapModel> { new MapModel { Id = mapId, Name = "Dungeon", Elements = new List<ElementModel> { new ElementModel { Id = elementId } } } },
+                Maps = new List<MapModel> { new MapModel { Id = mapId, Name = "Dungeon", Elements = new List<ElementModel> { new ElementModel
+                {
+                    Id = elementId,
+                    Details = new List<ElementDetailModel>
+                    {
+                        new ElementDetailModel { Id = Guid.NewGuid(), Key = "left", Value = "10", Type = "Number" },
+                        new ElementDetailModel { Id = Guid.NewGuid(), Key = "tokenData", Value = "{\"cardId\":\"" + cardId + "\"}", Type = "Object" },
+                    },
+                } } } },
                 Cards = new List<CardModel> { new CardModel { Id = cardId, Name = "Orc" }, new CardModel { Id = Guid.NewGuid(), Name = "Goblin" } },
                 Layouts = new List<LayoutModel> { new LayoutModel { Id = Guid.NewGuid(), Name = "Main", Value = "{}" } },
                 Actions = new List<ActionModel> { new ActionModel { Id = Guid.NewGuid(), Name = "Attack", Content = "", Prefix = "" } },
@@ -32,6 +41,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             seed.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), EntityName = "CardModel", Name = "Hostile", Value = "true", ParentID = cardId });
             seed.SaveChanges();
         }
+
+        private Task<List<IGameDataTransferObject>> GetById(string type, Guid id) =>
+            new ActionGetDataCommandHandler(Db, Mapper).Handle(new ActionGetDataCommand { GameID = gameId, EntityType = type, ID = id }, CancellationToken.None);
 
         private Task<List<IGameDataTransferObject>> Get(string type, string? name = null, string? property = null) =>
             new ActionGetDataCommandHandler(Db, Mapper).Handle(new ActionGetDataCommand { GameID = gameId, EntityType = type, Name = name, Property = property }, CancellationToken.None);
@@ -44,6 +56,25 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             Assert.Equal(cardId, ((CardDto)Assert.Single(await Get("CardModel", "Orc"))).Id);
             Assert.Single(await Get("LayoutModel", "Main"));
             Assert.Single(await Get("ActionModel", "Attack"));
+        }
+
+        // Regression: elements came without their details, so Object was null and an action's
+        // Get Detail on the element (e.g. a token's tokenData) failed with "Value cannot be null".
+        [Fact]
+        public async Task Handle_ReturnsElementsWithTheirCanvasData_ById()
+        {
+            var element = (ElementDTO)Assert.Single(await GetById("ElementModel", elementId));
+            var obj = Newtonsoft.Json.Linq.JObject.Parse(element.Object);
+            Assert.Equal(cardId.ToString(), (string?)obj["tokenData"]?["cardId"]);
+            Assert.Equal(10, (float)obj["left"]!);
+        }
+
+        [Fact]
+        public async Task Handle_ReturnsMapElementsWithTheirCanvasData()
+        {
+            var map = (MapDTO)Assert.Single(await Get("MapModel", "Dungeon"));
+            var obj = Newtonsoft.Json.Linq.JObject.Parse(Assert.Single(map.Elements!).Object);
+            Assert.Equal(cardId.ToString(), (string?)obj["tokenData"]?["cardId"]);
         }
 
         [Fact]

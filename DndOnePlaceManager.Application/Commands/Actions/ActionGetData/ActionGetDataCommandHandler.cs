@@ -48,13 +48,15 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
         }
 
         // Loads only the requested type, of this game, with the name/id filters applied in SQL.
-        // Maps come with their elements, as action scripts have always received them.
+        // Maps come with their elements, as action scripts have always received them. Elements
+        // come with their details: an element's Object (its canvas JSON, e.g. a token's
+        // tokenData) is built from them, and is null without.
         private List<IGameDataTransferObject> Find(string? entityType, Guid gameId, string? name, List<Guid>? ids)
         {
             switch (entityType)
             {
                 case "MapModel":
-                    return Query<MapModel, MapDTO>(dbContext.Maps.Include(x => x.Elements).Where(x => x.Game.Id == gameId), name, ids);
+                    return Query<MapModel, MapDTO>(dbContext.Maps.Include(x => x.Elements!).ThenInclude(x => x.Details).Where(x => x.Game.Id == gameId), name, ids);
                 case "CardModel":
                     return Query<CardModel, CardDto>(dbContext.Cards.Where(x => x.GameId == gameId), name, ids);
                 case "LayoutModel":
@@ -66,7 +68,7 @@ namespace DndOnePlaceManager.Application.Commands.Actions.ActionGetData
                 case "ElementModel":
                     if (name != null)
                         return new List<IGameDataTransferObject>(); // elements have no name
-                    var elements = dbContext.Elements.Where(x => x.Map!.Game.Id == gameId);
+                    var elements = dbContext.Elements.Include(x => x.Details).Where(x => x.Map!.Game.Id == gameId);
                     if (ids != null)
                         elements = elements.Where(x => ids.Contains(x.Id));
                     return elements.AsEnumerable().Select(x => (IGameDataTransferObject)mapper.Map<ElementDTO>(x)).ToList();
