@@ -23,11 +23,8 @@ namespace DNDOnePlaceManager.Services.Implementations
 {
     public class GameLobby : IDisposable
     {
-        private IMediator mediator;
         private IServiceScopeFactory serviceScopeFactory;
         private IServiceScope serviceScope;
-
-        public IWebSocketHandler[] WebSockerHandlers { get; }
 
         private static readonly HashSet<string> AllowedPassthroughCommands = new HashSet<string>()
         {
@@ -52,9 +49,6 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             // Store in the private field only; the public property delegates to it
             this.serviceScopeFactory = serviceScopeFactory;
-            this.mediator = serviceScope.ServiceProvider.GetService(typeof(IMediator)) as IMediator;
-
-            WebSockerHandlers = serviceScope.ServiceProvider.GetServices(typeof(IWebSocketHandler))?.Cast<IWebSocketHandler>().ToArray();
         }
 
         public Guid Id { get; set; } = Guid.NewGuid();
@@ -133,10 +127,14 @@ namespace DNDOnePlaceManager.Services.Implementations
                 if (await TryHandleActionChatCommandAsync(message, player))
                     return message;
 
+                // Every command gets its own scope, so its own DbContext. Never resolve the
+                // handlers once from the lobby's game-long scope: a failed save would stay
+                // queued in the shared DbContext and fail every later command of the game.
                 using var handlerScope = serviceScopeFactory.CreateScope();
-                var scopedMediator = handlerScope.ServiceProvider.GetRequiredService<IMediator>();
+                (handlerScope.ServiceProvider.GetService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                    as LobbyGameEventLogger)?.Attach(EventLog);
 
-                foreach (var item in WebSockerHandlers)
+                foreach (var item in handlerScope.ServiceProvider.GetServices<IWebSocketHandler>())
                 {
                     var res = await item.Handle(message, player);
                     if (res != null)
