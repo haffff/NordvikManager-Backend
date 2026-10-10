@@ -41,9 +41,9 @@ namespace DNDOnePlaceManager.WebRTC
         private readonly ICentralServerService _centralServerService;
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly ILogger<WebRTCSessionService> _logger;
-        // Fallback ICE servers from local config, used when /meta is unreachable
+        // Fallback STUN servers from local config, used when Central's /api/ice-servers is unreachable
         private readonly List<RTCIceServer> _fallbackIceServers;
-        // ICE servers fetched from Central Server /meta, updated on each StartSessionAsync
+        // ICE servers (incl. TURN credentials) fetched from Central, updated on each StartSessionAsync
         private List<RTCIceServer> _iceServers;
 
         // socketId → RTCPeerConnection
@@ -90,18 +90,21 @@ namespace DNDOnePlaceManager.WebRTC
 
         public async Task StartSessionAsync(Guid gameId, string centralSessionId, string centralToken)
         {
-            var meta = await _centralServerService.GetMetaAsync();
-            if (meta != null)
+            // TURN credentials last TURN_TTL_SECONDS (Central default 24h) and are refreshed on every session start;
+            // the Central token is short-lived, so they can't be re-fetched later from signaling callbacks.
+            var result = await _centralServerService.GetIceServersAsync(centralToken);
+            _iceServers = IceServerMapper.ToRtcIceServers(result, _fallbackIceServers);
+            if (result != null)
             {
-                _iceServers = BuildIceServersFromMeta(meta);
                 _logger.LogInformation(
-                    "ICE servers loaded from Central Server /meta: {Count} STUN, TURN={Turn}",
-                    meta.StunServers.Count, meta.TurnServer ?? "none");
+                    "ICE servers loaded from Central Server: {Stun} STUN, {Turn} TURN URL(s), TTL={Ttl}s",
+                    _iceServers.Count(s => s.urls.StartsWith("stun:", StringComparison.OrdinalIgnoreCase)),
+                    _iceServers.Count(s => s.urls.StartsWith("turn:", StringComparison.OrdinalIgnoreCase)),
+                    result.Ttl?.ToString() ?? "none");
             }
             else
             {
-                _logger.LogWarning("Could not reach Central Server /meta — using fallback ICE config.");
-                _iceServers = _fallbackIceServers;
+                _logger.LogWarning("Could not fetch ICE servers from Central Server — using fallback STUN config.");
             }
 
             await _signaling.ConnectAsync(gameId.ToString(), centralSessionId, centralToken);
@@ -537,27 +540,6 @@ namespace DNDOnePlaceManager.WebRTC
                 var single = configuration["WebRTC:StunServer"];
                 servers.Add(new RTCIceServer { urls = single ?? "stun:stun.l.google.com:19302" });
             }
-
-            var turnUrl = configuration["WebRTC:TurnServer"];
-            if (!string.IsNullOrEmpty(turnUrl))
-                servers.Add(new RTCIceServer { urls = turnUrl });
-
-            return servers;
-        }
-
-        private static List<RTCIceServer> BuildIceServersFromMeta(CentralServerMeta meta)
-        {
-            var servers = new List<RTCIceServer>();
-
-            foreach (var url in meta.StunServers)
-                servers.Add(new RTCIceServer { urls = url });
-
-            if (!string.IsNullOrEmpty(meta.TurnServer))
-                servers.Add(new RTCIceServer { urls = meta.TurnServer });
-
-            // If meta returned nothing, fall back to Google STUN
-            if (servers.Count == 0)
-                servers.Add(new RTCIceServer { urls = "stun:stun.l.google.com:19302" });
 
             return servers;
         }
