@@ -31,5 +31,8 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public Guid? ElementId { get; set; }
 
         public bool Hidden { get; set; }
+
+        /// <summary>This player controls the entry's token (it's their turn when it comes up).</summary>
+        public bool Controlled { get; set; }
     }
 }

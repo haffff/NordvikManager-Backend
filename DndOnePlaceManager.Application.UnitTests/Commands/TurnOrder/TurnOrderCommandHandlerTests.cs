@@ -249,6 +249,18 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TurnOrder
         }
 
         [Fact]
+        public async Task State_MarksTheEntriesThisPlayerControls()
+        {
+            // Lets the client tell a player how many turns until theirs.
+            await Add(new TurnOrderEntryInput { ElementId = goblin }, new TurnOrderEntryInput { ElementId = hero },
+                new TurnOrderEntryInput { Name = "Lair action" });
+
+            var entries = (await State(As(player)))!.Entries;
+
+            Assert.Equal(new[] { false, true, false }, entries.Select(e => e.Controlled));
+        }
+
+        [Fact]
         public async Task EndTurn_OnSomeoneElsesTurn_IsRefused()
         {
             await Add(new TurnOrderEntryInput { ElementId = goblin }, new TurnOrderEntryInput { ElementId = hero });
