@@ -1,10 +1,12 @@
 using DNDOnePlaceManager.Data.Contexts;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services;
+using DndOnePlaceManager.Infrastructure.Services.Backup;
 using DndOnePlaceManager.Infrastructure.Services.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DndOnePlaceManager.Infrastructure
 {
@@ -26,6 +28,11 @@ namespace DndOnePlaceManager.Infrastructure
                     o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
             services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
+            services.TryAddSingleton(TimeProvider.System);
+            services.AddSingleton(BackupOptions.FromConfiguration(configuration));
+            services.AddSingleton<IBackupService>(sp => new BackupService(sp.GetRequiredService<BackupOptions>(), sp.GetRequiredService<TimeProvider>()));
+            services.AddSingleton<IBackupScheduleStore, BackupScheduleStore>();
+            services.AddSingleton<ScheduledBackupRunner>();
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
             services.AddHttpClient();

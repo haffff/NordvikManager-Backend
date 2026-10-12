@@ -256,6 +256,8 @@ Generated_Code/
 # because we have git ;-)
 _UpgradeReport_Files/
 Backup*/
+# ...but not our own source folders named Backup (the backup feature).
+!**/Backup/
 UpgradeLog*.XML
 UpgradeLog*.htm
 ServiceFabricBackup/
@@ -390,3 +392,6 @@ appsettings.Production.json
 # Local admin auto-promotion file
 .localadmin
 
+
+# Runtime data: managed resource files (FileStorage:BasePath) and backups (Backup:Folder)
+/DNDOnePlaceManager/data/
