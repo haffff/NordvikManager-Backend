@@ -33,6 +33,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
             card.MainResource = request.Dto.MainResource;
             card.AdditionalResources = JsonConvert.SerializeObject(request.Dto.AdditionalResources);
             card.FirstOpen = request.Dto.FirstOpen ?? card.FirstOpen;
+            card.IsHidden = request.Dto.IsHidden ?? card.IsHidden;
 
             // Save the changes to the database
             await dbContext.SaveChangesAsync();

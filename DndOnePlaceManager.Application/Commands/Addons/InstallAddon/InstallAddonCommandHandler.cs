@@ -532,6 +532,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 Description        = raw.Description,
                 Key                = raw.Key,
                 FirstOpen          = raw.FirstOpen,
+                IsHidden           = raw.Hidden,
                 TemplateId         = raw.TemplateId,
                 Owner              = raw.Owner,
                 MainResource       = ResolveResourceRef(raw.MainResource),
@@ -566,6 +567,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             public string Description { get; set; } = string.Empty;
             public string? Key { get; set; }
             public bool? FirstOpen { get; set; }
+            // "hidden": true keeps a template out of template lists (still usable by id/name).
+            public bool? Hidden { get; set; }
             public Guid? TemplateId { get; set; }
             public Guid? Owner { get; set; }
             public string? MainResource { get; set; }

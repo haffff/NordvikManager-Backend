@@ -1,4 +1,5 @@
 using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
+using DndOnePlaceManager.Application.Commands.Game.GameExists;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Controllers;
@@ -31,6 +32,8 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new GetPlayerCommandResponse { Player = new PlayerDTO { Id = Guid.NewGuid(), Name = "GM", IsOwner = true } });
+            _mediator.Setup(m => m.Send(It.IsAny<GameExistsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(true);
             _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync("central-session-1");
             _mediator.Setup(m => m.Send(It.IsAny<GetSystemPlayerCommand>(), It.IsAny<CancellationToken>()))

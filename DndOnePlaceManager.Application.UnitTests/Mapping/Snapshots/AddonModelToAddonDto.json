@@ -22,17 +22,17 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text70",
-        "Description": "text68",
+        "Content": "text72",
+        "Description": "text70",
         "GenericPermission": null,
         "GmPermission": null,
         "Hook": 1,
-        "Id": "00000000-0000-0000-0000-000000000065",
+        "Id": "00000000-0000-0000-0000-000000000067",
         "IsEnabled": true,
-        "Name": "text66",
-        "Path": "text67",
+        "Name": "text68",
+        "Path": "text69",
         "Permission": null,
-        "Prefix": "text71"
+        "Prefix": "text73"
       }
     ],
     "Author": "text7",
@@ -71,12 +71,12 @@
     "Resources": [
       {
         "Data": "AQID",
-        "Id": "00000000-0000-0000-0000-000000000076",
-        "Key": "text85",
+        "Id": "00000000-0000-0000-0000-000000000078",
+        "Key": "text87",
         "MimeType": "image/jpeg",
-        "Name": "text84",
-        "Path": "text87",
-        "PlayerId": "00000000-0000-0000-0000-000000000088",
+        "Name": "text86",
+        "Path": "text89",
+        "PlayerId": "00000000-0000-0000-0000-000000000090",
         "PlayerName": null,
         "Storage": 1,
         "Volume": 0.5
@@ -87,14 +87,15 @@
         "AdditionalResources": [
           "00000000-0000-0000-0000-000000000901"
         ],
-        "Description": "text52",
+        "Description": "text53",
         "FirstOpen": true,
         "GenericPermission": null,
         "GmPermission": null,
-        "Id": "00000000-0000-0000-0000-000000000050",
-        "Key": "text59",
-        "MainResource": "00000000-0000-0000-0000-000000000053",
-        "Name": "text51",
+        "Id": "00000000-0000-0000-0000-000000000051",
+        "IsHidden": true,
+        "Key": "text61",
+        "MainResource": "00000000-0000-0000-0000-000000000054",
+        "Name": "text52",
         "Owner": null,
         "Permission": null,
         "Properties": [],
@@ -112,7 +113,8 @@
         "GenericPermission": null,
         "GmPermission": null,
         "Id": "00000000-0000-0000-0000-000000000035",
-        "Key": "text44",
+        "IsHidden": true,
+        "Key": "text45",
         "MainResource": "00000000-0000-0000-0000-000000000038",
         "Name": "text36",
         "Owner": null,

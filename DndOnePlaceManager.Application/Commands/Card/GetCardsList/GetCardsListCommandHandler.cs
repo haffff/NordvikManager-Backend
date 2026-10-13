@@ -24,7 +24,7 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetAllCards
 
             if (request.Flat)
             {
-                var cards = cardsOriginal.Select(x => new CardDto { Id = x.Id, Name = x.Name }).ToList();
+                var cards = cardsOriginal.Select(x => new CardDto { Id = x.Id, Name = x.Name, IsHidden = x.IsHidden }).ToList();
                 return (CommandResponse.Ok, cards);
             }
             else

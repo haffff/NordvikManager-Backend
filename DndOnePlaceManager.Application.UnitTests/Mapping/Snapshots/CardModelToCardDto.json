@@ -8,7 +8,8 @@
     "GenericPermission": null,
     "GmPermission": null,
     "Id": "00000000-0000-0000-0000-000000000002",
-    "Key": "text11",
+    "IsHidden": true,
+    "Key": "text12",
     "MainResource": "00000000-0000-0000-0000-000000000005",
     "Name": "text3",
     "Owner": null,
@@ -25,20 +26,21 @@
     "GenericPermission": null,
     "GmPermission": null,
     "Id": "00000000-0000-0000-0000-000000000002",
-    "Key": "text11",
+    "IsHidden": true,
+    "Key": "text12",
     "MainResource": "00000000-0000-0000-0000-000000000005",
     "Name": "text3",
     "Owner": null,
     "Permission": null,
     "Properties": [
       {
-        "EntityName": "text18",
-        "Id": "00000000-0000-0000-0000-000000000015",
+        "EntityName": "text19",
+        "Id": "00000000-0000-0000-0000-000000000016",
         "IsProtected": true,
-        "Name": "text16",
-        "ParentID": "00000000-0000-0000-0000-000000000020",
+        "Name": "text17",
+        "ParentID": "00000000-0000-0000-0000-000000000021",
         "Permission": null,
-        "Value": "text19"
+        "Value": "text20"
       }
     ],
     "TemplateId": null
@@ -50,6 +52,7 @@
     "GenericPermission": null,
     "GmPermission": null,
     "Id": "00000000-0000-0000-0000-000000000000",
+    "IsHidden": false,
     "Key": null,
     "MainResource": null,
     "Name": null,

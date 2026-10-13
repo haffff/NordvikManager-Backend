@@ -92,5 +92,25 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
 
             Assert.Empty(cards);
         }
+
+        // Hidden templates stay in the list (the Templates panel shows them, and card
+        // settings' "update from template" looks them up); clients filter by IsHidden.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Handle_Templates_IncludesHiddenOnesMarked(bool flat)
+        {
+            var game = BuildGame();
+            SeedCard(game.Id, "Visible", isTemplate: true);
+            var hidden = SeedCard(game.Id, "Internal", isTemplate: true);
+            hidden.IsHidden = true;
+            Db.SaveChanges();
+
+            var (_, cards) = await Handler().Handle(new GetAllCardsCommand { GameId = game.Id, Player = Player(), Templates = true, Flat = flat }, CancellationToken.None);
+
+            Assert.Equal(2, cards.Count);
+            Assert.True(cards.Single(c => c.Name == "Internal").IsHidden);
+            Assert.False(cards.Single(c => c.Name == "Visible").IsHidden ?? false);
+        }
     }
 }

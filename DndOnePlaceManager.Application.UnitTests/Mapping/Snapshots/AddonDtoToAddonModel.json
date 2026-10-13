@@ -21,15 +21,15 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text74",
-        "Description": "text70",
+        "Content": "text76",
+        "Description": "text72",
         "Game": null,
         "Hook": 1,
-        "Id": "00000000-0000-0000-0000-000000000067",
+        "Id": "00000000-0000-0000-0000-000000000069",
         "IsEnabled": true,
-        "Name": "text68",
-        "Path": "text69",
-        "Prefix": "text72"
+        "Name": "text70",
+        "Path": "text71",
+        "Prefix": "text74"
       }
     ],
     "Author": "text7",
@@ -69,13 +69,13 @@
         "Data": "AQID",
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000084",
-        "Key": "text81",
+        "Id": "00000000-0000-0000-0000-000000000086",
+        "Key": "text83",
         "MimeType": 4,
-        "Name": "text80",
-        "Path": "text82",
+        "Name": "text82",
+        "Path": "text84",
         "Player": null,
-        "PlayerId": "00000000-0000-0000-0000-000000000088",
+        "PlayerId": "00000000-0000-0000-0000-000000000090",
         "Playlists": [],
         "Storage": 1,
         "ThumbnailData": null,
@@ -85,35 +85,37 @@
     ],
     "Templates": [
       {
-        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000060\"]",
-        "Description": "text53",
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000062\"]",
+        "Description": "text54",
         "FirstOpen": true,
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000051",
+        "Id": "00000000-0000-0000-0000-000000000052",
         "IsCustomUi": false,
+        "IsHidden": true,
         "IsR20Card": false,
         "IsTemplate": false,
-        "Key": "text54",
-        "MainResource": "00000000-0000-0000-0000-000000000058",
-        "Name": "text52",
+        "Key": "text55",
+        "MainResource": "00000000-0000-0000-0000-000000000060",
+        "Name": "text53",
         "Properties": []
       }
     ],
     "Version": "text6",
     "Views": [
       {
-        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000044\"]",
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000045\"]",
         "Description": "text37",
         "FirstOpen": true,
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
         "Id": "00000000-0000-0000-0000-000000000035",
         "IsCustomUi": false,
+        "IsHidden": true,
         "IsR20Card": false,
         "IsTemplate": false,
         "Key": "text38",
-        "MainResource": "00000000-0000-0000-0000-000000000042",
+        "MainResource": "00000000-0000-0000-0000-000000000043",
         "Name": "text36",
         "Properties": []
       }

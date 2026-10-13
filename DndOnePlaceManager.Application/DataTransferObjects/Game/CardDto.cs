@@ -10,6 +10,8 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Game
         public string? Key { get; set; }
         public bool? FirstOpen { get; set; }
         public Guid? TemplateId { get; set; }
+        // Nullable so an update that leaves it out doesn't unhide the card.
+        public bool? IsHidden { get; set; }
         public Guid? Owner { get; set; }
         public Guid? MainResource { get; set; }
         public List<Guid>? AdditionalResources { get; set; }
