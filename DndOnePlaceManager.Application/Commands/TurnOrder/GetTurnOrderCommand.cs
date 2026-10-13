@@ -44,10 +44,15 @@ namespace DndOnePlaceManager.Application.Commands.TurnOrder
             var current = order.Entries.FirstOrDefault(e => e.Id == order.CurrentEntryId);
             var currentHidden = !seesHidden && current is { Hidden: true };
 
+            var visible = order.Entries.Where(e => seesHidden || !e.Hidden).ToList();
+
+            // The tokens this player controls among the order's (and the current one's).
+            var tokenIds = visible.Select(e => e.ElementId).Append(current?.ElementId).OfType<Guid>().Distinct().ToList();
+            var tokens = await dbContext.Elements.AsNoTracking().Where(e => tokenIds.Contains(e.Id)).ToListAsync(cancellationToken);
+            var controlled = tokens.Where(t => t.HasPermission(playerId, Permission.Control)).Select(t => t.Id).ToHashSet();
+
             // Same rule as EndTurn: the GM, or whoever controls the current token.
-            var canEndTurn = current != null && (seesHidden || (current.ElementId is Guid elementId
-                && await dbContext.Elements.AsNoTracking().FirstOrDefaultAsync(e => e.Id == elementId, cancellationToken) is { } token
-                && token.HasPermission(playerId, Permission.Control)));
+            var canEndTurn = current != null && (seesHidden || (current.ElementId is Guid elementId && controlled.Contains(elementId)));
 
             return new TurnOrderDto
             {
@@ -57,10 +62,17 @@ namespace DndOnePlaceManager.Application.Commands.TurnOrder
                 CurrentHidden = currentHidden,
                 CanEndTurn = canEndTurn,
                 CanEdit = seesHidden,
-                Entries = order.Entries
-                    .Where(e => seesHidden || !e.Hidden)
+                Entries = visible
                     .OrderBy(e => e.Position)
-                    .Select(e => new TurnOrderEntryDto { Id = e.Id, Name = e.Name, Initiative = e.Initiative, ElementId = e.ElementId, Hidden = e.Hidden })
+                    .Select(e => new TurnOrderEntryDto
+                    {
+                        Id = e.Id,
+                        Name = e.Name,
+                        Initiative = e.Initiative,
+                        ElementId = e.ElementId,
+                        Hidden = e.Hidden,
+                        Controlled = e.ElementId is Guid id && controlled.Contains(id),
+                    })
                     .ToList(),
             };
         }

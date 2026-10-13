@@ -81,6 +81,7 @@ namespace DNDOnePlaceManager
             services.AddHttpContextAccessor();
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
+            services.AddHostedService<ScheduledBackupService>();
 
             var handlers = Assembly.GetExecutingAssembly().GetTypes();
             foreach (var handler in handlers)

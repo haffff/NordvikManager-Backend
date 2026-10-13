@@ -1,4 +1,6 @@
+using DndOnePlaceManager.Infrastructure.Services.Backup;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using DNDOnePlaceManager.Hosting;
 using System;
@@ -10,7 +12,15 @@ namespace DNDOnePlaceManager
     {
         public static void Main(string[] args)
         {
-            CreateHostBuilder(args).Build().Run();
+            var host = CreateHostBuilder(args).Build();
+
+            // A restore staged from Application Settings → Backups is swapped in here, before
+            // anything opens the database (Startup.Configure migrates it right after).
+            PendingRestoreApplier.Apply(
+                host.Services.GetRequiredService<BackupOptions>(),
+                message => Console.WriteLine($"info: Backup: {message}"));
+
+            host.Run();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
