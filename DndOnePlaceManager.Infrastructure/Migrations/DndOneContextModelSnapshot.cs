@@ -507,6 +507,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<Guid>("PlayerId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("RecipientId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.ToTable("Messages");

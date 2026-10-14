@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.WebSockets
 {
@@ -29,5 +30,13 @@ namespace DNDOnePlaceManager.WebSockets
 
         [JsonProperty("inputToken")]
         public Guid? InputToken { get; set; }
+
+        /// <summary>Chat: who a whisper or GM roll was sent to (the client labels it).</summary>
+        [JsonProperty("recipientId", NullValueHandling = NullValueHandling.Ignore)]
+        public Guid? RecipientId { get; set; }
+
+        /// <summary>Chat: the only players it's delivered to; null = everyone. Server-side only.</summary>
+        [JsonIgnore]
+        public List<Guid>? VisibleTo { get; set; }
     }
 }
