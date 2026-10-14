@@ -25,6 +25,20 @@ namespace DndOnePlaceManager.Application.Commands.Card.GetAllCards
             if (request.Flat)
             {
                 var cards = cardsOriginal.Select(x => new CardDto { Id = x.Id, Name = x.Name, IsHidden = x.IsHidden }).ToList();
+
+                // The template a card was made from (shown under its name in the Cards panel)
+                // is only kept as its "template_id" property, copied from the template.
+                var ids = cards.Select(c => c.Id!.Value).ToList();
+                var templateIds = await dbContext.Properties
+                    .Where(p => p.Name == "template_id" && ids.Contains(p.ParentID))
+                    .Select(p => new { p.ParentID, p.Value })
+                    .ToListAsync(cancellationToken);
+                foreach (var card in cards)
+                {
+                    var value = templateIds.FirstOrDefault(p => p.ParentID == card.Id)?.Value;
+                    card.TemplateId = Guid.TryParse(value, out var templateId) ? templateId : null;
+                }
+
                 return (CommandResponse.Ok, cards);
             }
             else
