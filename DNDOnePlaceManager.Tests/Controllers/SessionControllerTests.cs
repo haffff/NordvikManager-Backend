@@ -117,6 +117,37 @@ namespace DNDOnePlaceManager.Tests.Controllers
                 It.Is<GameItemDTO>(g => g.Image == "data:image/png;base64,aGk=")), Times.Once);
         }
 
+        // Starting an existing session refreshes its listing on the Central Server, so a
+        // cover image set or changed since the session was made reaches players too.
+        [Fact]
+        public async Task StartSession_UpdatesTheCentralListing_WhenSessionExists()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game", Summary = "S", Description = "D", Image = "data:image/png;base64,aGk=", IsPublic = true });
+
+            await CreateController().StartSession(_gameId);
+
+            _central.Verify(c => c.UpdateSessionAsync(It.IsAny<string>(), "central-session-1",
+                It.Is<GameItemDTO>(g => g.Name == "Game" && g.ShortDescription == "S" && g.LongDescription == "D"
+                    && g.Image == "data:image/png;base64,aGk=" && g.IsPublic)), Times.Once);
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task StartSession_StillStarts_WhenUpdatingTheListingFails()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game" });
+            _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync(false);
+            _webRtcSession.Setup(s => s.StartSessionAsync(_gameId, "central-session-1", It.IsAny<string>()))
+                          .Returns(Task.CompletedTask);
+
+            var result = await CreateController().StartSession(_gameId);
+
+            Assert.IsType<OkObjectResult>(result);
+        }
+
         [Fact]
         public async Task StartSession_ReturnsOk_WhenSignalingStarts()
         {

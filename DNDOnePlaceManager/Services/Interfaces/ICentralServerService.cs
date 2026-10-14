@@ -80,6 +80,12 @@ namespace DNDOnePlaceManager.Services.Interfaces
         /// <summary>Fetches ICE servers (incl. TURN credentials) for the given Central user; null on failure.</summary>
         Task<IceServersResult?> GetIceServersAsync(string centralToken);
         Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session);
+        /// <summary>
+        /// Re-sends an existing session's listed details (name, descriptions, cover image,
+        /// public flag) to the Central Server; false when it refuses, is unreachable, or is
+        /// too old to know the route. The password isn't sent.
+        /// </summary>
+        Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
         Task<CentralLoginResult?> LoginAsync(string username, string password);
         /// <summary>
         /// Exchanges a Central Server refresh token for a new access token.
