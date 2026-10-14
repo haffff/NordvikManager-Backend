@@ -85,6 +85,13 @@ namespace DndOnePlaceManager.Application.Services.Dice
                 return new BinaryOpNode('-', new NumberLiteralNode(0), ParseFactor());
             }
 
+            // A sign written out, as stat blocks do: "1d20+(+5)".
+            if (Check(DiceTokenKind.Plus))
+            {
+                Advance();
+                return ParseFactor();
+            }
+
             if (Check(DiceTokenKind.LParen))
             {
                 Advance();

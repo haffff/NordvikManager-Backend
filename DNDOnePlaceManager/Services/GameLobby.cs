@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
+﻿using Microsoft.Extensions.Logging;
+using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -397,11 +398,23 @@ namespace DNDOnePlaceManager.Services.Implementations
             catch (Exception e)
             {
                 Console.Error.WriteLine(e.Message);
+                cmdScope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                    ?.CreateLogger("GameLobby")
+                    .LogError(e, "HandlePostCommand failed for {Command} from {Player}; nobody received it", webSocketCommand?.Command, player?.Name);
             }
         }
 
         private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg)
         {
+            // Whispers and GM rolls (ChatHandler sets VisibleTo): only to those players, and
+            // not passed to action hooks, so no action sees what wasn't meant for everyone.
+            if (parsedMsg.Command == WebSocketCommandNames.CmdChatPush && parsedMsg.VisibleTo != null && !parsedMsg.OnlyToSender)
+            {
+                foreach (var item in ConnectedPlayers.Where(p => parsedMsg.VisibleTo.Contains(p.Key.Id ?? Guid.Empty)))
+                    item.Value.SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+
             // PlayerList must be returned only to the requester — not broadcast
             if (parsedMsg.Command == WebSocketCommandNames.CmdPlayerList)
             {

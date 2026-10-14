@@ -272,7 +272,15 @@ namespace DNDOnePlaceManager.WebRTC
                 dataChannel.onmessage += (_, _, data) =>
                 {
                     if (connection == null || playerEntry == null)
+                    {
+                        // The player isn't resolved yet (HandleOpenAsync still running): the
+                        // message is dropped and its sender never gets an answer.
+                        var dropped = Encoding.UTF8.GetString(data);
+                        _logger.LogWarning(
+                            "[AddonOp] DROPPED message from socket {SocketId} before its player was known ({Length} chars): {Head}",
+                            args.SocketId, dropped.Length, dropped.Length > 160 ? dropped[..160] : dropped);
                         return;
+                    }
                     if (!Guid.TryParse(args.GameId, out var gameId))
                         return;
 

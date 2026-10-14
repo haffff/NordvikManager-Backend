@@ -257,6 +257,31 @@ namespace DNDOnePlaceManager.Tests.Controllers
             Assert.IsType<OkObjectResult>(result);
         }
 
+        [Fact]
+        public async Task InstallAddon_RunsInstallInBackground_AfterRequestScopeIsDisposed()
+        {
+            // Arrange — the WebRTC dispatcher disposes the request's DI scope as soon as the
+            // answer is sent; the background install must not depend on it (it used to build
+            // its scope from the request's IServiceProvider and crash with
+            // ObjectDisposedException, leaving the "Installing…" toast spinning).
+            var lobbyMock = new Mock<ILobbyService>();
+            var root = (ServiceProvider)BuildBackgroundServiceProvider(_mediator, lobbyMock);
+            var requestScope = root.CreateScope();
+            var controller = CreateController(_mediator, requestScope.ServiceProvider, lobbyMock, AnyUser());
+            var installRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback(() => installRan.TrySetResult())
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
+
+            // Act
+            await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+            requestScope.Dispose();
+
+            // Assert
+            var finished = await Task.WhenAny(installRan.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.Same(installRan.Task, finished);
+        }
+
         // =========================================================================
         // UpdateAddon
         // =========================================================================
@@ -330,6 +355,30 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.NotNull(ok.Value);
+        }
+
+        [Fact]
+        public async Task UninstallAddon_RunsUninstallInBackground_AfterRequestScopeIsDisposed()
+        {
+            // Arrange — see InstallAddon_RunsInstallInBackground_AfterRequestScopeIsDisposed.
+            var lobbyMock = new Mock<ILobbyService>();
+            var root = (ServiceProvider)BuildBackgroundServiceProvider(_mediator, lobbyMock);
+            var requestScope = root.CreateScope();
+            var controller = CreateController(_mediator, requestScope.ServiceProvider, lobbyMock, AnyUser());
+            var uninstallRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
+            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback(() => uninstallRan.TrySetResult())
+                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
+
+            // Act
+            await controller.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = "dnd5e" });
+            requestScope.Dispose();
+
+            // Assert
+            var finished = await Task.WhenAny(uninstallRan.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.Same(uninstallRan.Task, finished);
         }
 
         [Fact]

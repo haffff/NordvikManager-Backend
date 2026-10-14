@@ -29,6 +29,9 @@ namespace DNDOnePlaceManager.WebRTC
         private readonly Queue<OutgoingMessage> _outgoing = new();
         private bool _pumping;
 
+        /// <summary>Whether the data channel can still carry messages (for diagnostics).</summary>
+        public bool IsOpen => _channel.IsOpen;
+
         public WebRTCPlayerConnection(RTCDataChannel dataChannel)
             : this(new SipsorceryDataChannelSender(dataChannel))
         {

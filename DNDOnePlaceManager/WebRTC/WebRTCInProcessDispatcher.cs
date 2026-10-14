@@ -74,6 +74,14 @@ namespace DNDOnePlaceManager.WebRTC
             if (request.Body != null)
                 bodyBytes = Encoding.UTF8.GetBytes(request.Body.ToString(Formatting.None));
 
+            // Addon install/uninstall requests are traced start to end (category "AddonOp").
+            var traceAddon = path.StartsWith("api/addon/", StringComparison.OrdinalIgnoreCase)
+                && !request.Method.Equals("GET", StringComparison.OrdinalIgnoreCase);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            if (traceAddon)
+                _logger.LogInformation("[AddonOp] WebRTC {Method} {Path} id={Id} received from {Player}",
+                    request.Method, path, request.Id, player?.Name);
+
             var responseBody = new MemoryStream();
 
             var features = new FeatureCollection();
@@ -134,13 +142,18 @@ namespace DNDOnePlaceManager.WebRTC
             if (status >= 400)
                 TryLogToEventLog(gameId, player, request.Method, request.Path, status, body);
 
-            await connection.SendMessageToPlayer(new
+            var sent = await connection.SendMessageToPlayer(new
             {
                 type   = "api-response",
                 id     = request.Id,
                 status,
                 body
             });
+
+            if (traceAddon)
+                _logger.LogInformation("[AddonOp] WebRTC {Method} {Path} id={Id} → {Status} in {Ms} ms, response {Sent}",
+                    request.Method, path, request.Id, status, watch.ElapsedMilliseconds,
+                    sent ? "sent" : "NOT SENT (channel closed)");
         }
 
         private void TryLogToEventLog(

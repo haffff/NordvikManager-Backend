@@ -45,9 +45,12 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             // here too (all of them, resource file bytes included) — on a game with a big
             // addon that was tens of thousands of rows per install, and once failed outright
             // with SQLite "disk full". Everything below looks up just what it needs instead.
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            gameEventLogger.Info("AddonInstall", $"[trace] handler start: sourceKey={request.AddonSourceKey} file={request.AddonFileName} reinstall={request.Reinstall}");
             var game = dbContext.Games
                 .Include(x => x.Addons)
                 .FirstOrDefault(x => x.Id == request.GameID);
+            gameEventLogger.Info("AddonInstall", $"[trace] game loaded ({watch.ElapsedMilliseconds} ms), {game?.Addons?.Count ?? 0} addon(s) installed");
 
             Guard.NotFound(game, "Game", request.GameID);
 
@@ -61,7 +64,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             
             if (request.AddonFile == null)
             {
+                gameEventLogger.Info("AddonInstall", $"[trace] downloading '{request.AddonSourceKey}'…");
                 request.AddonFile = await addonFromUriProvider.GetAddonByKey(request.AddonSourceKey!);
+                gameEventLogger.Info("AddonInstall", $"[trace] downloaded {request.AddonFile?.Length ?? 0} bytes ({watch.ElapsedMilliseconds} ms)");
                 gameEventLogger.Info("AddonInstall", $"Fetched addon file from source key '{request.AddonSourceKey}");
             }
 
@@ -86,6 +91,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             // their own Hook.Install fired later, and since CallHookAsync queries actions
             // game-wide rather than per-addon, that ran every duplicated action multiple times.
             var existingAddon = game.Addons.FirstOrDefault(x => x.Key == addon.Key);
+            gameEventLogger.Info("AddonInstall", $"[trace] archive read: key={addon.Key} version={addon.Version}, already installed={existingAddon != null} ({watch.ElapsedMilliseconds} ms)");
             if (existingAddon != null)
             {
                 if (!request.Reinstall)
@@ -133,7 +139,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 request.OnProgress?.Invoke(new InstallAddonProgress { Phase = phase, Current = current, Total = total, Message = message });
             }
 
+            gameEventLogger.Info("AddonInstall", $"[trace] dependencies: {addon.Dependencies?.Count ?? 0}, items to add ≈ {total}");
             await FindAndInstallDependencies(request, game, addon, ReportProgress);
+            gameEventLogger.Info("AddonInstall", $"[trace] dependencies done ({watch.ElapsedMilliseconds} ms)");
 
             // Clear deps — dependencies are installed separately, not stored on the addon entity
             addon.Dependencies = null;
@@ -146,11 +154,13 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             await AddActions(request, archive, addon, game, ReportProgress);
             await AddTemplates(request, archive, addon, game, ReportProgress);
             await AddViews(request, archive, addon, game, ReportProgress);
+            gameEventLogger.Info("AddonInstall", $"[trace] content added ({watch.ElapsedMilliseconds} ms), saving…");
 
             game.Addons.Add(addon);
 
             // Bug fix: was using synchronous SaveChanges in an async handler
             await dbContext.SaveChangesAsync();
+            gameEventLogger.Info("AddonInstall", $"[trace] saved, handler done ({watch.ElapsedMilliseconds} ms)");
 
             addon.SetGlobalPermission();
             addon.SetPermissions(game.MasterId, Permission.All);

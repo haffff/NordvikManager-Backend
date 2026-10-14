@@ -1,6 +1,7 @@
 ﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using Moq;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
@@ -77,6 +78,25 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             Assert.Equal(card.Id, cards[0].Id);
             Assert.Equal("Regular", cards[0].Name);
             Assert.Null(cards[0].Description);
+        }
+
+        // The Cards panel shows each card's template under its name; the template is only
+        // stored as the card's "template_id" property (copied from the template).
+        [Fact]
+        public async Task Handle_FlatTrue_CarriesTheCardsTemplateId()
+        {
+            var game = BuildGame();
+            var templateId = Guid.NewGuid();
+            var fromTemplate = SeedCard(game.Id, "Goblin");
+            var plain = SeedCard(game.Id, "Plain");
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "template_id", Value = templateId.ToString(), ParentID = fromTemplate.Id, Card = fromTemplate });
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = plain.Id, Card = plain });
+            Db.SaveChanges();
+
+            var (_, cards) = await Handler().Handle(new GetAllCardsCommand { GameId = game.Id, Player = Player(), Flat = true }, CancellationToken.None);
+
+            Assert.Equal(templateId, cards.Single(c => c.Name == "Goblin").TemplateId);
+            Assert.Null(cards.Single(c => c.Name == "Plain").TemplateId);
         }
 
         [Fact]
