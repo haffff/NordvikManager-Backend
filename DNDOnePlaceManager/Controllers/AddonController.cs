@@ -359,6 +359,10 @@ namespace DNDOnePlaceManager.Controllers
         private void RunUninstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, string? addonKey, UninstallAddonCommand command)
         {
             var log = OpLog(serviceProvider);
+            // The app-wide scope factory, taken now: the request's own provider is disposed as
+            // soon as the answer is sent (at once over WebRTC), and building the background
+            // scope from it crashed with ObjectDisposedException whenever that came first.
+            var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
             log.LogInformation("[uninstall] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
@@ -367,7 +371,7 @@ namespace DNDOnePlaceManager.Controllers
                 DNDOnePlaceManager.Services.Implementations.GameLobby? lobby = null;
                 try
                 {
-                    using var scope = serviceProvider.CreateScope();
+                    using var scope = scopeFactory.CreateScope();
                     var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
                     var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
                     lobby = scopedLobbyService.GetLobby(gameId);
@@ -496,6 +500,10 @@ namespace DNDOnePlaceManager.Controllers
         private void RunInstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, InstallAddonCommand command)
         {
             var log = OpLog(serviceProvider);
+            // The app-wide scope factory, taken now: the request's own provider is disposed as
+            // soon as the answer is sent (at once over WebRTC), and building the background
+            // scope from it crashed with ObjectDisposedException whenever that came first.
+            var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
             log.LogInformation("[install] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
@@ -504,7 +512,7 @@ namespace DNDOnePlaceManager.Controllers
                 DNDOnePlaceManager.Services.Implementations.GameLobby? lobby = null;
                 try
                 {
-                    using var scope = serviceProvider.CreateScope();
+                    using var scope = scopeFactory.CreateScope();
                     var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
                     var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
                     lobby = scopedLobbyService.GetLobby(gameId);
