@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Commands.Actions.ActionGetData;
+﻿using Microsoft.Extensions.Logging;
+using DndOnePlaceManager.Application.Commands.Actions.ActionGetData;
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperties;
@@ -75,16 +76,30 @@ namespace DNDOnePlaceManager.Services.Implementations
                 using var scope = serviceScopeFactory.CreateScope();
                 var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
+                // Install/Uninstall are traced start to end with the addon operations ("AddonOp").
+                var trace = hook == Hook.Install || hook == Hook.Uninstall
+                    ? scope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("AddonOp")
+                    : null;
+
                 var actions = await GetActionsAsync(mediator);
                 var actList = actions.Where(x => x.Hook == hook && x.IsEnabled).ToList();
+                trace?.LogInformation("[hook {Hook}] {Count} enabled action(s): {Names}",
+                    hook, actList.Count, string.Join(", ", actList.Select(a => a.Name)));
 
                 foreach (var action in actList)
+                {
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    trace?.LogInformation("[hook {Hook}] action '{Action}' → start", hook, action.Name);
                     await ExecActionAsync(action, hookArg, null, mediator);
+                    trace?.LogInformation("[hook {Hook}] action '{Action}' → done ({Ms} ms)", hook, action.Name, watch.ElapsedMilliseconds);
+                }
             }
             catch (Exception e)
             {
                 GameLobby?.EventLog?.Log("Error", "Action", $"Hook '{hook}' failed: {e.Message}",
                     details: new { hook, exceptionType = e.GetType().Name });
+                if (hook == Hook.Install || hook == Hook.Uninstall)
+                    Console.Error.WriteLine($"[AddonOp] hook {hook} failed: {e}");
             }
         }
 

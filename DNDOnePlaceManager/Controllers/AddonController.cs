@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,6 +55,14 @@ namespace DNDOnePlaceManager.Controllers
         /// game event logger so that MediatR handlers dispatched from this HTTP request
         /// write to the correct in-memory event log.
         /// </summary>
+        /// <summary>
+        /// Start-to-end trace of addon install/uninstall operations (category "AddonOp"),
+        /// so a stuck or failed operation can be followed in the server console.
+        /// </summary>
+        private static Microsoft.Extensions.Logging.ILogger OpLog(IServiceProvider provider) =>
+            provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("AddonOp")
+            ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
         private void AttachLobbyLog(Guid gameId)
         {
             var lobby = lobbyService.GetLobby(gameId);
@@ -241,11 +250,15 @@ namespace DNDOnePlaceManager.Controllers
         [HttpPost]        
         public async Task<IActionResult> InstallAddon([FromQuery] Guid gameId, [FromBody] InstallAddonRequest body)
         {
+            var log = OpLog(serviceProvider);
+            log.LogInformation("[install] request game={GameId} key={Key}", gameId, body?.Key);
             if (string.IsNullOrWhiteSpace(body?.Key))
                 return BadRequest(new { error = "key is required." });
 
             GetPlayerCommandResponse player = await GetPlayer(gameId);
             var operationId = Guid.NewGuid();
+            log.LogInformation("[install] op={OperationId} player={Player} ({PlayerId}) key={Key} → starting in background",
+                operationId, player.Player?.Name, player.Player?.Id, body.Key);
 
             RunInstallInBackground(gameId, player.Player, operationId, new InstallAddonCommand
             {
@@ -254,6 +267,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonSourceKey = body.Key,
             });
 
+            log.LogInformation("[install] op={OperationId} answered 200", operationId);
             return Ok(new { started = true, operationId });
         }
 
@@ -288,11 +302,14 @@ namespace DNDOnePlaceManager.Controllers
         [HttpPost]
         public async Task<IActionResult> UninstallAddon([FromQuery] Guid gameId, [FromBody] UninstallAddonRequest body)
         {
+            var log = OpLog(serviceProvider);
+            log.LogInformation("[uninstall] request game={GameId} addonId={AddonId}", gameId, body?.AddonId);
             if (string.IsNullOrWhiteSpace(body?.AddonId))
                 return BadRequest(new { error = "addonId is required." });
 
             AttachLobbyLog(gameId);
             GetPlayerCommandResponse player = await GetPlayer(gameId);
+            log.LogInformation("[uninstall] player={Player} ({PlayerId})", player.Player?.Name, player.Player?.Id);
 
             Guid? addonGuid = Guid.TryParse(body.AddonId, out var g) ? g : null;
 
@@ -310,9 +327,14 @@ namespace DNDOnePlaceManager.Controllers
             var existingAddon = await mediator.Send(getExistingAddonCommand);
 
             if (existingAddon == null)
+            {
+                log.LogWarning("[uninstall] addon {AddonId} not found in game {GameId} → 400", body.AddonId, gameId);
                 return BadRequest(new { error = "Addon not found." });
+            }
 
             var operationId = Guid.NewGuid();
+            log.LogInformation("[uninstall] op={OperationId} addon={AddonName} id={Id} key={Key} → starting in background",
+                operationId, existingAddon.Name, existingAddon.Id, existingAddon.Key);
 
             RunUninstallInBackground(gameId, player.Player, operationId, existingAddon.Key, new UninstallAddonCommand
             {
@@ -322,6 +344,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonKey = addonGuid == null ? body.AddonId : null,
             });
 
+            log.LogInformation("[uninstall] op={OperationId} answered 200", operationId);
             return Ok(new { started = true, operationId });
         }
 
@@ -335,42 +358,63 @@ namespace DNDOnePlaceManager.Controllers
         /// </summary>
         private void RunUninstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, string? addonKey, UninstallAddonCommand command)
         {
+            var log = OpLog(serviceProvider);
+            log.LogInformation("[uninstall] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
-                using var scope = serviceProvider.CreateScope();
-                var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-                var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
-                var lobby = scopedLobbyService.GetLobby(gameId);
-
-                (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
-                    as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
-
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                log.LogInformation("[uninstall] op={OperationId} background started", operationId);
+                DNDOnePlaceManager.Services.Implementations.GameLobby? lobby = null;
                 try
                 {
-                    // Bug fix: this used to be an un-awaited fire-and-forget call made right
-                    // before the uninstall proceeded synchronously on the request thread — the
-                    // hook's own async work raced the addon's data actually being deleted right
-                    // after. Now properly awaited, and still ahead of the removal below, so the
-                    // addon's own Uninstall action gets to run against still-live data.
-                    if (lobby != null)
+                    using var scope = serviceProvider.CreateScope();
+                    var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                    var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
+                    lobby = scopedLobbyService.GetLobby(gameId);
+                    log.LogInformation("[uninstall] op={OperationId} lobby={Lobby} connectedPlayers={Count}",
+                        operationId, lobby != null ? "found" : "MISSING", lobby?.ConnectedPlayers.Count);
+
+                    (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                        as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
+
+                    try
                     {
-                        await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Uninstall, new AddonHookArgs
+                        // Bug fix: this used to be an un-awaited fire-and-forget call made right
+                        // before the uninstall proceeded synchronously on the request thread — the
+                        // hook's own async work raced the addon's data actually being deleted right
+                        // after. Now properly awaited, and still ahead of the removal below, so the
+                        // addon's own Uninstall action gets to run against still-live data.
+                        if (lobby != null)
                         {
-                            GameId = gameId,
-                            PlayerId = player.Id ?? default,
-                            AddonKey = addonKey,
-                        });
+                            log.LogInformation("[uninstall] op={OperationId} Uninstall hook → start", operationId);
+                            await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Uninstall, new AddonHookArgs
+                            {
+                                GameId = gameId,
+                                PlayerId = player.Id ?? default,
+                                AddonKey = addonKey,
+                            });
+                            log.LogInformation("[uninstall] op={OperationId} Uninstall hook → done ({Ms} ms)", operationId, watch.ElapsedMilliseconds);
+                        }
+
+                        log.LogInformation("[uninstall] op={OperationId} UninstallAddonCommand → start", operationId);
+                        var (_, addonInfo) = await scopedMediator.Send(command);
+                        log.LogInformation("[uninstall] op={OperationId} UninstallAddonCommand → done ({Ms} ms)", operationId, watch.ElapsedMilliseconds);
+
+                        await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
+                            lobby, player, operationId, "Addon uninstalled", addonInfo.AddonName);
+                        log.LogInformation("[uninstall] op={OperationId} completed, total {Ms} ms", operationId, watch.ElapsedMilliseconds);
                     }
-
-                    var (_, addonInfo) = await scopedMediator.Send(command);
-
-                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
-                        lobby, player, operationId, "Addon uninstalled", addonInfo.AddonName);
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "[uninstall] op={OperationId} FAILED after {Ms} ms", operationId, watch.ElapsedMilliseconds);
+                        await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
+                            lobby, player, operationId, "Uninstallation failed", ex.Message);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
-                        lobby, player, operationId, "Uninstallation failed", ex.Message);
+                    // Setup failed, or sending the failure itself did: the player hears nothing.
+                    log.LogError(ex, "[uninstall] op={OperationId} background task crashed; the player gets no result", operationId);
                 }
             });
         }
@@ -428,6 +472,9 @@ namespace DNDOnePlaceManager.Controllers
 
             GetPlayerCommandResponse player = await GetPlayer(gameId);
             var operationId = Guid.NewGuid();
+            var log = OpLog(serviceProvider);
+            log.LogInformation("[installFromFile] op={OperationId} player={Player} ({PlayerId}) file={FileName} bytes={Bytes} → starting in background",
+                operationId, player.Player?.Name, player.Player?.Id, body.FileName, fileBytes.Length);
 
             RunInstallInBackground(gameId, player.Player, operationId, new InstallAddonCommand
             {
@@ -437,6 +484,7 @@ namespace DNDOnePlaceManager.Controllers
                 AddonFileName = body.FileName,
             });
 
+            log.LogInformation("[installFromFile] op={OperationId} answered 200", operationId);
             return Ok(new { started = true, operationId });
         }
 
@@ -447,58 +495,86 @@ namespace DNDOnePlaceManager.Controllers
         /// </summary>
         private void RunInstallInBackground(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid operationId, InstallAddonCommand command)
         {
+            var log = OpLog(serviceProvider);
+            log.LogInformation("[install] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
-                using var scope = serviceProvider.CreateScope();
-                var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-                var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
-                var lobby = scopedLobbyService.GetLobby(gameId);
-
-                (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
-                    as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
-
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                log.LogInformation("[install] op={OperationId} background started", operationId);
+                DNDOnePlaceManager.Services.Implementations.GameLobby? lobby = null;
                 try
                 {
-                    command.OnProgress = progress => DNDOnePlaceManager.Services.OperationProgressPublisher
-                        .Update(lobby, player, operationId, progress.Current, progress.Total, progress.Message)
-                        .GetAwaiter().GetResult();
+                    using var scope = serviceProvider.CreateScope();
+                    var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                    var scopedLobbyService = scope.ServiceProvider.GetRequiredService<ILobbyService>();
+                    lobby = scopedLobbyService.GetLobby(gameId);
+                    log.LogInformation("[install] op={OperationId} lobby={Lobby} connectedPlayers={Count}",
+                        operationId, lobby != null ? "found" : "MISSING", lobby?.ConnectedPlayers.Count);
 
-                    var (installResponse, addonInfo) = await scopedMediator.Send(command);
-                    var alreadyInstalled = installResponse == DndOnePlaceManager.Domain.Enums.CommandResponse.AlreadyExists;
+                    (scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Interfaces.IGameEventLogger>()
+                        as DNDOnePlaceManager.Services.Implementations.LobbyGameEventLogger)?.Attach(lobby?.EventLog);
 
-                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
-                        lobby, player, operationId,
-                        alreadyInstalled ? "Addon already installed" : "Addon installed",
-                        addonInfo.AddonName);
-
-                    // AlreadyExists means InstallAddonCommandHandler found this addon already
-                    // installed and skipped re-processing it entirely (see its own guard) — its
-                    // Install hook already ran the first time. Firing it again here would re-run
-                    // the addon's install action a second time for no reason.
-                    if (lobby != null && !alreadyInstalled)
+                    try
                     {
-                        await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                        command.OnProgress = progress =>
                         {
-                            GameId = gameId,
-                            PlayerId = player.Id ?? default,
-                            AddonKey = addonInfo.AddonKey,
-                        });
+                            log.LogInformation("[install] op={OperationId} progress {Current}/{Total} {Phase}: {Message}",
+                                operationId, progress.Current, progress.Total, progress.Phase, progress.Message);
+                            DNDOnePlaceManager.Services.OperationProgressPublisher
+                                .Update(lobby, player, operationId, progress.Current, progress.Total, progress.Message)
+                                .GetAwaiter().GetResult();
+                        };
 
-                        // Mark it fired so RunPendingAddonInstallHooksAsync (run on the next
-                        // player join) doesn't fire Install a second time for this addon.
-                        var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
-                        var installedAddon = await dbContext.Addons.FindAsync(addonInfo.AddonId);
-                        if (installedAddon != null)
+                        log.LogInformation("[install] op={OperationId} InstallAddonCommand → start", operationId);
+                        var (installResponse, addonInfo) = await scopedMediator.Send(command);
+                        var alreadyInstalled = installResponse == DndOnePlaceManager.Domain.Enums.CommandResponse.AlreadyExists;
+                        log.LogInformation("[install] op={OperationId} InstallAddonCommand → {Response} addon={AddonName} key={Key} ({Ms} ms)",
+                            operationId, installResponse, addonInfo?.AddonName, addonInfo?.AddonKey, watch.ElapsedMilliseconds);
+
+                        await DNDOnePlaceManager.Services.OperationProgressPublisher.Complete(
+                            lobby, player, operationId,
+                            alreadyInstalled ? "Addon already installed" : "Addon installed",
+                            addonInfo.AddonName);
+                        log.LogInformation("[install] op={OperationId} completion sent", operationId);
+
+                        // AlreadyExists means InstallAddonCommandHandler found this addon already
+                        // installed and skipped re-processing it entirely (see its own guard) — its
+                        // Install hook already ran the first time. Firing it again here would re-run
+                        // the addon's install action a second time for no reason.
+                        if (lobby != null && !alreadyInstalled)
                         {
-                            installedAddon.InstallHookFired = true;
-                            await dbContext.SaveChangesAsync();
+                            log.LogInformation("[install] op={OperationId} Install hook → start", operationId);
+                            await lobby.ActionProcessingService.CallHookAsync(DNDOnePlaceManager.Enums.Hook.Install, new AddonHookArgs
+                            {
+                                GameId = gameId,
+                                PlayerId = player.Id ?? default,
+                                AddonKey = addonInfo.AddonKey,
+                            });
+                            log.LogInformation("[install] op={OperationId} Install hook → done ({Ms} ms)", operationId, watch.ElapsedMilliseconds);
+
+                            // Mark it fired so RunPendingAddonInstallHooksAsync (run on the next
+                            // player join) doesn't fire Install a second time for this addon.
+                            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                            var installedAddon = await dbContext.Addons.FindAsync(addonInfo.AddonId);
+                            if (installedAddon != null)
+                            {
+                                installedAddon.InstallHookFired = true;
+                                await dbContext.SaveChangesAsync();
+                            }
                         }
+                        log.LogInformation("[install] op={OperationId} finished, total {Ms} ms", operationId, watch.ElapsedMilliseconds);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "[install] op={OperationId} FAILED after {Ms} ms", operationId, watch.ElapsedMilliseconds);
+                        await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
+                            lobby, player, operationId, "Installation failed", ex.Message);
                     }
                 }
                 catch (Exception ex)
                 {
-                    await DNDOnePlaceManager.Services.OperationProgressPublisher.Fail(
-                        lobby, player, operationId, "Installation failed", ex.Message);
+                    // Setup failed, or sending the failure itself did: the player hears nothing.
+                    log.LogError(ex, "[install] op={OperationId} background task crashed; the player gets no result", operationId);
                 }
             });
         }

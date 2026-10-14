@@ -28,6 +28,9 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
 
         public override async Task<(CommandResponse, UninstallAddonCommandResponse)> Handle(UninstallAddonCommand request, CancellationToken token)
         {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            gameEventLogger.Info("AddonUninstall", $"[trace] handler start: addonId={request.AddonId} addonKey={request.AddonKey}");
+
             //Get game for futher processing
             var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameID);
             Guard.NotFound(game, "Game", request.GameID);
@@ -47,6 +50,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 .FirstOrDefault(x => x.Id == request.AddonId || x.Key == request.AddonKey);
 
             Guard.NotFound(addon, "Addon", (object?)request.AddonId ?? request.AddonKey);
+            gameEventLogger.Info("AddonUninstall", $"[trace] addon loaded in {watch.ElapsedMilliseconds} ms: '{addon.Name}' key={addon.Key} — {addon.Resources.Count} resources, {addon.Views.Count} views, {addon.Templates.Count} templates, {addon.Actions.Count} actions");
 
             gameEventLogger.Info("AddonUninstall", $"Uninstalling addon '{addon.Name}' (ID: {addon.Id}) for game '{game.Name}' (ID: {game.Id}) by player '{request.Player.Name}' (ID: {request.Player.Id}).");
 
@@ -63,6 +67,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 await mediator.Send(removeResourceCommand);
             }
 
+            gameEventLogger.Info("AddonUninstall", $"[trace] resources removed ({watch.ElapsedMilliseconds} ms)");
+
             //Remove all views
             foreach (var view in addon.Views.ToList())
             {
@@ -75,6 +81,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
 
                 await mediator.Send(removeCardCommand);
             }
+
+            gameEventLogger.Info("AddonUninstall", $"[trace] views removed ({watch.ElapsedMilliseconds} ms)");
 
             //Remove all templates
             foreach (var template in addon.Templates.ToList())
@@ -89,6 +97,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 await mediator.Send(removeCardCommand);
             }
 
+            gameEventLogger.Info("AddonUninstall", $"[trace] templates removed ({watch.ElapsedMilliseconds} ms)");
+
             //Remove all actions
             foreach (var action in addon.Actions.ToList())
             {
@@ -102,8 +112,11 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
                 await mediator.Send(removeActionCommand);
             }
 
+            gameEventLogger.Info("AddonUninstall", $"[trace] actions removed ({watch.ElapsedMilliseconds} ms)");
+
             dbContext.Remove(addon);
             await dbContext.SaveChangesAsync();
+            gameEventLogger.Info("AddonUninstall", $"[trace] addon row removed ({watch.ElapsedMilliseconds} ms)");
 
             // Bug fix: InstallAddonCommandHandler.CreateFolder builds "Addons/<AddonName>"
             // (plus "Scripts"/"Resources" subfolders) for every install, but removing an
@@ -112,6 +125,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.UninstallAddon
             // containing folder entries themselves were never touched, so every uninstall
             // left empty "ghost" folders behind permanently in the Materials tree.
             await TryRemoveEmptyAddonFoldersAsync(request, addon.Name);
+            gameEventLogger.Info("AddonUninstall", $"[trace] folders cleaned, handler done ({watch.ElapsedMilliseconds} ms)");
 
             return (CommandResponse.Ok, new UninstallAddonCommandResponse
             {

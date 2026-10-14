@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
+﻿using Microsoft.Extensions.Logging;
+using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -397,6 +398,9 @@ namespace DNDOnePlaceManager.Services.Implementations
             catch (Exception e)
             {
                 Console.Error.WriteLine(e.Message);
+                cmdScope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                    ?.CreateLogger("GameLobby")
+                    .LogError(e, "HandlePostCommand failed for {Command} from {Player}; nobody received it", webSocketCommand?.Command, player?.Name);
             }
         }
 
