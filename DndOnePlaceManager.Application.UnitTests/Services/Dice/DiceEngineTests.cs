@@ -127,5 +127,19 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Dice
             Assert.Equal(expected, result.Result);
             Assert.Empty(result.Dices);
         }
+
+        // A bonus written the way stat blocks show it ("+5") ends up after another "+":
+        // the dnd5e monster card's attack rolls "1d20+(%attackBonus%)" → "1d20+(+5)".
+        [Theory]
+        [InlineData("1d20+(+5)", 15)]
+        [InlineData("1d20+(+0)", 10)]
+        [InlineData("1d20++5", 15)]
+        [InlineData("+3", 3)]
+        public void Evaluate_LeadingPlusSign_IsAccepted(string expression, int expected)
+        {
+            var result = EngineWith(10).Evaluate(expression);
+
+            Assert.Equal(expected, result.Result);
+        }
     }
 }
