@@ -133,6 +133,31 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
+        public async Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session)
+        {
+            var body = JsonConvert.SerializeObject(new
+            {
+                sessionId,
+                name = session.Name,
+                summary = session.ShortDescription,
+                description = session.LongDescription,
+                image = session.Image,
+                isPublic = session.IsPublic,
+            });
+            try
+            {
+                // Content built per attempt: a retry after a token refresh can't reuse a sent one.
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/updategame",
+                        new StringContent(body, Encoding.UTF8, "application/json")));
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public async Task<string?> RefreshTokenAsync(string refreshToken)
         {
             var client = _httpClientFactory.CreateClient();

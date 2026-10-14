@@ -88,15 +88,15 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 //get mime type from base64 data prefix 
                 var mimeType = request.Image.Split("base64,")[0].Split("data:")[1].Split(";")[0];
 
-                //remove base64 data prefix if exists
-                if (request.Image.Contains("base64,"))
-                {
-                    request.Image = request.Image.Split("base64,")[1];
-                }
+                //remove base64 data prefix if exists — into a copy: the caller sends
+                //request.Image on to the Central Server, which needs the full data URL
+                var imageData = request.Image.Contains("base64,")
+                    ? request.Image.Split("base64,")[1]
+                    : request.Image;
 
                 AddResourceCommand addResourceCommand = new AddResourceCommand()
                 {
-                    Data = request.Image,
+                    Data = imageData,
                     GameID = game.Id,
                     Key = "game_image",
                     Player = playerDTO,

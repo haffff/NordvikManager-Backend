@@ -103,6 +103,7 @@ namespace DNDOnePlaceManager.Controllers
                         Name = details.Name,
                         ShortDescription = details.Summary,
                         LongDescription = details.Description,
+                        Image = details.Image,
                         PasswordRequired = details.PasswordRequired,
                         IsPublic = details.IsPublic
                     });
@@ -115,6 +116,27 @@ namespace DNDOnePlaceManager.Controllers
                     GameId = gameId,
                     CentralSessionId = centralSessionId
                 });
+            }
+            else
+            {
+                // Refresh the listing players see before they connect (the cover image above
+                // all): it was only ever sent when the session was made. Best effort — an
+                // older Central without the route, or any failure, leaves it as it was.
+                var details = await _mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
+                if (details != null)
+                {
+                    await _centralServerService.UpdateSessionAsync(
+                        centralToken,
+                        centralSessionId,
+                        new GameItemDTO
+                        {
+                            Name = details.Name,
+                            ShortDescription = details.Summary,
+                            LongDescription = details.Description,
+                            Image = details.Image,
+                            IsPublic = details.IsPublic
+                        });
+                }
             }
 
             // Lobby already exists — check if WebRTC signaling is still connected.

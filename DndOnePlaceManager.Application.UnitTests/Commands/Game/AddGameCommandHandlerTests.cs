@@ -147,6 +147,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
                 It.IsAny<CancellationToken>()), Times.Once);
         }
 
+        // The controller sends the same command's Image on to the Central Server, where
+        // players' session list shows it as an <img src>: it must stay a full data URL.
+        [Fact]
+        public async Task Handle_WithImage_StoresBareBase64ButLeavesTheRequestImageAsDataUrl()
+        {
+            var cmd = ValidCommand();
+            cmd.Image = "data:image/png;base64,aGVsbG8=";
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal("data:image/png;base64,aGVsbG8=", cmd.Image);
+            _mediator.Verify(m => m.Send(
+                It.Is<AddResourceCommand>(c => c.Data == "aGVsbG8=" && c.MimeType == "image/png"),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task Handle_WithoutImage_DoesNotSendAddResourceCommand()
         {
