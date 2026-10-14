@@ -9,6 +9,8 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.Chat
         public Guid PlayerId { get; set; }
         public string? Data { get; set; }
         public DateTime? Created { get; set; }
+        /// <summary>Set on a whisper or GM roll: who it was sent to.</summary>
+        public Guid? RecipientId { get; set; }
         public Permission? Permission { get; set; }
     }
 }

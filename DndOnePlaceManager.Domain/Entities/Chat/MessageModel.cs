@@ -13,5 +13,7 @@ namespace DndOnePlaceManager.Domain.Entities.Chat
         public Guid PlayerId { get; set; }
         public string? Content { get; set; }
         public DateTime? Created { get; set; }
+        /// <summary>Set on a whisper or GM roll: who it was sent to. Who can read it is in its permissions.</summary>
+        public Guid? RecipientId { get; set; }
     }
 }

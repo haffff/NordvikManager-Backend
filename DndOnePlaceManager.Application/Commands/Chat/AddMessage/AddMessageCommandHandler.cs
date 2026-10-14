@@ -20,14 +20,23 @@ namespace DndOnePlaceManager.Application.Commands.Chat.AddMessage
                 Content = request.Message,
                 Created = DateTime.UtcNow,
                 GameId = request.GameID,
-                PlayerId = request.PlayerId
+                PlayerId = request.PlayerId,
+                RecipientId = request.RecipientId
             };
 
             await dbContext.AddAsync(model);
 
             await dbContext.SaveChangesAsync();
 
-            model.SetGlobalPermission();
+            if (request.VisibleTo == null)
+            {
+                model.SetGlobalPermission();
+            }
+            else
+            {
+                foreach (var playerId in request.VisibleTo.Distinct())
+                    model.SetPermissions(playerId, Permission.Read);
+            }
 
             return (CommandResponse.Ok, 0);
         }

@@ -402,6 +402,15 @@ namespace DNDOnePlaceManager.Services.Implementations
 
         private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg)
         {
+            // Whispers and GM rolls (ChatHandler sets VisibleTo): only to those players, and
+            // not passed to action hooks, so no action sees what wasn't meant for everyone.
+            if (parsedMsg.Command == WebSocketCommandNames.CmdChatPush && parsedMsg.VisibleTo != null && !parsedMsg.OnlyToSender)
+            {
+                foreach (var item in ConnectedPlayers.Where(p => parsedMsg.VisibleTo.Contains(p.Key.Id ?? Guid.Empty)))
+                    item.Value.SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+
             // PlayerList must be returned only to the requester — not broadcast
             if (parsedMsg.Command == WebSocketCommandNames.CmdPlayerList)
             {
