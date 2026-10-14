@@ -14,5 +14,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails
         public string? Description { get; set; }
         public bool PasswordRequired { get; set; }
         public bool IsPublic { get; set; }
+        /// <summary>The cover image as a data URL, for the Central Server's session list; null when there's none.</summary>
+        public string? Image { get; set; }
     }
 }

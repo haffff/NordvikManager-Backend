@@ -273,7 +273,9 @@ namespace DNDOnePlaceManager.Controllers
                     Name = details.Name,
                     ShortDescription = details.Summary,
                     LongDescription = details.Description,
-                    PasswordRequired = details.PasswordRequired
+                    Image = details.Image,
+                    PasswordRequired = details.PasswordRequired,
+                    IsPublic = details.IsPublic
                 });
 
             if (sessionId == null)

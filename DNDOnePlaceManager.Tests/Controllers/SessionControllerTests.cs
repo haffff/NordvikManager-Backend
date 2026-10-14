@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
 using DndOnePlaceManager.Application.Commands.Game.GameExists;
+using DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Controllers;
@@ -26,6 +27,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
     {
         private readonly Mock<IMediator> _mediator = new();
         private readonly Mock<IWebRTCSessionService> _webRtcSession = new();
+        private readonly Mock<ICentralServerService> _central = new();
         private readonly Guid _gameId = Guid.NewGuid();
 
         public SessionControllerTests()
@@ -47,7 +49,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
                 new LobbyRegistry(),
                 _webRtcSession.Object,
                 LobbyScopeFactory(),
-                new Mock<ICentralServerService>().Object);
+                _central.Object);
 
             var httpContext = new DefaultHttpContext();
             httpContext.Items["User"] = new User { Id = "gm-id", UserName = "gm" };
@@ -95,6 +97,24 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var conflict = Assert.IsType<ConflictObjectResult>(result);
             var error = conflict.Value!.GetType().GetProperty("error")!.GetValue(conflict.Value);
             Assert.Equal(message, error);
+        }
+
+        // Players read the cover image from the Central Server's session list, before
+        // any WebRTC connection exists, so it has to go along when the session is made.
+        [Fact]
+        public async Task StartSession_CreatesCentralSessionWithCoverImage_WhenGameHasNone()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string?)null);
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game", Image = "data:image/png;base64,aGk=" });
+            _central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync("central-session-2");
+
+            await CreateController().StartSession(_gameId);
+
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(),
+                It.Is<GameItemDTO>(g => g.Image == "data:image/png;base64,aGk=")), Times.Once);
         }
 
         [Fact]

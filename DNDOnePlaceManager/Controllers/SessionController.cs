@@ -103,6 +103,7 @@ namespace DNDOnePlaceManager.Controllers
                         Name = details.Name,
                         ShortDescription = details.Summary,
                         LongDescription = details.Description,
+                        Image = details.Image,
                         PasswordRequired = details.PasswordRequired,
                         IsPublic = details.IsPublic
                     });
