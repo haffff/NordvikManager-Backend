@@ -504,6 +504,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<Guid>("GameId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsTemplate")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("PlayerId")
                         .HasColumnType("TEXT");
 

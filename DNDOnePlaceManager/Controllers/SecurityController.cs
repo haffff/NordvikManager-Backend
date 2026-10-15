@@ -1,11 +1,13 @@
 ﻿using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DNDOnePlaceManager.Domain.Entities.Auth;
+using DNDOnePlaceManager.Engine;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Controllers
@@ -18,6 +20,18 @@ namespace DNDOnePlaceManager.Controllers
         public SecurityController(IMediator mediator)
         {
             this.mediator = mediator;
+        }
+
+        /// <summary>
+        /// Gets the hosts addon cards and Html chat messages may load from
+        /// (Security:SandboxAllowedOrigins). Player clients enforce it themselves.
+        /// </summary>
+        [Microsoft.AspNetCore.Mvc.HttpGet]
+        [Authorize]
+        [Route("sandboxorigins")]
+        public IActionResult GetSandboxOrigins([FromServices] SandboxOrigins origins)
+        {
+            return Ok(new SandboxOriginsResponse { Origins = origins.Origins });
         }
 
         /// <summary>
@@ -44,5 +58,10 @@ namespace DNDOnePlaceManager.Controllers
             var res = await mediator.Send(cmd);
             return Ok(res);
         }
+    }
+
+    public class SandboxOriginsResponse
+    {
+        public IReadOnlyList<string> Origins { get; set; } = new List<string>();
     }
 }

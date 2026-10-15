@@ -38,5 +38,14 @@ namespace DNDOnePlaceManager.WebSockets
         /// <summary>Chat: the only players it's delivered to; null = everyone. Server-side only.</summary>
         [JsonIgnore]
         public List<Guid>? VisibleTo { get; set; }
+
+        /// <summary>Set by server code (rolls, action steps); never read from a client's JSON.</summary>
+        [JsonIgnore]
+        public bool FromServer { get; set; }
+
+        /// <summary>Chat: data is a chat template the client may render (roll card, Html...). Only
+        /// the server decides this — ChatHandler overwrites whatever a client sent.</summary>
+        [JsonProperty("isTemplate")]
+        public bool IsTemplate { get; set; }
     }
 }

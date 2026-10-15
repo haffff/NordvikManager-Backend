@@ -60,6 +60,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Command = WebSocketCommandNames.CmdChatPush,
                 Data    = JToken.Parse(json),
                 GameId  = gameLobby.GameId,
+                FromServer = true,
+                // The whisper below skips ChatHandler, which would otherwise set this.
+                IsTemplate = true,
             };
 
             if (!string.IsNullOrWhiteSpace(stepData.Player))

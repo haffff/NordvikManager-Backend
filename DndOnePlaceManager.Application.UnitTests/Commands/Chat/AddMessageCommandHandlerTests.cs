@@ -23,6 +23,19 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
             Assert.Equal("Hello world", created!.Content);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Handle_StoresWhetherTheMessageIsATemplate(bool isTemplate)
+        {
+            var game = BuildGame();
+            var cmd = new AddMessageCommand { GameID = game.Id, PlayerId = PlayerId, Message = "{}", IsTemplate = isTemplate };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(isTemplate, Db.Messages.Single(m => m.GameId == game.Id).IsTemplate);
+        }
+
         // Known pre-existing quirk: the returned long is hardcoded to 0 regardless of the
         // created message's actual (Guid) Id — the second tuple slot is effectively unused.
         [Fact]
