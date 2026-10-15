@@ -15,5 +15,7 @@ namespace DndOnePlaceManager.Domain.Entities.Chat
         public DateTime? Created { get; set; }
         /// <summary>Set on a whisper or GM roll: who it was sent to. Who can read it is in its permissions.</summary>
         public Guid? RecipientId { get; set; }
+        /// <summary>Content is a chat template made by the server (roll card, Html...), not player text.</summary>
+        public bool IsTemplate { get; set; }
     }
 }

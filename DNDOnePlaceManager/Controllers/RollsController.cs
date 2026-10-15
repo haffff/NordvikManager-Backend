@@ -140,6 +140,7 @@ namespace DNDOnePlaceManager.Controllers
                 Command = WebSocketCommandNames.CmdChatPush,
                 Data = JToken.Parse(JsonConvert.SerializeObject(template, Formatting.None, ChatJson)),
                 GameId = gameId,
+                FromServer = true,
             });
 
             return Ok();

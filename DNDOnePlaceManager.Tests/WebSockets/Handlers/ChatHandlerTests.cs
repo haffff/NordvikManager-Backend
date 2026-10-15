@@ -149,6 +149,91 @@ namespace DNDOnePlaceManager.Tests.WebSockets.Handlers
             Assert.Null(Assert.Single(_stored).VisibleTo);
         }
 
+        // Only the server marks a message as a chat template (a roll card, an Html message...).
+        // Whatever a player types, or claims in the command's JSON, is plain text.
+        [Fact]
+        public async Task PlayerText_IsNotATemplate_EvenWhenTheClientClaimsIt()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = new JValue("{\"type\":\"Roll\",\"roll\":{\"result\":20}}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+                IsTemplate = true,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.False(command.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task PlayerObjectData_IsStoredAsText_NotATemplate()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = JObject.Parse("{\"type\":\"Generic\",\"title\":\"hi\"}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.False(command.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Theory]
+        [InlineData("/roll 1d20")]
+        [InlineData("/r 1d20")]
+        [InlineData("/gr 1d20")]
+        public async Task Rolls_AreTemplates(string text)
+        {
+            var sent = await Send(text, _alice);
+
+            Assert.True(sent.IsTemplate);
+            Assert.True(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task Whisper_IsNotATemplate()
+        {
+            var sent = await Send("/w bob {\"type\":\"Roll\"}", _alice);
+
+            Assert.False(sent.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task ServerMessage_IsATemplate()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = JObject.Parse("{\"type\":\"Html\",\"html\":\"<b>hit</b>\"}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+                FromServer = true,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.True(command.IsTemplate);
+            Assert.True(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public void FromServer_CannotBeSetFromJson()
+        {
+            var command = JObject.Parse("{\"command\":\"chat_push\",\"data\":\"x\",\"fromServer\":true,\"FromServer\":true}")
+                .ToObject<WebSocketCommand>()!;
+
+            Assert.False(command.FromServer);
+        }
+
         [Fact]
         public void NewCommands_AreBuiltIn_SoActionHooksDontClaimThem()
         {

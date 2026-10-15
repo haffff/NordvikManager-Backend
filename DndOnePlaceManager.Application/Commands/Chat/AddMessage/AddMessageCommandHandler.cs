@@ -21,7 +21,8 @@ namespace DndOnePlaceManager.Application.Commands.Chat.AddMessage
                 Created = DateTime.UtcNow,
                 GameId = request.GameID,
                 PlayerId = request.PlayerId,
-                RecipientId = request.RecipientId
+                RecipientId = request.RecipientId,
+                IsTemplate = request.IsTemplate
             };
 
             await dbContext.AddAsync(model);

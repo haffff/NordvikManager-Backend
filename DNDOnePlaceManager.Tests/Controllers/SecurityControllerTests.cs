@@ -51,6 +51,23 @@ namespace DNDOnePlaceManager.Tests.Controllers
             new GetPlayerCommandResponse { Player = player };
 
         // =========================================================================
+        // GetSandboxOrigins
+        // =========================================================================
+
+        // Players' clients enforce the GM's host list themselves (their pages come from
+        // the Central Server), so the backend hands it out.
+        [Fact]
+        public void GetSandboxOrigins_ReturnsTheConfiguredHosts()
+        {
+            var origins = DNDOnePlaceManager.Tests.Engine.SandboxOriginsTests.Create("https://cdn.example.com", "http://dropped.example.com");
+
+            var result = Assert.IsType<OkObjectResult>(_controller.GetSandboxOrigins(origins));
+
+            var body = Assert.IsType<SandboxOriginsResponse>(result.Value);
+            Assert.Equal(new[] { "https://cdn.example.com" }, body.Origins);
+        }
+
+        // =========================================================================
         // GetPermissions
         // =========================================================================
 

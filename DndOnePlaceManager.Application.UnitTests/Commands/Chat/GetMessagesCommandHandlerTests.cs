@@ -16,9 +16,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
         private GameRef BuildGame() => new(Guid.NewGuid());
 
         // Posted messages get an "everyone can read" row (AddMessageCommandHandler → SetGlobalPermission).
-        private MessageModel SeedMessage(Guid gameId, Guid playerId, string content, DateTime created, bool everyoneCanRead = true)
+        private MessageModel SeedMessage(Guid gameId, Guid playerId, string content, DateTime created, bool everyoneCanRead = true, bool isTemplate = false)
         {
-            var message = new MessageModel { Id = Guid.NewGuid(), GameId = gameId, PlayerId = playerId, Content = content, Created = created };
+            var message = new MessageModel { Id = Guid.NewGuid(), GameId = gameId, PlayerId = playerId, Content = content, Created = created, IsTemplate = isTemplate };
             using var seed = SeedContext();
             seed.Messages.Add(message);
             if (everyoneCanRead)
@@ -40,6 +40,20 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Chat
 
             Assert.Single(result);
             Assert.Equal("in game", result[0].Data);
+        }
+
+        [Fact]
+        public async Task Handle_ReturnsWhetherEachMessageIsATemplate()
+        {
+            var game = BuildGame();
+            SeedMessage(game.Id, PlayerId, "{\"type\":\"Roll\"}", DateTime.UtcNow, isTemplate: true);
+            SeedMessage(game.Id, PlayerId, "plain", DateTime.UtcNow.AddSeconds(-1));
+            var cmd = new GetMessagesCommand { GameID = game.Id, PlayerID = PlayerId, Size = 10, Page = 0 };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.True(result.Single(m => m.Data != "plain").IsTemplate);
+            Assert.False(result.Single(m => m.Data == "plain").IsTemplate);
         }
 
         [Fact]

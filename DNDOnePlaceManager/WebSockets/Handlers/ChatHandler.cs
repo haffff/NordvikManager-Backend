@@ -4,6 +4,8 @@ using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Services.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using MediatR;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,6 +49,13 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
         private async Task<CommandResponse> PushChatMessage(WebSocketCommand parsedMsg, PlayerDTO player)
         {
+            // Only server code makes chat templates (a roll below sets it again). Anything a
+            // player sends is text, even JSON that looks like a template — the client
+            // renders templates only when this flag is set.
+            parsedMsg.IsTemplate = parsedMsg.FromServer;
+            if (!parsedMsg.IsTemplate && parsedMsg.Data != null && parsedMsg.Data.Type != JTokenType.String)
+                parsedMsg.Data = new JValue(parsedMsg.Data.ToString(Formatting.None));
+
             if (parsedMsg.Data.ToString().StartsWith('/'))
             {
                 await ParseCommand(parsedMsg, player);
@@ -62,6 +71,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             message.GameID = parsedMsg.GameId ?? Guid.Empty;
             message.RecipientId = parsedMsg.RecipientId;
             message.VisibleTo = parsedMsg.VisibleTo;
+            message.IsTemplate = parsedMsg.IsTemplate;
 
             (var response, _) = await mediator.Send(message);
 
@@ -80,6 +90,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 case "/r":
                 case "/roll":
                     parsedMsg.Data = chatService.ParseRollFromUser(splitted[1], splitted.Length == 3 ? splitted[2] : null);
+                    parsedMsg.IsTemplate = true;
                     break;
                 case "/gr":
                     {
@@ -90,6 +101,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                             break;
                         }
                         parsedMsg.Data = chatService.ParseRollFromUser(splitted[1], splitted.Length == 3 ? splitted[2] : null);
+                        parsedMsg.IsTemplate = true;
                         MakePrivate(parsedMsg, player, gm, gm);
                         break;
                     }

@@ -11,5 +11,7 @@ namespace DndOnePlaceManager.Application.Commands.Chat.AddMessage
         public Guid? RecipientId { get; set; }
         /// <summary>Players who may read it; null = everyone.</summary>
         public List<Guid>? VisibleTo { get; set; }
+        /// <summary>Message is a server-made chat template, not player text.</summary>
+        public bool IsTemplate { get; set; }
     }
 }

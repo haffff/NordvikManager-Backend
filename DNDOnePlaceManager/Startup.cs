@@ -73,6 +73,8 @@ namespace DNDOnePlaceManager
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
+            services.AddSingleton<DNDOnePlaceManager.Engine.SandboxOrigins>();
+            services.AddSingleton<SecurityHeadersMiddleWare>();
             services.AddSingleton<ICentralServerService, CentralServerService>();
             services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
             services.AddSingleton<ISignalingService, SignalingService>();
@@ -179,6 +181,8 @@ namespace DNDOnePlaceManager
             }
 
             var sessionOptions = new SessionOptions();
+            // Before static files, so index.html and the card sandbox page get their headers.
+            app.UseMiddleware<SecurityHeadersMiddleWare>();
             app.UseStaticFiles();
             app.UseRouting();
 
