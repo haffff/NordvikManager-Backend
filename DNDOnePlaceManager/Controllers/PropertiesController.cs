@@ -6,11 +6,18 @@ using DndOnePlaceManager.Application.Commands.Properties.UpdateProperties;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.Auth;
+using DNDOnePlaceManager.Services;
+using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
@@ -22,10 +29,15 @@ namespace DNDOnePlaceManager.Controllers
     public class PropertiesController : ControllerBase
     {
         private IMediator mediator;
+        private readonly ILobbyService lobbyService;
 
-        public PropertiesController(IMediator mediator)
+        // Same wire shape as PropertiesHandler's broadcasts (parentId, camelCase).
+        private static readonly JsonSerializer CamelSerializer = new() { ContractResolver = new CamelCasePropertyNamesContractResolver() };
+
+        public PropertiesController(IMediator mediator, ILobbyService lobbyService)
         {
             this.mediator = mediator;
+            this.lobbyService = lobbyService;
         }
 
         [Authorize]
@@ -149,6 +161,14 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             var result = await mediator.Send(addPropertiesCmd);
+            if (result == CommandResponse.Ok && properties.Length > 0)
+            {
+                await BroadcastSaved(gameId, player.Player, WebSocketCommandNames.PropertyAdd, new GetPropertiesByQueryCommand
+                {
+                    ParentIDs = new[] { properties[0].ParentID ?? Guid.Empty },
+                    PropertyNames = properties.Select(x => x.Name).ToArray(),
+                });
+            }
             return Ok(new { result = result });
         }
 
@@ -178,8 +198,41 @@ namespace DNDOnePlaceManager.Controllers
             };
 
             var result = await mediator.Send(updatePropertiesCommand);
+            if (result == CommandResponse.Ok && properties.Length > 0)
+            {
+                await BroadcastSaved(gameId, player.Player, WebSocketCommandNames.PropertyUpdate, new GetPropertiesByQueryCommand
+                {
+                    Ids = properties.Where(x => x.Id.HasValue).Select(x => x.Id!.Value).Distinct().ToArray(),
+                });
+            }
 
             return Ok(new { result = result });
+        }
+
+        /// <summary>
+        /// Tells the game's clients about rows saved in bulk, as one property_add /
+        /// property_update per row — the same message a single change sends, so open cards,
+        /// tokens and panels all pick it up, and the lobby sends each only to players who
+        /// can read it. The rows are re-read, never echoed from the request.
+        /// </summary>
+        private async Task BroadcastSaved(Guid gameId, DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO player, string command, GetPropertiesByQueryCommand query)
+        {
+            var lobby = lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return;
+
+            query.GameId = gameId;
+            query.Player = player;
+            var saved = await mediator.Send(query) ?? new List<PropertyDTO>();
+            foreach (var row in saved)
+            {
+                await lobby.HandlePostCommand(player, new WebSocketCommand
+                {
+                    Command = command,
+                    Result = WebSocketCommandNames.ResultOk,
+                    Data = JObject.FromObject(row, CamelSerializer),
+                });
+            }
         }
     }
 }

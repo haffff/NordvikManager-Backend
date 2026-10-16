@@ -36,7 +36,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
         private static PropertiesController CreateController(Mock<IMediator> mediatorMock, User? contextUser = null)
         {
-            var controller = new PropertiesController(mediatorMock.Object);
+            var controller = new PropertiesController(mediatorMock.Object, new Mock<DNDOnePlaceManager.Services.ILobbyService>().Object);
             var httpContext = new DefaultHttpContext();
             if (contextUser != null)
                 httpContext.Items["User"] = contextUser;

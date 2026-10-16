@@ -5,6 +5,7 @@ using DndOnePlaceManager.Domain.Entities.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using DndOnePlaceManager.Application.DataTransferObjects.Game;
 
 namespace DndOnePlaceManager.Application.Commands.Properties.UpdateProperties
 {
@@ -14,27 +15,45 @@ namespace DndOnePlaceManager.Application.Commands.Properties.UpdateProperties
         {
         }
 
+        /// <summary>
+        /// properties/UpdateBulk. Works like UpdatePropertyCommandHandler for every row:
+        /// the row is loaded by id, Edit is checked on the entity it really belongs to (the
+        /// ids and parents in the request come from the client), and unprotecting a row
+        /// wipes its value. Nothing is saved unless every row passes.
+        /// </summary>
         public override async Task<CommandResponse> Handle(UpdatePropertiesCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            // Update the property in the database
 
-            var firstProperty = request.Properties.FirstOrDefault();
-            Guard.Argument(firstProperty != null, nameof(request.Properties));
+            var requested = request.Properties?.Where(x => x != null).DistinctBy(x => x.Id).ToList() ?? new();
+            Guard.Argument(requested.Count > 0, nameof(request.Properties));
 
-            var type = await dbContext.DetectEntityTypeAsync((Guid)firstProperty.ParentID);
-            Guard.NotFound(type, "Entity", firstProperty.ParentID);
+            var checkedParents = new HashSet<Guid>();
+            var rows = new List<(PropertyModel Row, PropertyDTO Change)>();
+            foreach (var change in requested)
+            {
+                var row = await dbContext.Properties.FindAsync(new object[] { change.Id }, cancellationToken);
+                Guard.NotFound(row, "Property", change.Id);
 
-            var entity = dbContext.Find(type, firstProperty.ParentID);
-            Guard.NotFound(entity, type.Name, firstProperty.ParentID);
+                if (checkedParents.Add(row.ParentID))
+                {
+                    var type = row.EntityName?.ToEntityType() ?? await dbContext.DetectEntityTypeAsync(row.ParentID);
+                    Guard.NotFound(type, "Entity", row.ParentID);
+                    var entity = dbContext.Find(type, row.ParentID);
+                    Guard.NotFound(entity, type.Name, row.ParentID);
+                    (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
+                }
 
-            (entity as IEntity).ThrowIfNoPermission(request.Player?.Id ?? default, Permission.Edit);
+                rows.Add((row, change));
+            }
 
-            var preparedProperties = request.Properties.Select(x => mapper.Map<PropertyModel>(x))
-                .DistinctBy(x => x.Id)
-                .ToList();
-            foreach (var property in preparedProperties) property.EntityName = type.Name;
-            dbContext.UpdateRange(preparedProperties);
+            foreach (var (row, change) in rows)
+            {
+                row.Name = change.Name;
+                var wasProtected = row.IsProtected;
+                row.IsProtected = change.IsProtected;
+                row.Value = wasProtected && !change.IsProtected ? null : change.Value;
+            }
 
             await dbContext.SaveChangesAsync(cancellationToken);
             return CommandResponse.Ok;
