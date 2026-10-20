@@ -30,7 +30,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                 Color = player.Color,
                 Image = player.Image,
                 Id = player.Id,
-                Permission = player.GetPermission(player.Id),
+                Permission = game.GetPermission(player.Id),
                 IsOwner = game?.MasterId == player.Id
             };
         }

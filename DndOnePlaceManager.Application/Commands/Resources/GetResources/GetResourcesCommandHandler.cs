@@ -18,11 +18,9 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
         {
             await base.Handle(request, cancellationToken);
 
-            var masterId = dbContext.Games.Where(x => x.Id == request.GameId).Select(x => (Guid?)x.MasterId).FirstOrDefault();
-            var player = dbContext.Players.FirstOrDefault(x => x.Id == request.Player.Id);
-
-            var canSeeAll = player.System == true
-                || (masterId != null && request.Player.Id.HasValue && masterId == request.Player.Id.Value);
+            // Whoever may edit the game sees every player's resources; others only their own.
+            var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameId);
+            var canSeeAll = game != null && game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit);
 
             var resources = dbContext.Resources
                 .Where(r => r.GameId == request.GameId && (r.PlayerId == request.Player.Id || canSeeAll))
@@ -39,9 +37,9 @@ namespace DndOnePlaceManager.Application.Commands.Resoures
                 var dto = mapper.Map<ResourceDTO>(x);
                 dto.Data = null;
                 // Path can reveal absolute local filesystem layout (usernames, directory
-                // structure) for ManagedFile/Linked resources — GM-only; everyone still gets
-                // Storage so the frontend can render the per-resource storage icon.
-                if (!canSeeAll)
+                // structure) for ManagedFile/Linked resources — the server's local admin
+                // only; everyone still gets Storage for the per-resource storage icon.
+                if (!request.IsLocalAdmin)
                     dto.Path = null;
                 dto.PlayerId = x.PlayerId;
                 dto.PlayerName = playerNames.TryGetValue(x.PlayerId, out var n) ? n : null;

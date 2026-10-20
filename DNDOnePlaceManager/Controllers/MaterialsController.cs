@@ -115,6 +115,7 @@ namespace DNDOnePlaceManager.Controllers
             GetResourceCommand imageCommand = new GetResourceCommand();
             imageCommand.Player = (await GetPlayerIfExists(gameId, user)).Player;
             imageCommand.ResourceId = id;
+            imageCommand.IsLocalAdmin = user?.IsLocalAdmin == true;
 
             var result = await mediator.Send(imageCommand);
 
@@ -241,6 +242,7 @@ namespace DNDOnePlaceManager.Controllers
             GetResourcesCommand getResourcesCommand = new GetResourcesCommand();
             getResourcesCommand.GameId = gameID;
             getResourcesCommand.Player = playerResult.Player;
+            getResourcesCommand.IsLocalAdmin = user?.IsLocalAdmin == true;
 
             var (response, result) = await mediator.Send(getResourcesCommand);
 
@@ -463,7 +465,7 @@ namespace DNDOnePlaceManager.Controllers
 
         /// <summary>
         /// Registers a reference to a file already on the local disk of whoever runs this
-        /// backend — zero bytes copied. GM-only (enforced in the handler).
+        /// backend — zero bytes copied. Local admin only (enforced in the handler).
         /// </summary>
         [HttpPost]
         [Authorize]
@@ -483,6 +485,7 @@ namespace DNDOnePlaceManager.Controllers
                 LocalPath    = request.LocalPath,
                 MimeType     = request.MimeType,
                 ParentFolder = request.ParentFolder,
+                IsLocalAdmin = user?.IsLocalAdmin == true,
             });
 
             var lobby = _lobbyService.GetLobby(gameId);
@@ -508,7 +511,7 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
-        /// Recursively links every file found under a local directory (GM-only). Large folders
+        /// Recursively links every file found under a local directory (local admin only). Large folders
         /// can take a while to walk, so the actual linking runs in a background task and this
         /// returns as soon as it's scheduled — progress/completion/failure are broadcast over
         /// the lobby's WS/WebRTC channel (operation_progress/complete/failed, keyed by the
@@ -523,6 +526,11 @@ namespace DNDOnePlaceManager.Controllers
             var playerResult = await GetPlayerIfExists(gameId, user);
             if (playerResult?.Player == null)
                 return BadRequest();
+
+            // Checked here as well as in the handler: the walk runs in the background, so a
+            // refusal there would only surface as a failed-operation toast.
+            if (user?.IsLocalAdmin != true)
+                return Forbid();
 
             var player = playerResult.Player;
             var operationId = Guid.NewGuid();
@@ -545,6 +553,7 @@ namespace DNDOnePlaceManager.Controllers
                         Player             = player,
                         LocalDirectoryPath = request.LocalDirectoryPath,
                         ParentFolder       = request.ParentFolder,
+                        IsLocalAdmin       = true,
                         OnProgress         = count => OperationProgressPublisher.Update(lobby, player, operationId, count).GetAwaiter().GetResult(),
                     });
 
@@ -560,7 +569,7 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
-        /// Lists a local directory's contents (GM-only) — omit path to list drive roots.
+        /// Lists a local directory's contents (local admin only) — omit path to list drive roots.
         /// </summary>
         [HttpGet]
         [Authorize]
@@ -577,13 +586,14 @@ namespace DNDOnePlaceManager.Controllers
                 GameId = gameId,
                 Player = playerResult.Player,
                 Path   = path,
+                IsLocalAdmin = user?.IsLocalAdmin == true,
             });
 
             return Ok(entries);
         }
 
         /// <summary>
-        /// Moves an existing resource's bytes between storage modes (GM-only).
+        /// Moves an existing resource's bytes between storage modes (needs Edit on the game).
         /// </summary>
         [HttpPost]
         [Authorize]
