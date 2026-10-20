@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
-namespace DNDOnePlaceManager.Services.Implementations
+namespace DndOnePlaceManager.Application.Services.Actions
 {
     /// <summary>
     /// Walks a path like <c>.ResponseBody.results[0].name</c> into an object stored in action

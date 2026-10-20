@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Services.Actions;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -22,7 +23,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Category => "Collection";
         public string Description => "Filters a collection based on a condition. The condition is evaluated once per item, " +
             "with the current item available as %ItemName% (or %v:ItemName.field% for objects). " +
-            "Property queries (%q:...% / %qn:...%) are not resolved inside Condition — read them into a variable first.";
+            "Property queries (%q:...%) are not resolved inside Condition — read them into a variable first.";
         public string? Summary => "Filter {Collection} where {Condition}[ → {OutputName}]";
         public Type DataType => typeof(FilterStepData);
 
@@ -56,7 +57,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 foreach (var item in collectionToFilter.ToList())
                 {
                     variables[stepData.ItemName] = item;
-                    var condition = VariablePathResolver.ResolveTokens(stepData.Condition, variables).Prepare(variables);
+                    var condition = ActionTokenResolver.ResolveVariables(stepData.Condition, variables);
                     if (GetDT().Compute(condition, "") is not bool keep)
                         throw new ActionProcessException($"FilterCollection: condition '{condition}' did not evaluate to true/false.");
                     if (keep)

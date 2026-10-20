@@ -7,6 +7,7 @@ using DndOnePlaceManager.Application.Commands.Properties.GetProperty;
 using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Services.Actions;
 using DndOnePlaceManager.Domain.Entities;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
@@ -311,21 +312,19 @@ namespace DNDOnePlaceManager.Services.Implementations
                         trace?.Step(GameLobby, stepIndex, stepId, stepType, "running");
                         var childFaultsBefore = entry.ChildFaultCount;
 
-                        // Resolve %q:% / %qn:% query patterns first, then standard %varName% substitution.
+                        // Fill in tokens (%var%, %dto:%, %v:%, %q:%) in one pass.
                         // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
                         // after Value has been evaluated, so a %var% default isn't erased by an empty variable.
                         // Likewise skip any argument the step declares as deferred (IDeferredArgumentsStep).
                         var deferred = (stepDefinition as IDeferredArgumentsStep)?.DeferredArguments;
-                        var resolver = new ActionPropertyQueryResolver(dbContext, GameLobby.GameId);
+                        var resolver = new ActionTokenResolver(dbContext, GameLobby.GameId);
                         foreach (var token in stepObject.Descendants().OfType<JValue>())
                         {
                             if (token.Parent is JProperty jp &&
                                 (jp.Name == "DefaultValue" || (deferred != null && deferred.Contains(jp.Name, StringComparer.OrdinalIgnoreCase))))
                                 continue;
 
-                            var raw = token.Value?.ToString() ?? string.Empty;
-                            raw = await resolver.PreResolveQueriesAsync(raw, variables);
-                            token.Value = raw.Prepare(variables);
+                            token.Value = await resolver.ResolveAsync(token.Value?.ToString() ?? string.Empty, variables);
                         }
 
                         await stepDefinition.Execute(mediator, variables, GameLobby, step.ToObject<ActionStep>());

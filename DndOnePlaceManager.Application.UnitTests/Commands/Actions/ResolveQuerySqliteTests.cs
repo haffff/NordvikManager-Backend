@@ -34,11 +34,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             seed.SaveChanges();
         }
 
-        private Task<string> Resolve(Guid target) => new ResolveQueryCommandHandler(Db, Mapper).Handle(new ResolveQueryCommand
+        private async Task<string> Resolve(Guid target) => (await new ResolveQueryCommandHandler(Db, Mapper).Handle(new ResolveQueryCommand
         {
             GameId = gameId, Player = new() { Id = PlayerId, Name = "Hero" }, Expression = "%q:{t}.id%",
             Variables = new() { ["t"] = target.ToString() },
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Result;
 
         [Fact]
         public async Task AllowsTheGamesOwnEntities()

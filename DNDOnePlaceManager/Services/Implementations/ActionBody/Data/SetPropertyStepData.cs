@@ -4,7 +4,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class SetPropertyStepData
     {
-        [Description("GUID of the parent entity whose property will be set. Supports %variable% substitution (e.g. %playerId%, %qn:Card-mycard.id%).")]
+        [Description("GUID of the parent entity whose property will be set. Supports %variable% substitution (e.g. %playerId%, %q:card[My card].id%).")]
         public string ParentId { get; set; }
 
         [Description("Name of the property to set on the entity.")]
