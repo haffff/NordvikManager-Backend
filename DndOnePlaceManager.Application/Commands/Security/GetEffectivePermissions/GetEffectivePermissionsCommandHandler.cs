@@ -26,6 +26,9 @@ namespace DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissio
             // The game itself stays as its rows say: deleting it and its permissions are the owner's.
             if (game == null || request.EntityId == request.GameId || !result.TryGetValue(game.MasterId, out var owners))
                 return result;
+            // Chat messages: whispers stay with whoever they were sent to.
+            if (await dbContext.Messages.AnyAsync(m => m.Id == request.EntityId, cancellationToken))
+                return result;
 
             // Co-GMs: Edit on the game through their own row, or through "everyone" without one.
             var gameRows = await dbContext.Permissions

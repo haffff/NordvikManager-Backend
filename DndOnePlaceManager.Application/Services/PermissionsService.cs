@@ -12,6 +12,9 @@ namespace DndOnePlaceManager.Application.Services
     internal class PermissionsService : IPermissionService
     {
         private IDbContext battleMapContext;
+        // playerId → whether they're a co-GM, so the extra lookup is paid once per instance
+        // (GetMap asks once per element).
+        private readonly Dictionary<Guid, bool> isCoGm = new();
 
         public PermissionsService(IServiceProvider provider)
         {
@@ -111,16 +114,27 @@ namespace DndOnePlaceManager.Application.Services
         /// A co-GM (Edit on their game) has at least what the game's owner has: the owner's own
         /// row on the entity is added to theirs. The owner's own row only exists on entities of
         /// that game, so nothing reaches into other games; the game entity itself is left out
-        /// (deleting the game, its permissions stay the owner's). Not used for chat history
-        /// (<see cref="Extension.PermissionsExtension.WhereHasPermission"/>): whispers stay private.
+        /// (deleting the game, its permissions stay the owner's), and so are chat messages:
+        /// whispers stay private (the history query, WhereHasPermission, doesn't add it either).
         /// </summary>
         private Permission? WithOwnersRow(Guid playerId, Guid modelId, Permission? own)
         {
+            if (!IsCoGm(playerId))
+                return own;
+            var messages = battleMapContext.Messages;
             var owners = battleMapContext.Permissions
-                .Where(x => x.ModelID == modelId && OwnersOfCoGm(playerId).Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID))
+                .Where(x => x.ModelID == modelId && OwnersOfCoGm(playerId).Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID)
+                    && !messages.Any(m => m.Id == x.ModelID))
                 .Select(x => (Permission?)x.Permission)
                 .FirstOrDefault();
             return owners == null ? own : (own ?? Permission.None) | owners.Value;
+        }
+
+        private bool IsCoGm(Guid playerId)
+        {
+            if (!isCoGm.TryGetValue(playerId, out var result))
+                isCoGm[playerId] = result = playerId != Guid.Empty && OwnersOfCoGm(playerId).Any();
+            return result;
         }
 
         /// <summary>The player's game and its owner, when the player is a co-GM there (SQL-side, composable).</summary>
@@ -163,9 +177,10 @@ namespace DndOnePlaceManager.Application.Services
             // One query: the player's own rows, the "everyone" rows and, for a co-GM, the
             // owner's own rows (see WithOwnersRow).
             var owners = OwnersOfCoGm(playerId);
+            var messages = battleMapContext.Messages;
             var rows = battleMapContext.Permissions
                 .Where(x => ids.Contains(x.ModelID) && (x.PlayerID == playerId || x.All
-                    || owners.Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID)))
+                    || (owners.Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID) && !messages.Any(m => m.Id == x.ModelID))))
                 .Select(x => new { x.ModelID, x.PlayerID, x.All, x.Permission })
                 .ToList();
 

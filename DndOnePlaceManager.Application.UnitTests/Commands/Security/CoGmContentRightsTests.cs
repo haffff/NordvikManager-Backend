@@ -163,6 +163,27 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Security
 
         // ── Chat history: whispers stay private ─────────────────────────────────
 
+        // Whispers stay private everywhere, not only in the history query: no permission
+        // check on a message adds the owner's row for a co-GM.
+        [Fact]
+        public async Task Whisper_NoPermissionCheckGivesItToACoGm()
+        {
+            var whisperId = Guid.NewGuid();
+            using (var seed = SeedContext())
+            {
+                seed.Messages.Add(new MessageModel { Id = whisperId, GameId = gameId, PlayerId = readerId, Content = "psst", Created = DateTime.UtcNow });
+                seed.Permissions.AddRange(Row(whisperId, readerId, Permission.Read), Row(whisperId, PlayerId, Permission.Read));
+                seed.SaveChanges();
+            }
+
+            Assert.False(Can(editorId, whisperId, Permission.Read));
+            Assert.Null(Permissions.GetPermission(editorId, whisperId));
+            Assert.Empty(Permissions.GetPermittedIds(editorId, new[] { whisperId }, Permission.Read));
+            var effective = await new GetEffectivePermissionsCommandHandler(Db, Mapper).Handle(
+                new GetEffectivePermissionsCommand { GameId = gameId, EntityId = whisperId }, CancellationToken.None);
+            Assert.False(effective.ContainsKey(editorId));
+        }
+
         [Fact]
         public async Task GetMessages_EditorDoesNotSeeAWhisperBetweenOthers()
         {
