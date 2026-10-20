@@ -10,7 +10,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
                      "Expressions support %q:% queries (already resolved before this step runs).\n" +
                      "Example:\n" +
                      "  gameName=%q:{gameId}.name%\n" +
-                     "  playerColor=%q:{playerId}.color%")]
+                     "  goblinHp=%q:card[Goblin].hp%")]
         public string Assignments { get; set; }
     }
 }
