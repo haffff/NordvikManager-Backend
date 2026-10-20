@@ -24,6 +24,7 @@ namespace DndOnePlaceManager.Application.Commands.Game.RemoveGame
             await base.Handle(request, cancellationToken);
 
             var game = dbContext.Games
+                .Include(x => x.Players)
                 .Include(x => x.Addons).ThenInclude(a => a.Views)
                 .Include(x => x.Addons).ThenInclude(a => a.Templates)
                 .Include(x => x.Addons).ThenInclude(a => a.Actions)
@@ -32,12 +33,13 @@ namespace DndOnePlaceManager.Application.Commands.Game.RemoveGame
 
             Guard.NotFound(game, "Game", request.GameID);
 
-            game.ThrowIfNoPermission(request.Player?.Id ?? Guid.Empty, Domain.Enums.Permission.Remove);
+            if (!request.AsLocalAdmin)
+                game.ThrowIfNoPermission(request.Player?.Id ?? Guid.Empty, Domain.Enums.Permission.Remove);
 
-            //Get ids to clear up permissions
-            var players = game.Players.Select(x => x.Id);
+            // The game's players' rows, and every row on the game itself ("everyone" included).
+            var players = game.Players.Select(x => x.Id).ToList();
 
-            var allPermissions = dbContext.Permissions.Where(x => players.Contains(x.PlayerID));
+            var allPermissions = dbContext.Permissions.Where(x => players.Contains(x.PlayerID) || x.ModelID == game.Id);
             dbContext.Permissions.RemoveRange(allPermissions);
 
             dbContext.Games.Remove(game);

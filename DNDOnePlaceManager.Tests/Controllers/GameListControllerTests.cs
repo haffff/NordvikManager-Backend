@@ -1,5 +1,7 @@
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
+using DndOnePlaceManager.Application.Commands.Game.UpdateGame;
+using DNDOnePlaceManager.Controllers.Requests;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Application;
@@ -131,6 +133,91 @@ namespace DNDOnePlaceManager.Tests.Controllers
 
             // Assert
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // Local admin: every game on the server
+        // =========================================================================
+
+        private static User LocalAdmin() => new User { Id = "admin-id", UserName = "admin", IsLocalAdmin = true };
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetGames_AsksForEveryGame_OnlyForTheLocalAdmin(bool isLocalAdmin)
+        {
+            GetGameListCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameListCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<GetGameListCommandResponse>, CancellationToken>((c, _) => sent = (GetGameListCommand)c)
+                     .ReturnsAsync(new GetGameListCommandResponse { GameItemList = new List<GameItemDTO>() });
+            var controller = CreateController(_mediator, _config, _lobbyService, isLocalAdmin ? LocalAdmin() : RegularUser());
+
+            await controller.GetGames();
+
+            Assert.Equal(isLocalAdmin, sent!.AllGames);
+        }
+
+        [Fact]
+        public async Task DeleteGame_LocalAdmin_DeletesAGameTheyAreNotIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+            RemoveGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (RemoveGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var controller = CreateController(_mediator, _config, _lobbyService, LocalAdmin());
+
+            var result = await controller.DeleteGame(Guid.NewGuid());
+
+            Assert.IsType<OkObjectResult>(result);
+            Assert.True(sent!.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_Player_SendsNameAndDescriptionAsThemselves()
+        {
+            UpdateGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (UpdateGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var gameId = Guid.NewGuid();
+
+            var result = await _controller.UpdateGame(new UpdateGameRequest { GameId = gameId, Name = "New", Description = "About" });
+
+            Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(gameId, sent!.GameId);
+            Assert.Equal("New", sent.Name);
+            Assert.Equal("About", sent.ShortDescription);
+            Assert.NotNull(sent.Player);
+            Assert.False(sent.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_LocalAdmin_EditsAGameTheyAreNotIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+            UpdateGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (UpdateGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var controller = CreateController(_mediator, _config, _lobbyService, LocalAdmin());
+
+            await controller.UpdateGame(new UpdateGameRequest { GameId = Guid.NewGuid(), Name = "New" });
+
+            Assert.True(sent!.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_NeitherPlayerNorLocalAdmin_IsForbidden()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+
+            var result = await _controller.UpdateGame(new UpdateGameRequest { GameId = Guid.NewGuid(), Name = "New" });
+
+            Assert.IsType<ForbidResult>(result);
         }
 
         // =========================================================================
