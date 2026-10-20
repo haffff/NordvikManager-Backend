@@ -38,6 +38,10 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
             model.SetGlobalPermission();
             model.SetPermissions(request.Player.Id ?? Guid.Empty, Permission.All);
             model.SetPermissions(game.SystemPlayerId, Permission.All);
+            // The owner (and through their row, every co-GM) keeps full rights on whatever
+            // a player or co-GM adds.
+            if (game.MasterId != Guid.Empty && game.MasterId != request.Player.Id)
+                model.SetPermissions(game.MasterId, Permission.All);
         }
 
         public virtual void AddToGame(GameModel game, TModel model, TCommand request)

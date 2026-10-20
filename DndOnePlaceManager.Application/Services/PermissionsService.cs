@@ -54,7 +54,7 @@ namespace DndOnePlaceManager.Application.Services
 
         public Permission? GetPermission(Guid playerId, Guid modelId, bool giveDefault = false)
         {
-            var perm = GetPermissionFromDB(playerId, modelId, true)?.Permission;
+            var perm = WithOwnersRow(playerId, modelId, GetPermissionFromDB(playerId, modelId, true)?.Permission);
             if (perm == null && giveDefault)
                 return GetPermission(Guid.Empty, modelId);
             return perm;
@@ -101,11 +101,47 @@ namespace DndOnePlaceManager.Application.Services
 
         public bool CheckIfHasPermissions(Guid playerId, Guid model, Permission permission)
         {
-            var dbPermission = GetPermissionFromDB(playerId, model, true);
-            if (dbPermission == null)
-                return false;
-            return dbPermission.Permission.HasFlag(permission);
+            var own = GetPermissionFromDB(playerId, model, true)?.Permission;
+            if (own?.HasFlag(permission) == true)
+                return true;
+            return WithOwnersRow(playerId, model, own)?.HasFlag(permission) == true;
         }
+
+        /// <summary>
+        /// A co-GM (Edit on their game) has at least what the game's owner has: the owner's own
+        /// row on the entity is added to theirs. The owner's own row only exists on entities of
+        /// that game, so nothing reaches into other games; the game entity itself is left out
+        /// (deleting the game, its permissions stay the owner's). Not used for chat history
+        /// (<see cref="Extension.PermissionsExtension.WhereHasPermission"/>): whispers stay private.
+        /// </summary>
+        private Permission? WithOwnersRow(Guid playerId, Guid modelId, Permission? own)
+        {
+            var owners = battleMapContext.Permissions
+                .Where(x => x.ModelID == modelId && OwnersOfCoGm(playerId).Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID))
+                .Select(x => (Permission?)x.Permission)
+                .FirstOrDefault();
+            return owners == null ? own : (own ?? Permission.None) | owners.Value;
+        }
+
+        /// <summary>The player's game and its owner, when the player is a co-GM there (SQL-side, composable).</summary>
+        private IQueryable<CoGmGame> OwnersOfCoGm(Guid playerId)
+        {
+            var permissions = battleMapContext.Permissions;
+            return battleMapContext.Players
+                .Where(p => p.Id == playerId && p.Game.MasterId != playerId)
+                .Where(p =>
+                    permissions.Any(x => x.ModelID == p.Game.Id && x.PlayerID == playerId && (x.Permission & Permission.Edit) == Permission.Edit)
+                    || (!permissions.Any(x => x.ModelID == p.Game.Id && x.PlayerID == playerId)
+                        && permissions.Any(x => x.ModelID == p.Game.Id && x.All && (x.Permission & Permission.Edit) == Permission.Edit)))
+                .Select(p => new CoGmGame { GameId = p.Game.Id, MasterId = p.Game.MasterId });
+        }
+
+        private class CoGmGame
+        {
+            public Guid GameId { get; set; }
+            public Guid MasterId { get; set; }
+        }
+
         private PermissionModel? GetPermissionFromDB(Guid playerId, Guid model, bool all = false)
         {
             var permission = battleMapContext.Permissions.FirstOrDefault(x => x.PlayerID == playerId && x.ModelID == model);
@@ -124,18 +160,23 @@ namespace DndOnePlaceManager.Application.Services
             if (ids.Count == 0)
                 return new HashSet<Guid>();
 
+            // One query: the player's own rows, the "everyone" rows and, for a co-GM, the
+            // owner's own rows (see WithOwnersRow).
+            var owners = OwnersOfCoGm(playerId);
             var rows = battleMapContext.Permissions
-                .Where(x => ids.Contains(x.ModelID) && (x.PlayerID == playerId || x.All))
+                .Where(x => ids.Contains(x.ModelID) && (x.PlayerID == playerId || x.All
+                    || owners.Any(o => o.MasterId == x.PlayerID && o.GameId != x.ModelID)))
                 .Select(x => new { x.ModelID, x.PlayerID, x.All, x.Permission })
                 .ToList();
 
-            // Same rule as GetPermissionFromDB: the player's own row, else the "everyone" row.
             return rows
                 .GroupBy(x => x.ModelID)
                 .Where(g =>
                 {
                     var row = g.FirstOrDefault(x => x.PlayerID == playerId) ?? g.FirstOrDefault(x => x.All);
-                    return row != null && row.Permission.HasFlag(permission);
+                    var ownersRow = g.FirstOrDefault(x => x.PlayerID != playerId && !x.All);
+                    var bits = (row?.Permission ?? Permission.None) | (ownersRow?.Permission ?? Permission.None);
+                    return (row != null || ownersRow != null) && bits.HasFlag(permission);
                 })
                 .Select(g => g.Key)
                 .ToHashSet();
