@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -314,7 +315,7 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             try
             {
-                if (await HandleSpecialCommands(player, webSocketCommand))
+                if (await HandleSpecialCommands(player, webSocketCommand, cmdMediator))
                     return;
 
                 if (webSocketCommand.OnlyToSender)
@@ -404,7 +405,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
-        private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg)
+        private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg, IMediator cmdMediator)
         {
             // Whispers and GM rolls (ChatHandler sets VisibleTo): only to those players, and
             // not passed to action hooks, so no action sees what wasn't meant for everyone.
@@ -422,13 +423,19 @@ namespace DNDOnePlaceManager.Services.Implementations
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
                 return true;
             }
-            // GM → players: open a panel (e.g. the battle map's "Show" menu). Data: { type, syncId,
+            // Editor → players: open a panel (e.g. the battle map's "Show" menu). Data: { type, syncId,
             // targetPlayerId? } — only the target when set, otherwise every other player.
             if (parsedMsg.Command == WebSocketCommandNames.CmdShowPanel)
             {
-                if (player.IsOwner != true)
+                var canEditGame = player.IsOwner == true || await cmdMediator.Send(new CheckPermissionsCommand
                 {
-                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only the GM can show panels to players.", player), player);
+                    Player = player,
+                    EntityId = GameId,
+                    RequiredPermission = Permission.Edit,
+                });
+                if (!canEditGame)
+                {
+                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only players who can edit the game can show panels to others.", player), player);
                     return true;
                 }
 

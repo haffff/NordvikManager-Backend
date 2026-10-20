@@ -1,6 +1,7 @@
 using DNDOnePlaceManager.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -14,12 +15,20 @@ namespace DNDOnePlaceManager.Services.Implementations
         private readonly IConfiguration _configuration;
         private readonly string _adminFilePath;
         private string? _autoPromotedAdminId;
+        // User id → the configured email it logged in with. Requests over WebRTC carry no
+        // email, so an admin listed by email is recognised in game by the id remembered here.
+        private Dictionary<string, string> _emailAdmins = new();
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
         public LocalAdminService(IConfiguration configuration)
+            : this(configuration, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".localadmin"))
+        {
+        }
+
+        public LocalAdminService(IConfiguration configuration, string adminFilePath)
         {
             _configuration = configuration;
-            _adminFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".localadmin");
+            _adminFilePath = adminFilePath;
             LoadAutoPromotedAdmin();
         }
 
@@ -32,9 +41,20 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             if (configuredAdmins.userIds.Any() || configuredAdmins.emails.Any())
             {
-                var isConfiguredAdmin = configuredAdmins.userIds.Contains(userId) ||
-                                       (email != null && configuredAdmins.emails.Contains(email, StringComparer.OrdinalIgnoreCase));
-                return isConfiguredAdmin;
+                if (configuredAdmins.userIds.Contains(userId))
+                    return true;
+
+                if (!string.IsNullOrEmpty(email))
+                {
+                    if (!configuredAdmins.emails.Contains(email, StringComparer.OrdinalIgnoreCase))
+                        return false;
+                    await RememberEmailAdminAsync(userId, email);
+                    return true;
+                }
+
+                // No email (a WebRTC request): the id must have logged in with a listed email before.
+                return _emailAdmins.TryGetValue(userId, out var remembered)
+                    && configuredAdmins.emails.Contains(remembered, StringComparer.OrdinalIgnoreCase);
             }
 
             var autoPromoteEnabled = _configuration.GetValue("LocalAdmins:AutoPromoteFirstUser", true);
@@ -78,7 +98,8 @@ namespace DNDOnePlaceManager.Services.Implementations
                 {
                     var json = File.ReadAllText(_adminFilePath);
                     var data = JsonSerializer.Deserialize<AdminData>(json);
-                    _autoPromotedAdminId = data?.UserId;
+                    _autoPromotedAdminId = string.IsNullOrEmpty(data?.UserId) ? null : data.UserId;
+                    _emailAdmins = data?.EmailAdmins ?? new();
                 }
             }
             catch
@@ -87,14 +108,39 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
+        private async Task RememberEmailAdminAsync(string userId, string email)
+        {
+            await _lock.WaitAsync();
+            try
+            {
+                if (_emailAdmins.TryGetValue(userId, out var known) && string.Equals(known, email, StringComparison.OrdinalIgnoreCase))
+                    return;
+                _emailAdmins[userId] = email;
+                await SaveAsync(DateTime.UtcNow);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Warning: Failed to remember local admin '{userId}': {ex.Message}");
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        private Task SaveAsync(DateTime promotedAt)
+        {
+            var data = new AdminData { UserId = _autoPromotedAdminId ?? string.Empty, PromotedAt = promotedAt, EmailAdmins = _emailAdmins };
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+            return File.WriteAllTextAsync(_adminFilePath, json);
+        }
+
         private async Task PromoteFirstUserAsync(string userId)
         {
             try
             {
-                var data = new AdminData { UserId = userId, PromotedAt = DateTime.UtcNow };
-                var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-                await File.WriteAllTextAsync(_adminFilePath, json);
                 _autoPromotedAdminId = userId;
+                await SaveAsync(DateTime.UtcNow);
 
                 Console.WriteLine($"╔════════════════════════════════════════════════════════════════╗");
                 Console.WriteLine($"║  LOCAL ADMIN AUTO-PROMOTED                                     ║");
@@ -115,6 +161,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             catch (Exception ex)
             {
+                _autoPromotedAdminId = null;
                 Console.Error.WriteLine($"Warning: Failed to persist local admin promotion for user '{userId}'. Auto-promotion was not applied: {ex.Message}");
             }
         }
@@ -123,6 +170,7 @@ namespace DNDOnePlaceManager.Services.Implementations
         {
             public string UserId { get; set; } = string.Empty;
             public DateTime PromotedAt { get; set; }
+            public Dictionary<string, string>? EmailAdmins { get; set; }
         }
     }
 }
