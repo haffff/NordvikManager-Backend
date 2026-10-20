@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
+using DndOnePlaceManager.Application.Commands.Player.RemovePlayer;
 using DndOnePlaceManager.Application.Commands.Playlist.GetPlaylists;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
@@ -266,6 +267,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Security
 
             Assert.Equal(Permission.All, StoredPermission(mapId, PlayerId));
             Assert.Null(StoredPermission(mapId, systemId));
+        }
+
+        // ── Players: editors manage them, but not the owner ─────────────────────
+
+        [Fact]
+        public async Task RemovePlayer_EditorRemovesAReader_ButNotTheOwner()
+        {
+            var handler = new RemovePlayerCommandHandler(Db, Mapper);
+
+            await handler.Handle(new RemovePlayerCommand { GameID = gameId, Player = As(editorId), PlayerID = readerId }, CancellationToken.None);
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                handler.Handle(new RemovePlayerCommand { GameID = gameId, Player = As(editorId), PlayerID = PlayerId }, CancellationToken.None));
+
+            using var check = SeedContext();
+            Assert.False(check.Players.Any(x => x.Id == readerId));
+            Assert.True(check.Players.Any(x => x.Id == PlayerId));
         }
 
         [Fact]

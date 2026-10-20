@@ -1,4 +1,5 @@
 ﻿using DndOnePlaceManager.Application.Mapping;
+using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
@@ -26,6 +27,9 @@ namespace DndOnePlaceManager.Application.Commands.Player.RemovePlayer
             var playerToDelete = game.Players?.FirstOrDefault(x => x.Id == request.PlayerID);
             Guard.Argument(playerToDelete != null, nameof(request.PlayerID));
             Guard.Argument(!playerToDelete.System, nameof(request.PlayerID));
+            // Editors manage players, but the owner stays.
+            if (playerToDelete.Id == game.MasterId)
+                throw new PermissionException(Domain.Enums.Permission.All);
 
             game.Players.Remove(playerToDelete);
             dbContext.SaveChanges();
