@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Properties.AddProperties;
 using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
@@ -54,7 +55,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
                      .ReturnsAsync(CommandResponse.Ok);
             _mediator.Setup(m => m.Send(It.IsAny<AddPropertiesCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(CommandResponse.Ok);
-            _mediator.Setup(m => m.Send(It.IsAny<GetPermissionsCommand>(), It.IsAny<CancellationToken>()))
+            _mediator.Setup(m => m.Send(It.IsAny<GetEffectivePermissionsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new Dictionary<Guid, Permission> { [_gm.Id!.Value] = Permission.All, [_reader.Id!.Value] = Permission.Read });
             _mediator.Setup(m => m.Send(It.IsAny<GetTokenViewersCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new List<Guid>());

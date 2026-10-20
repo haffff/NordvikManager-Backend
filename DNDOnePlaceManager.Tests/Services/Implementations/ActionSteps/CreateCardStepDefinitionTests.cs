@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
@@ -147,7 +148,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
                      .ReturnsAsync((CommandResponse.Ok, newId));
             _mediator.Setup(m => m.Send(It.IsAny<GetCardCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new CardDto { Id = newId, Name = "Longsword" });
-            _mediator.Setup(m => m.Send(It.IsAny<GetPermissionsCommand>(), It.IsAny<CancellationToken>()))
+            _mediator.Setup(m => m.Send(It.IsAny<GetEffectivePermissionsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new Dictionary<Guid, Permission>()); // no restrictions: everyone hears it
             var scopes = new ServiceCollection()
                 .AddSingleton(_mediator.Object)

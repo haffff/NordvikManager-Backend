@@ -24,10 +24,18 @@ namespace DndOnePlaceManager.Application.Commands.Player.GetGamePlayers
                 .Where(p => p.Game.Id == request.GameId && !p.System)
                 .ToListAsync(cancellationToken);
 
+            // Each player's permission on the game (own row, else "everyone"), as GetPlayer gives it.
+            var gameRows = await dbContext.Permissions.AsNoTracking()
+                .Where(x => x.ModelID == request.GameId)
+                .Select(x => new { x.PlayerID, x.All, x.Permission })
+                .ToListAsync(cancellationToken);
+            var everyone = gameRows.FirstOrDefault(x => x.All)?.Permission;
+
             return players.Select(p =>
             {
                 var dto = mapper.Map<PlayerDTO>(p);
                 dto.IsOwner = p.Id == masterId;
+                dto.Permission = gameRows.FirstOrDefault(x => x.PlayerID == p.Id && !x.All)?.Permission ?? everyone;
                 return dto;
             }).ToList();
         }

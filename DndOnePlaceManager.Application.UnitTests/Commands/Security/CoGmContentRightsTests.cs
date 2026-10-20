@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.Commands.Chat.GetMessages;
 using DndOnePlaceManager.Application.Commands.Map.AddMap;
+using DndOnePlaceManager.Application.Commands.Player.GetGamePlayers;
 using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -146,6 +147,18 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Security
 
             Assert.Equal(Permission.Read, result[editorId]);
             Assert.False(result.ContainsKey(readerId));
+        }
+
+        // ── Players list: each with their permission on the game (chat routes /gm by it) ──
+
+        [Fact]
+        public async Task GetGamePlayers_GivesEachPlayersGamePermission()
+        {
+            var players = await new GetGamePlayersCommandHandler(Db, Mapper).Handle(new GetGamePlayersCommand { GameId = gameId }, CancellationToken.None);
+
+            Assert.Equal(Permission.Read | Permission.Edit, players.Single(p => p.Id == editorId).Permission);
+            Assert.Equal(Permission.Read, players.Single(p => p.Id == readerId).Permission);
+            Assert.True(players.Single(p => p.Id == PlayerId).IsOwner);
         }
 
         // ── Chat history: whispers stay private ─────────────────────────────────

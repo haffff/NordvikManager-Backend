@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
+using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -342,11 +343,12 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                     if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.PermissionsUpdate, StringComparison.Ordinal))
                     {
-                        var permissionsCommand = new GetPermissionsCommand()
+                        // Co-GMs come with the owner's rights already in.
+                        var permissionsCommand = new GetEffectivePermissionsCommand()
                         {
                             EntityId = webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToGuid()
                                        ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId].ToGuid(),
-                            Player = player
+                            GameId = GameId,
                         };
 
                         var permissions = await cmdMediator.Send(permissionsCommand);
