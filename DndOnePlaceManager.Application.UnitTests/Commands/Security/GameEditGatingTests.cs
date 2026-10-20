@@ -12,6 +12,7 @@ using DndOnePlaceManager.Application.Commands.Security.SetPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities;
+using CardModel = DndOnePlaceManager.Domain.Entities.BattleMap.CardModel;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Entities.Security;
 using DndOnePlaceManager.Domain.Enums;
@@ -283,6 +284,31 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Security
             using var check = SeedContext();
             Assert.False(check.Players.Any(x => x.Id == readerId));
             Assert.True(check.Players.Any(x => x.Id == PlayerId));
+        }
+
+        // Each kind the permission UI sets, when it belongs to this game.
+        [Fact]
+        public async Task SetPermissions_EachEntityKindOfThisGame_IsAllowed()
+        {
+            var elementId = Guid.NewGuid();
+            var cardId = Guid.NewGuid();
+            var layoutId = Guid.NewGuid();
+            var propertyId = Guid.NewGuid();
+            using (var seed = SeedContext())
+            {
+                seed.Elements.Add(new ElementModel { Id = elementId, Map = seed.Maps.Find(mapId)! });
+                seed.Cards.Add(new CardModel { Id = cardId, Name = "Hero", GameId = gameId });
+                seed.Layouts.Add(new LayoutModel { Id = layoutId, Name = "Main", Value = "{}", GameModelId = gameId });
+                seed.SaveChanges();
+                seed.Properties.Add(new PropertyModel { Id = propertyId, Name = "hp", Value = "1", ParentID = cardId, EntityName = "CardModel", Card = seed.Cards.Find(cardId)! });
+                seed.SaveChanges();
+            }
+
+            foreach (var (type, id) in new[] { ("ElementModel", elementId), ("CardModel", cardId), ("LayoutModel", layoutId), ("PropertyModel", propertyId) })
+            {
+                await SetPermissions(editorId, type, id, readerId, Permission.Read);
+                Assert.Equal(Permission.Read, StoredPermission(id, readerId));
+            }
         }
 
         [Fact]
