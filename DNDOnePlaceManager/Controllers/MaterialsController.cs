@@ -1,4 +1,4 @@
-﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
+using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
@@ -344,6 +344,36 @@ namespace DNDOnePlaceManager.Controllers
         /// Creates a resource with a stable key; returns 409 if key already exists.
         /// Used by addons via the WebRTC tunnel.
         /// </summary>
+        /// <summary>
+        /// POST materials/BuildToken — a token's canvas object (as a JSON string) and its size,
+        /// built on the server the way the SpawnToken step builds one; the client then adds it
+        /// to the map with element_add.
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("BuildToken")]
+        public async Task<IActionResult> BuildToken([FromQuery] Guid gameId, [FromBody] DNDOnePlaceManager.Models.BuildTokenRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            try
+            {
+                var token = await mediator.Send(new DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand
+                {
+                    GameId = gameId, Player = playerResult.Player, MapId = request.MapId, CardId = request.CardId,
+                    Token = request.Token, Image = request.Image, X = request.X, Y = request.Y,
+                });
+                return Ok(new { @object = token.Object.ToString(Newtonsoft.Json.Formatting.None), size = token.Size });
+            }
+            catch (ArgumentException e)
+            {
+                return BadRequest(new { error = e.Message });
+            }
+        }
+
         [HttpPost]
         [Authorize]
         [Route("CreateResource")]

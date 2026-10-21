@@ -1,4 +1,4 @@
-﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
+using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
@@ -560,6 +560,29 @@ namespace DNDOnePlaceManager.Tests.Controllers
             await controller.GetResources(Guid.NewGuid());
 
             Assert.True(sent!.IsLocalAdmin);
+        }
+
+        // The client builds a token for "place this card's token" here too, so the client and
+        // the server's SpawnToken place tokens the same way.
+        [Fact]
+        public async Task BuildToken_BuildsItAsThePlayer()
+        {
+            var player = SomePlayer();
+            SetupPlayer(_mediator, player);
+            var built = new DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuiltToken(new JObject { ["name"] = "Goblin" }, 2);
+            DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand>(), It.IsAny<CancellationToken>()))
+                .Callback<IRequest<DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuiltToken>, CancellationToken>((c, _) => sent = (DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand)c)
+                .ReturnsAsync(built);
+            var mapId = Guid.NewGuid();
+            var cardId = Guid.NewGuid();
+
+            var result = await _controller.BuildToken(Guid.NewGuid(), new DNDOnePlaceManager.Models.BuildTokenRequest { MapId = mapId, CardId = cardId, X = 10, Y = 20 });
+
+            var body = Body(result);
+            Assert.Equal("Goblin", (string)JObject.Parse((string)body["object"]!)["name"]);
+            Assert.Equal(2, (int)body["size"]!);
+            Assert.Equal((mapId, cardId, 10.0, 20.0, player.Id), (sent.MapId, sent.CardId, sent.X, sent.Y, sent.Player.Id));
         }
     }
 }

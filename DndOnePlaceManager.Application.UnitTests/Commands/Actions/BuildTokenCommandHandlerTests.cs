@@ -43,6 +43,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Prop(game.Cards[0], "token", "dnd5e_token_monster.json"),
                 Prop(game.Cards[0], "tokenImage", "img-1"),
                 Prop(game.Cards[0], "drop_token_size", "3"));
+            foreach (var card in new[] { goblin, plain })
+                seed.Permissions.Add(new DndOnePlaceManager.Domain.Entities.Security.PermissionModel { Id = Guid.NewGuid(), ModelID = card, PlayerID = PlayerId, Permission = Permission.Read });
             seed.SaveChanges();
 
             mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
@@ -55,11 +57,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         private static PropertyModel Prop(CardModel card, string name, string value) =>
             new() { Id = Guid.NewGuid(), EntityName = "CardModel", ParentID = card.Id, Card = card, Name = name, Value = value };
 
-        private Task<BuiltToken> Build(BuildTokenCommand command)
+        private Task<BuiltToken> Build(BuildTokenCommand command, Guid? player = null)
         {
             command.GameId = gameId;
             command.MapId = mapId;
-            command.Player = new PlayerDTO { Id = Guid.NewGuid() };
+            command.Player = new PlayerDTO { Id = player ?? PlayerId };
             return new BuildTokenCommandHandler(Db, Mapper, mediator.Object).Handle(command, CancellationToken.None);
         }
 
@@ -109,6 +111,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         {
             var e = await Assert.ThrowsAsync<ArgumentException>(() => Build(new BuildTokenCommand { CardId = plain }));
             Assert.Contains("token", e.Message);
+        }
+
+        // A player builds a token only of a card they may read (its token file, picture and name).
+        [Fact]
+        public async Task ACardThePlayerCantRead_IsRefused()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.PermissionException>(() =>
+                Build(new BuildTokenCommand { CardId = goblin }, player: Guid.NewGuid()));
         }
     }
 }

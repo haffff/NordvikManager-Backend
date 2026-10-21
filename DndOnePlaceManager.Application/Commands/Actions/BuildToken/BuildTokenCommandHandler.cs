@@ -1,4 +1,6 @@
 using DndOnePlaceManager.Application.Commands.Resources;
+using DndOnePlaceManager.Application.Extension;
+using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using MediatR;
@@ -32,9 +34,10 @@ namespace DndOnePlaceManager.Application.Commands.Actions.BuildToken
             var imageSource = "element";
             if (request.CardId is Guid cardId)
             {
-                var card = await dbContext.Cards.Where(c => c.Id == cardId && c.GameId == request.GameId)
-                    .Select(c => new { c.Name }).FirstOrDefaultAsync(cancellationToken)
+                var card = await dbContext.Cards.FirstOrDefaultAsync(c => c.Id == cardId && c.GameId == request.GameId, cancellationToken)
                     ?? throw new ArgumentException($"No card with id '{cardId}' in this game.");
+                // Its token file, picture and name are the card's: only for who may read it.
+                card.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Read);
                 var props = await dbContext.Properties.Where(p => p.ParentID == cardId && CardProps.Contains(p.Name))
                     .ToDictionaryAsync(p => p.Name!, p => p.Value, cancellationToken);
                 tokenFile = props.GetValueOrDefault("token");
