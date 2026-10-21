@@ -408,7 +408,8 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         }
 
         [Fact]
-        public async Task RandomEnemy_CopiesAMarkedCardAndAsksTheGmsBrowserToPlaceIt()
+        // The server places the token itself (SpawnToken): no browser involved.
+        public async Task RandomEnemy_CopiesAMarkedCardAndPlacesItsToken()
         {
             using (var scope = services.CreateScope())
             {
@@ -417,18 +418,29 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 {
                     var card = db.Cards.Single(c => c.Id == id);
                     db.Properties.Add(Property("CardModel", id, "potworny", "true", p => p.Card = card));
+                    db.Properties.Add(Property("CardModel", id, "token", "sanity_token.json", p => p.Card = card));
                 }
+                db.Resources.Add(new DndOnePlaceManager.Domain.Entities.Resources.ResourceModel
+                {
+                    Id = Guid.NewGuid(), GameId = gameId, PlayerId = gm.Id!.Value, Name = "sanity_token.json", Key = "sanity_token.json",
+                    MimeType = MimeType.JSON, Data = System.Text.Encoding.UTF8.GetBytes("{\"size\": 1, \"object\": {\"type\": \"image\"}}"),
+                });
                 await db.SaveChangesAsync(default);
             }
 
-            await Run("sanity/random_enemy", gm, new { battleMapId = Guid.NewGuid().ToString(), position = At(300, 300) });
+            await Run("sanity/random_enemy", gm, new { battleMapId = battleMapId.ToString(), mapId = mapId.ToString(), position = At(300, 300) });
 
             NoErrors();
-            var place = Assert.Single(sent, x => x.To == gm && x.Command.Command == "run_client_command");
-            Assert.Equal("CreateToken", place.Command.Data!["command"]!.ToString());
+            Assert.DoesNotContain(sent, x => x.Command.Command == "run_client_command");
+            Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
             using var check = services.CreateScope();
             var after = check.ServiceProvider.GetRequiredService<IDbContext>();
             Assert.Equal(3, after.Cards.Count(c => c.GameId == gameId));
+            var copy = after.Cards.Single(c => c.GameId == gameId && c.Id != goblinCard && c.Id != orcCard);
+            var placed = await check.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
+                new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "tokens", MapId = mapId });
+            var token = Assert.Single(placed, t => (string?)t["cardId"] == copy.Id.ToString());
+            Assert.Equal(copy.Name, (string?)token["name"]);
             // The copy isn't one to pick from next time.
             Assert.Equal(2, after.Properties.Count(p => p.Name == "potworny"));
         }

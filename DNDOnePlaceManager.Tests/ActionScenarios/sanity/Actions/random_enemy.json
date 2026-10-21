@@ -103,13 +103,13 @@
     },
     {
       "id": "e6fb8955-03cb-53fa-af47-046a1787a787",
-      "Type": "RunClientCommand",
+      "Type": "SpawnToken",
       "Data": {
         "Label": "Its token where the map was clicked",
-        "Panel": "BattleMap_token",
-        "Command": "CreateToken",
-        "Player": "%playerId%",
-        "Data": "{\"contextId\": \"%battleMapId%\", \"cardId\": \"%monster%\", \"position\": %position%}"
+        "CardId": "%monster%",
+        "X": "%position.x%",
+        "Y": "%position.y%",
+        "Output": "monsterToken"
       }
     },
     {
