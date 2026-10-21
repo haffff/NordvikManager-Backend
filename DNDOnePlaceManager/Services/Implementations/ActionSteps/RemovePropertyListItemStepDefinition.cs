@@ -24,14 +24,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<RemovePropertyListItemStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ParentId))
-                throw new ActionProcessException("RemovePropertyListItem: 'ParentId' is required.");
             if (string.IsNullOrWhiteSpace(stepData.PropertyName))
                 throw new ActionProcessException("RemovePropertyListItem: 'PropertyName' is required.");
             if (string.IsNullOrWhiteSpace(stepData.ItemId))
                 throw new ActionProcessException("RemovePropertyListItem: 'ItemId' is required.");
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
-                throw new ActionProcessException($"RemovePropertyListItem: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "RemovePropertyListItem", stepData.Of, stepData.ParentId);
 
             var propertyId = await PropertyListStepHelper.ResolvePropertyIdAsync(mediator, gameLobby, parentGuid, stepData.PropertyName, "RemovePropertyListItem");
 

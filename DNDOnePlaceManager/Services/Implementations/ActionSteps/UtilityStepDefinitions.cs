@@ -49,7 +49,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<DeletePropertyStepData>();
-            var parentId = ElementStepHelper.ParseGuid("DeleteProperty", "ParentId", stepData.ParentId);
+            var parentId = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "DeleteProperty", stepData.Of, stepData.ParentId);
             if (string.IsNullOrWhiteSpace(stepData.PropertyName))
                 throw new ActionProcessException("DeleteProperty: 'PropertyName' is required.");
 

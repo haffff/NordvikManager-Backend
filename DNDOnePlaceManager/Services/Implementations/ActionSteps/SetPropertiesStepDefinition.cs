@@ -41,10 +41,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<SetPropertiesStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ParentId))
-                throw new ActionProcessException("SetProperties: 'ParentId' is required.");
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
-                throw new ActionProcessException($"SetProperties: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "SetProperties", stepData.Of, stepData.ParentId);
 
             var assignments = ParseLines(stepData.Properties);
             if (assignments.Count == 0)

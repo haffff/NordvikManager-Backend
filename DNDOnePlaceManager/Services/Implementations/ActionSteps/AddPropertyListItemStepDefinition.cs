@@ -24,12 +24,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<AddPropertyListItemStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ParentId))
-                throw new ActionProcessException("AddPropertyListItem: 'ParentId' is required.");
             if (string.IsNullOrWhiteSpace(stepData.PropertyName))
                 throw new ActionProcessException("AddPropertyListItem: 'PropertyName' is required.");
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
-                throw new ActionProcessException($"AddPropertyListItem: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "AddPropertyListItem", stepData.Of, stepData.ParentId);
 
             var propertyId = await PropertyListStepHelper.ResolvePropertyIdAsync(mediator, gameLobby, parentGuid, stepData.PropertyName, "AddPropertyListItem");
             var fields = PropertyListStepHelper.ParseFields(stepData.Fields, "AddPropertyListItem");

@@ -14,7 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     /// it is looking at as the battleMapId / mapId variables; without them (hooks) the game's
     /// only view is used, or else its first one.
     /// </summary>
-    internal static class ActiveMap
+    public static class ActiveMap
     {
         /// <summary>The given view, else the battleMapId variable's, else the only or first one; null when the game has none.</summary>
         public static async Task<BattleMapDto?> BattleMapAsync(IMediator mediator, GameLobby gameLobby, Dictionary<string, object>? variables, string? given)

@@ -1,9 +1,14 @@
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class RemovePropertyListItemStepData
     {
+        [UIType("propertyowner")]
+        [Description("Whose property: empty for the entity in ParentId; tokenCard for the card of the token in ParentId; map for the map in ParentId (empty: the one the player is looking at); game for the game.")]
+        public string? Of { get; set; }
+
         [Description("GUID of the parent entity that owns the list property. Supports %variable% substitution.")]
         public string ParentId { get; set; }
 
