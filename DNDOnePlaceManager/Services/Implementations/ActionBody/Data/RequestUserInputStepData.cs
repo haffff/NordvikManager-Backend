@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System;
 using System.ComponentModel;
 
@@ -29,7 +29,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Maximum time to wait for user input before the step times out.")]
         public TimeSpan? Timeout { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the user's input will be stored.")]
         public string? Output { get; set; }
     }

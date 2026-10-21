@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Models
@@ -16,6 +16,20 @@ namespace DNDOnePlaceManager.Models
         public bool IsOutput { get; set; }
         /// <summary>True when %tokens% in this argument are NOT filled in before the step runs.</summary>
         public bool Deferred { get; set; }
+        /// <summary>For an output argument: what the variable it names holds.</summary>
+        public OutputShape? Output { get; set; }
+    }
+
+    /// <summary>What an output variable holds; see <see cref="VariableOutputAttribute"/>.</summary>
+    public class OutputShape
+    {
+        public string Kind { get; set; }
+        public string[] Fields { get; set; }
+        public string? FieldsBy { get; set; }
+        public Dictionary<string, string[]>? FieldsByValue { get; set; }
+        public string? SingleWhen { get; set; }
+        public string? ValueWhen { get; set; }
+        public string? ItemOf { get; set; }
     }
 
     public class ActionDefinitionResponse

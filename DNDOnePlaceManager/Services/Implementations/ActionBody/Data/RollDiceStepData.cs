@@ -8,7 +8,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Dice notation to roll, e.g. '1d20', '2d6+3'. Supports %variable% substitution.")]
         public string DiceString { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("object", "result", "rolled", "dices", "successCount", "failureCount", ValueWhen = nameof(SimpleOutput))]
         [Description("Name of the variable where the result is stored. Leave empty to skip storing.")]
         public string? OutputVariable { get; set; }
 

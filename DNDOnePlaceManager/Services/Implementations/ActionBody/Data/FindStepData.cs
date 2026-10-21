@@ -39,7 +39,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Give only the first one found (or nothing), instead of a list.")]
         public bool First { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("list", FieldsBy = nameof(What), FieldsFrom = typeof(DndOnePlaceManager.Application.Commands.Actions.Find.FindShapes), SingleWhen = nameof(First))]
         [Description("Variable to store the result in.")]
         public string? Output { get; set; }
     }

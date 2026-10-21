@@ -22,7 +22,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("ID of the folder tree entry to place the resource in. Created at root when not set.")]
         public Guid? FolderId { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Optional variable name to store the resource's GUID in after the operation.")]
         public string OutputVariable { get; set; }
     }

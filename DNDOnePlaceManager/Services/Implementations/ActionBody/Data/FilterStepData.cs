@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -8,14 +8,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the variable holding the collection to filter.")]
         public string? Collection { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("item", ItemOf = "Collection")]
         [Description("Name used for the current item within the filter condition.")]
         public string? ItemName { get; set; }
 
         [Description("Boolean expression used to filter items. Use %ItemName.property% or %varName% to insert values, e.g. '%HP% > 0'.")]
         public string? Condition { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("list")]
         [Description("Name of the variable where the filtered collection will be stored.")]
         public string? OutputName { get; set; }
     }

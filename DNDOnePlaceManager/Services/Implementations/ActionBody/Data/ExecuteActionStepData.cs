@@ -13,7 +13,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
     public class GetConnectedPlayersStepData
     {
-        [VariableOutput]
+        [VariableOutput("list", "id", "name", "color", "isOwner")]
         [Description("Name of the variable that receives the list of connected players.")]
         public string Value { get; set; }
     }

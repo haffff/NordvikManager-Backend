@@ -17,7 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Steps to run when the condition is false.")]
         public JArray? Else { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the boolean result will be stored. Leave empty to skip.")]
         public string? OutputName { get; set; }
     }

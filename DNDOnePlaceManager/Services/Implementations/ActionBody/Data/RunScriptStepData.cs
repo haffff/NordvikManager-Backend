@@ -12,7 +12,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("Optional. When set, the whole return value is stored in this variable. " +
             "When empty, the script must return an object and each of its keys becomes a variable.")]
-        [VariableOutput]
+        [VariableOutput("script")]
         public string? Output { get; set; }
     }
 }

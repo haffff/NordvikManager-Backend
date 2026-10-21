@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -14,7 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Field to read. For a map element: a canvas key (see Is Element). Otherwise the object's field name, case-sensitive, e.g. 'Name' or 'Id'.")]
         public string? DetailName { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the detail value will be stored.")]
         public string? Output { get; set; }
     }

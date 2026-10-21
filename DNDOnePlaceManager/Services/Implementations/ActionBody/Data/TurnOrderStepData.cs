@@ -25,7 +25,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("\"true\" to hide the entry from players (the GM still runs its turn).")]
         public string? Hidden { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the new entry's id will be stored.")]
         public string? Output { get; set; }
     }
@@ -62,7 +62,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
     public class GetTurnOrderStepData : TurnOrderMapStepData
     {
-        [VariableOutput]
+        [VariableOutput("object", "mapId", "round", "currentEntryId", "entries")]
         [Description("Name of the variable for the turn order: { MapId, Round, CurrentEntryId, Entries: [{ Id, Name, Initiative, ElementId, Hidden }] }.")]
         public string? Output { get; set; }
     }

@@ -40,8 +40,23 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                         ConditionValue = y.GetCustomAttribute<ShowIfAttribute>()?.Value,
                         IsOutput = y.GetCustomAttribute<VariableOutputAttribute>() != null,
                         Deferred = deferred.Contains(y.Name, StringComparer.OrdinalIgnoreCase),
+                        Output = Shape(y.GetCustomAttribute<VariableOutputAttribute>()),
                     }).ToArray()
             };
         }
+
+        private static OutputShape? Shape(VariableOutputAttribute? output) => output == null ? null : new OutputShape
+        {
+            Kind = output.Kind,
+            Fields = output.Fields,
+            FieldsBy = output.FieldsBy,
+            FieldsByValue = output.FieldsFrom?.GetField("Fields", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                is IReadOnlyDictionary<string, string[]> byValue
+                    ? byValue.ToDictionary(x => x.Key, x => x.Value)
+                    : null,
+            SingleWhen = output.SingleWhen,
+            ValueWhen = output.ValueWhen,
+            ItemOf = output.ItemOf,
+        };
     }
 }

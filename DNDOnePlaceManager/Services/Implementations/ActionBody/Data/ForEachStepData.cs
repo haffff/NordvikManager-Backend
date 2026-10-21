@@ -9,7 +9,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the variable holding the collection to iterate over.")]
         public string Collection { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("item", ItemOf = nameof(Collection))]
         [Description("Name used for the current item in each iteration, readable in the steps of Do.")]
         public string ItemName { get; set; }
 

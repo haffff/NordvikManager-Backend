@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -8,7 +8,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Math expression to evaluate, e.g. '2 + 3' or '%HP% * 2'. Supports %variable% substitution before evaluation.")]
         public string Expression { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the calculation result will be stored.")]
         public string OutputName { get; set; }
     }

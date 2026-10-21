@@ -15,7 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the property to read.")]
         public string PropertyName { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the property's value will be stored.")]
         public string Output { get; set; }
 

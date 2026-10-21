@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -14,7 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Comma-separated GUIDs of specific properties (not entities) to get. Leave empty to not filter by property id.")]
         public string Ids { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("list", "id", "name", "value", "parentId")]
         [Description("Name of the variable for the result: a list of properties, each with Id, Name, Value and ParentID.")]
         public string Output { get; set; }
     }

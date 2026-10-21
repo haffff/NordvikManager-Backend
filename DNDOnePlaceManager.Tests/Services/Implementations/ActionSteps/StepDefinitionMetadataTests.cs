@@ -30,6 +30,50 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
 
         private record ActionDefinitionArgumentLookup(DNDOnePlaceManager.Models.ActionDefinitionResponse Step, DNDOnePlaceManager.Models.ActionDefinitionArgument Arg);
 
+        // ── What a step gives back: the editor shows it under the step and in the variables panel ──
+
+        [Fact]
+        public void EveryOutputArgument_DeclaresWhatItHolds()
+        {
+            var missing = AllSteps()
+                .SelectMany(s => StepDefinitionMetadata.Build(s).Arguments.Where(a => a.IsOutput && a.Output == null).Select(a => $"{s.Value}.{a.Name}"))
+                .ToList();
+
+            Assert.Empty(missing);
+        }
+
+        [Fact]
+        public void Find_ListsItsFieldsPerKind_AndFirstGivesOne()
+        {
+            var output = Arg("Find", "Output").Arg.Output;
+
+            Assert.Equal("list", output.Kind);
+            Assert.Equal("What", output.FieldsBy);
+            Assert.Contains("cardId", output.FieldsByValue["tokens"]);
+            Assert.Contains("isTemplate", output.FieldsByValue["cards"]);
+            Assert.Equal("First", output.SingleWhen);
+        }
+
+        [Fact]
+        public void RollDice_IsAnObject_OrAValueWithSimpleOutput()
+        {
+            var output = Arg("RollDice", "OutputVariable").Arg.Output;
+
+            Assert.Equal("object", output.Kind);
+            Assert.Contains("result", output.Fields);
+            Assert.Equal("SimpleOutput", output.ValueWhen);
+        }
+
+        [Theory]
+        [InlineData("RunScript", "Output", "script")]
+        [InlineData("ForEach", "ItemName", "item")]
+        [InlineData("GetPropertyValue", "Output", "value")]
+        [InlineData("SendRequest", "Output", "object")]
+        public void OutputKinds(string step, string arg, string kind)
+        {
+            Assert.Equal(kind, Arg(step, arg).Arg.Output.Kind);
+        }
+
         [Fact]
         public void EverySummaryPlaceholder_IsAnArgumentOfThatStep()
         {

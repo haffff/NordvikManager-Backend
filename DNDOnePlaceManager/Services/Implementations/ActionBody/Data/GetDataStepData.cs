@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System;
 using System.ComponentModel;
 
@@ -16,7 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Find the entities of this Type that have a property with this name (e.g. 'hp'). Used when Id is empty; Name is then ignored.")]
         public string? PropertyName { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("list")]
         [Description("Name of the variable for the result: a list of matching entities, or one entity when Single Element is on.")]
         public string? Output { get; set; }
 
