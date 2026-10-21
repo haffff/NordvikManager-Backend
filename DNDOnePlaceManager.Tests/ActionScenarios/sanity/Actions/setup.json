@@ -79,52 +79,31 @@
     },
     {
       "id": "1d41fbd9-795a-5208-88c2-4688c50ae34c",
-      "Type": "RequirePermission",
+      "Type": "AddMenuItem",
       "Data": {
-        "Label": "Is this player a GM (Edit on the game)?",
-        "EntityId": "%gameId%",
-        "Permission": "Edit",
-        "Output": "sg_isGm",
-        "StopIfDenied": false
+        "Label": "Menu (GM): random damage to every token on the map",
+        "Name": "sanity_damage_all",
+        "UiName": "Random damage (all tokens)",
+        "Action": "sanity/damage_all",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "GmOnly": true,
+        "ActionArgs": {
+          "dice": "1d6"
+        }
       }
     },
     {
       "id": "fcebfa86-9211-56ff-a01f-95997738257f",
-      "Type": "If",
+      "Type": "AddMenuItem",
       "Data": {
-        "Label": "GM tools for GMs",
-        "Condition": "'%sg_isGm%' = 'True'",
-        "Then": [
-          {
-            "id": "7dbf1188-1519-52e1-b312-a7840fed1687",
-            "Type": "AddMapTool",
-            "Data": {
-              "Label": "Tool: random damage to every token",
-              "Name": "sanity_damage_all",
-              "UiName": "Random damage (all tokens)",
-              "Action": "sanity/damage_all",
-              "Target": "point",
-              "StayActive": false,
-              "OnlyTriggeringPlayer": true,
-              "Hint": "Click the map: every token on it takes 1d6 damage.",
-              "ActionArgs": {
-                "dice": "1d6"
-              }
-            }
-          },
-          {
-            "id": "3e5004a7-e38e-5a17-b872-8b534ec886da",
-            "Type": "AddMenuItem",
-            "Data": {
-              "Label": "Map right-click: random monster",
-              "Name": "sanity_random_enemy",
-              "UiName": "Random monster here",
-              "Action": "sanity/random_enemy",
-              "Location": "battlemap",
-              "OnlyTriggeringPlayer": true
-            }
-          }
-        ]
+        "Label": "Map right-click (GM): random monster",
+        "Name": "sanity_random_enemy",
+        "UiName": "Random monster here",
+        "Action": "sanity/random_enemy",
+        "Location": "battlemap",
+        "OnlyTriggeringPlayer": true,
+        "GmOnly": true
       }
     }
   ]

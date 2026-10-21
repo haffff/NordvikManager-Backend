@@ -424,8 +424,10 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             var place = Assert.Single(sent, x => x.To == gm && x.Command.Command == "run_client_command");
             Assert.Equal("CreateToken", place.Command.Data!["command"]!.ToString());
             using var check = services.CreateScope();
-            var copies = check.ServiceProvider.GetRequiredService<IDbContext>().Cards.Where(c => c.GameId == gameId).Count();
-            Assert.Equal(3, copies);
+            var after = check.ServiceProvider.GetRequiredService<IDbContext>();
+            Assert.Equal(3, after.Cards.Count(c => c.GameId == gameId));
+            // The copy isn't one to pick from next time.
+            Assert.Equal(2, after.Properties.Count(p => p.Name == "potworny"));
         }
 
         [Fact]

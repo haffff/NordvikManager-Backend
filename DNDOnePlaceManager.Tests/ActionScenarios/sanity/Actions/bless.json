@@ -11,28 +11,29 @@
       "Type": "GetPropertyValue",
       "Data": {
         "Label": "This player's targets",
-        "ParentId": "%gameId%",
+        "Of": "game",
         "PropertyName": "sanity_targets_%playerId%",
         "DefaultValue": "[]",
-        "Output": "ft_raw"
+        "Output": "marked"
       }
     },
     {
       "id": "ec7e7c7b-3cfb-53a3-a880-a71648e942c5",
-      "Type": "GetData",
+      "Type": "Find",
       "Data": {
-        "Label": "Every element of the game (to skip removed tokens and get names)",
-        "Type": "Element",
-        "Output": "ft_all"
+        "Label": "Every token (to skip removed ones and get the names)",
+        "What": "tokens",
+        "AllMaps": true,
+        "Output": "tokens"
       }
     },
     {
       "id": "06ec0c67-d928-536e-8627-fd2771279de5",
       "Type": "RunScript",
       "Data": {
-        "Label": "Targets that still exist, and the announcement",
+        "Label": "The marked tokens that still exist",
         "Output": "",
-        "Script": "var ids = [];\ntry { ids = JSON.parse(vars.ft_raw || \"[]\"); } catch (e) { ids = []; }\nvar byId = {};\n(vars.ft_all || []).forEach(function (e) { byId[String(e.Id)] = e; });\nvar targets = [];\nids.forEach(function (id) {\n  var e = byId[id];\n  if (!e) return;\n  var o = {};\n  try { o = JSON.parse(e.Object || \"{}\"); } catch (x) {}\n  targets.push({ id: id, name: o.name || \"token\" });\n});\nvar names = targets.map(function (t) { return t.name; }).join(\", \");\nvar none = targets.length === 0;\nreturn {\n  ft_targets: targets,\n  ft_text: none ? \"No targets marked: use the Mark targets tool first.\" : vars.playerName + \": Bless on \" + names,\n  ft_to: none ? vars.playerId : \"\"\n};"
+        "Script": "var ids = [];\ntry { ids = JSON.parse(vars.marked || \"[]\"); } catch (e) { ids = []; }\nvar targets = ids.map(function (id) { return vars.tokens.filter(function (t) { return t.id === id; })[0]; })\n                 .filter(function (t) { return t; });\nvar none = targets.length === 0;\nreturn {\n  targets: targets,\n  announcement: none ? \"No targets marked: use the Mark targets tool first.\"\n                     : vars.playerName + \": Bless on \" + targets.map(function (t) { return t.name; }).join(\", \"),\n  tellOnly: none ? vars.playerId : \"\"\n};"
       }
     },
     {
@@ -40,7 +41,7 @@
       "Type": "ForEach",
       "Data": {
         "Label": "Bless each target",
-        "Collection": "ft_targets",
+        "Collection": "targets",
         "ItemName": "target",
         "Do": [
           {
@@ -63,8 +64,8 @@
         "Label": "Announce (or tell the player there were none)",
         "Template": "Text",
         "Title": "Bless (+1d4 to attacks and saves, 1 minute)",
-        "Message": "%ft_text%",
-        "Player": "%ft_to%"
+        "Message": "%announcement%",
+        "Player": "%tellOnly%"
       }
     },
     {
@@ -72,7 +73,7 @@
       "Type": "SetProperty",
       "Data": {
         "Label": "Clear the targets",
-        "ParentId": "%gameId%",
+        "Of": "game",
         "PropertyName": "sanity_targets_%playerId%",
         "PropertyValue": "[]"
       }

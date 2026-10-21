@@ -11,7 +11,7 @@
       "Type": "SetProperty",
       "Data": {
         "Label": "No targets",
-        "ParentId": "%gameId%",
+        "Of": "game",
         "PropertyName": "sanity_targets_%playerId%",
         "PropertyValue": "[]"
       }

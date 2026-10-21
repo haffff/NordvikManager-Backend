@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using DndOnePlaceManager.Application.Commands.Actions.ActionGetData;
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Properties.GetProperties;

@@ -8,34 +8,34 @@
   "content": [
     {
       "id": "a822e2fb-5a41-58eb-ae8d-ecb7774cdfdc",
-      "Type": "GetData",
+      "Type": "Find",
       "Data": {
-        "Label": "The clicked map with its elements",
-        "Type": "Map",
-        "Id": "%mapId%",
-        "SingleElement": true,
-        "Output": "fb_map"
+        "Label": "Tokens in the blast",
+        "What": "tokens",
+        "Near": "%position%",
+        "Radius": "%radiusSquares%",
+        "Output": "hit"
       }
     },
     {
       "id": "74a444ae-5431-5b19-81a8-5aa57e419b89",
-      "Type": "RunScript",
-      "Data": {
-        "Label": "Tokens within the radius",
-        "Output": "",
-        "Script": "function tokensOf(map) {\n  var out = [];\n  (map && map.Elements || []).forEach(function (e) {\n    var o;\n    try { o = JSON.parse(e.Object || \"{}\"); } catch (x) { return; }\n    if (!o.isToken) return;\n    var w = (o.width || 0) * (o.scaleX || 1), h = (o.height || 0) * (o.scaleY || 1);\n    var x = o.originX === \"center\" ? o.left : (o.left || 0) + w / 2;\n    var y = o.originY === \"center\" ? o.top : (o.top || 0) + h / 2;\n    out.push({ id: String(e.Id), name: o.name || \"token\", x: x, y: y, r: Math.min(w, h) / 2 });\n  });\n  return out;\n}var grid = (vars.fb_map && vars.fb_map.GridSize) || 50;\nvar radius = parseFloat(vars.radiusSquares || \"4\") * grid;\nvar p = vars.position || { x: 0, y: 0 };\nvar hits = tokensOf(vars.fb_map).filter(function (t) {\n  return Math.sqrt(Math.pow(t.x - p.x, 2) + Math.pow(t.y - p.y, 2)) <= radius + t.r;\n}).map(function (t) { return { id: t.id, name: t.name }; });\nreturn {\n  fb_targets: hits,\n  fb_count: hits.length,\n  fb_names: hits.length ? hits.map(function (t) { return t.name; }).join(\", \") : \"nobody\"\n};"
-      }
-    },
-    {
-      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
       "Type": "RollDice",
       "Data": {
         "Label": "Fire damage",
         "DiceString": "%dice%",
-        "OutputVariable": "fb_damage",
+        "OutputVariable": "fireDamage",
         "SimpleOutput": true,
         "PrintToChat": true,
         "ChatTitle": "%playerName%: Fireball"
+      }
+    },
+    {
+      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Who was hit",
+        "Output": "",
+        "Script": "return { hitCount: vars.hit.length, hitNames: vars.hit.map(function (t) { return t.name; }).join(\", \") || \"nobody\" };"
       }
     },
     {
@@ -47,8 +47,8 @@
         "ShowDialog": true,
         "DefaultInput": "yes",
         "Timeout": "00:02:00",
-        "Output": "fb_answer",
-        "Message": "Fireball by %playerName%: %fb_damage% fire damage to %fb_names%. Apply it? Type yes, half or no."
+        "Output": "answer",
+        "Message": "Fireball by %playerName%: %fireDamage% fire damage to %hitNames%. Apply it? Type yes, half or no."
       }
     },
     {
@@ -57,7 +57,7 @@
       "Data": {
         "Label": "Read the answer",
         "Output": "",
-        "Script": "var a = String(vars.fb_answer == null ? \"\" : vars.fb_answer).trim().toLowerCase();\nvar dmg = Number(vars.fb_damage) || 0;\nvar final = 0, text;\nif (vars.fb_count === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" fire damage to \" + vars.fb_count + \" creature(s).\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.fb_count + \" creature(s).\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, fb_apply: final > 0 && vars.fb_count > 0 ? 1 : 0, fb_text: text };"
+        "Script": "var a = String(vars.answer == null ? \"\" : vars.answer).trim().toLowerCase();\nvar dmg = Number(vars.fireDamage) || 0;\nvar final = 0, text;\nif (vars.hitCount === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" fire damage to \" + vars.hitCount + \" creature(s).\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.hitCount + \" creature(s).\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, apply: final > 0 ? 1 : 0, result: text };"
       }
     },
     {
@@ -65,14 +65,14 @@
       "Type": "If",
       "Data": {
         "Label": "Apply when the GM agreed",
-        "Condition": "%fb_apply% = 1",
+        "Condition": "%apply% = 1",
         "Then": [
           {
             "id": "bb6d0fe2-7f11-52d0-89bf-09bcc9142360",
             "Type": "ForEach",
             "Data": {
               "Label": "Each token hit",
-              "Collection": "fb_targets",
+              "Collection": "hit",
               "ItemName": "target",
               "Do": [
                 {
@@ -96,7 +96,7 @@
         "Label": "Result",
         "Template": "Text",
         "Title": "Fireball",
-        "Message": "%fb_text%"
+        "Message": "%result%"
       }
     }
   ]

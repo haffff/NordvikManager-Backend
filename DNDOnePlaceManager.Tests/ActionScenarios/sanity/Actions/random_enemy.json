@@ -18,21 +18,21 @@
     },
     {
       "id": "5231358a-c57c-592e-b17f-b9d345b31dad",
-      "Type": "GetData",
+      "Type": "Find",
       "Data": {
-        "Label": "Cards with the property",
-        "Type": "Card",
-        "PropertyName": "potworny",
-        "Output": "re_cards"
+        "Label": "The cards to choose from",
+        "What": "cards",
+        "Property": "potworny",
+        "Output": "pool"
       }
     },
     {
       "id": "76f28bb5-eb44-5a93-a2b4-16c996dfa786",
       "Type": "RunScript",
       "Data": {
-        "Label": "The pool (not the copies this action made)",
+        "Label": "How many",
         "Output": "",
-        "Script": "var cards = vars.re_cards || [];\nvar ids = {};\ncards.forEach(function (c) { ids[String(c.Id)] = true; });\nvar pool = cards.filter(function (c) { return !(c.TemplateId && ids[String(c.TemplateId)]); })\n                .map(function (c) { return { id: String(c.Id), name: c.Name }; });\nreturn { re_pool: pool, re_count: pool.length };"
+        "Script": "return { poolSize: vars.pool.length };"
       }
     },
     {
@@ -40,7 +40,7 @@
       "Type": "If",
       "Data": {
         "Label": "Any to choose from?",
-        "Condition": "%re_count% = 0",
+        "Condition": "%poolSize% = 0",
         "Then": [
           {
             "id": "dcc9d5ae-6d3c-5b1b-ad49-34167c7a73d1",
@@ -52,60 +52,74 @@
               "Player": "%playerId%",
               "Message": "No card has the property 'potworny'. Add it (any value) to the cards to pick from."
             }
-          }
-        ],
-        "Else": [
-          {
-            "id": "2c4e42e4-59cc-5f47-b8f0-ca608b4fbf43",
-            "Type": "RollDice",
-            "Data": {
-              "Label": "Pick one",
-              "DiceString": "1d%re_count%",
-              "OutputVariable": "re_roll",
-              "SimpleOutput": true
-            }
           },
           {
-            "id": "5bb5e1f7-7d54-5a21-8575-b58e42373c50",
-            "Type": "RunScript",
+            "id": "0881528e-0047-5d43-b14f-75f932e651ff",
+            "Type": "Exit",
             "Data": {
-              "Label": "The picked card",
-              "Output": "",
-              "Script": "var p = vars.re_pool[Number(vars.re_roll) - 1];\nreturn { re_id: p.id, re_name: p.name };"
-            }
-          },
-          {
-            "id": "9a8a8d61-1262-5a83-971a-22e3ceac5c40",
-            "Type": "CreateCard",
-            "Data": {
-              "Label": "A copy of it",
-              "Name": "%re_name%",
-              "TemplateId": "%re_id%",
-              "Output": "re_newCard"
-            }
-          },
-          {
-            "id": "fb4a81b8-56cf-5ab3-8305-fd1f4e617f59",
-            "Type": "RunClientCommand",
-            "Data": {
-              "Label": "Its token where the map was clicked",
-              "Panel": "BattleMap_token",
-              "Command": "CreateToken",
-              "Player": "%playerId%",
-              "Data": "{\"contextId\": \"%battleMapId%\", \"cardId\": \"%re_newCard%\", \"position\": %position%}"
-            }
-          },
-          {
-            "id": "3bec3fd2-5a82-5c99-815c-67a5b5772989",
-            "Type": "SendChat",
-            "Data": {
-              "Label": "Announce",
-              "Template": "Text",
-              "Title": "Random monster",
-              "Message": "A wild %re_name% appears!"
+              "Label": "Nothing to place"
             }
           }
         ]
+      }
+    },
+    {
+      "id": "043e62e1-cc51-5cc0-9623-432777a39dc5",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Pick one",
+        "DiceString": "1d%poolSize%",
+        "OutputVariable": "pick",
+        "SimpleOutput": true
+      }
+    },
+    {
+      "id": "496c9e64-417d-5d2a-8bf6-cb2e67fae41c",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "The picked card",
+        "Output": "",
+        "Script": "return { picked: vars.pool[Number(vars.pick) - 1] };"
+      }
+    },
+    {
+      "id": "b19f817d-fe4b-5515-8436-ffa1927ce83e",
+      "Type": "CreateCard",
+      "Data": {
+        "Label": "A copy of it",
+        "Name": "%picked.name%",
+        "TemplateId": "%picked.id%",
+        "Output": "monster"
+      }
+    },
+    {
+      "id": "85f91027-53e3-564e-9fdf-ffd79d7f6ecf",
+      "Type": "DeleteProperty",
+      "Data": {
+        "Label": "The copy isn't one to pick from",
+        "ParentId": "%monster%",
+        "PropertyName": "potworny"
+      }
+    },
+    {
+      "id": "e6fb8955-03cb-53fa-af47-046a1787a787",
+      "Type": "RunClientCommand",
+      "Data": {
+        "Label": "Its token where the map was clicked",
+        "Panel": "BattleMap_token",
+        "Command": "CreateToken",
+        "Player": "%playerId%",
+        "Data": "{\"contextId\": \"%battleMapId%\", \"cardId\": \"%monster%\", \"position\": %position%}"
+      }
+    },
+    {
+      "id": "eea7b7de-d7b8-51cd-b030-159e935bfdae",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Announce",
+        "Template": "Text",
+        "Title": "Random monster",
+        "Message": "A wild %picked.name% appears!"
       }
     }
   ],

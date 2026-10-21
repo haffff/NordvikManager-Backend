@@ -11,7 +11,7 @@
       "Type": "GetPropertyValue",
       "Data": {
         "Label": "This player's targets",
-        "ParentId": "%gameId%",
+        "Of": "game",
         "PropertyName": "sanity_targets_%playerId%",
         "DefaultValue": "[]",
         "Output": "tt_raw"
@@ -31,7 +31,7 @@
       "Type": "SetProperty",
       "Data": {
         "Label": "Save the targets",
-        "ParentId": "%gameId%",
+        "Of": "game",
         "PropertyName": "sanity_targets_%playerId%",
         "PropertyValue": "%tt_json%"
       }

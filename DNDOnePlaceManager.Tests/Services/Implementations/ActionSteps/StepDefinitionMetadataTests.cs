@@ -93,9 +93,6 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         public void EveryStepAndArgument_HasADescription()
         {
             var problems = AllSteps()
-                // Send Command passes a raw WebSocketCommand through — an advanced escape hatch,
-                // its fields are the wire format rather than step arguments.
-                .Where(s => s.Value != "SendCommand")
                 .Select(StepDefinitionMetadata.Build)
                 .SelectMany(d => (string.IsNullOrWhiteSpace(d.Description) ? new[] { $"{d.Value}: step description" } : Array.Empty<string>())
                     .Concat(d.Arguments.Where(a => string.IsNullOrWhiteSpace(a.Description)).Select(a => $"{d.Value}.{a.Name}")))
@@ -149,7 +146,6 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         [InlineData("GetConnectedPlayers", "Value")]
         [InlineData("SetVariable", "Name")]
         [InlineData("ForEach", "ItemName")]
-        [InlineData("FilterCollection", "ItemName")]
         [InlineData("GetPropertyValue", "Output")]
         [InlineData("RollDice", "OutputVariable")]
         public void VariableCreatingArguments_AreMarkedAsOutputs(string step, string arg)
@@ -158,9 +154,10 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
-        public void FilterCondition_IsDeferred_ButOrdinaryArgumentsAreNot()
+        public void Blocks_AreDeferred_ButOrdinaryArgumentsAreNot()
         {
-            Assert.True(Arg("FilterCollection", "Condition").Arg.Deferred);
+            Assert.True(Arg("If", "Then").Arg.Deferred);
+            Assert.True(Arg("ForEach", "Do").Arg.Deferred);
             Assert.False(Arg("If", "Condition").Arg.Deferred);
         }
 
@@ -174,11 +171,25 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
                 hooks.Single(h => h.Key == nameof(Hook.ChatCommand)).Variables);
         }
 
-        // The editor offers a list of entity types instead of a free-text Type.
+        // The editor offers the kinds Find knows instead of a free-text What.
         [Fact]
-        public void GetData_Type_IsAnEntityTypePicker()
+        public void Find_What_IsAKindPicker()
         {
-            Assert.Equal("entitytype", Arg("GetData", "Type").Arg.Type);
+            Assert.Equal("findkind", Arg("Find", "What").Arg.Type);
+        }
+
+        [Theory]
+        [InlineData("GetData")]
+        [InlineData("GetDetail")]
+        [InlineData("SetDetail")]
+        [InlineData("Calculate")]
+        [InlineData("FilterCollection")]
+        [InlineData("QueryData")]
+        [InlineData("QueryProperties")]
+        [InlineData("SendCommand")]
+        public void RemovedSteps_AreGone(string step)
+        {
+            Assert.DoesNotContain(AllSteps(), s => s.Value == step);
         }
     }
 }
