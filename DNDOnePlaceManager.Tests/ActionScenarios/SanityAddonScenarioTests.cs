@@ -1,4 +1,5 @@
 using DndOnePlaceManager.Application;
+using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Services.Dice;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -71,6 +72,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             {
                 ["UseSqlite"] = "true",
                 ["ConnectionStrings:DBData"] = connectionString,
+                ["AddonsConfiguration:MainRepository"] = "http://localhost/unused", // never reached: the addon is a file
             }).Build();
 
             var collection = new ServiceCollection();
@@ -170,20 +172,26 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 Property("CardModel", orcCard, "hp", "30", c => c.Card = card[orcCard]),
                 Property("ElementModel", rat, "bar1_value", "7", c => c.Element = element[rat]));
 
-            var folder = Path.Combine(AppContext.BaseDirectory, "ActionScenarios", "sanity", "Actions");
-            foreach (var file in Directory.GetFiles(folder, "*.json"))
-            {
-                var json = JObject.Parse(File.ReadAllText(file));
-                db.Add(new ActionModel
-                {
-                    Id = Guid.NewGuid(), Game = game, Prefix = "sanity",
-                    Name = json.Value<string>("name")!,
-                    Hook = (Hook)json.Value<int>("hook"),
-                    IsEnabled = json.Value<int>("hook") != 0,
-                    Content = json["content"]!.ToString(),
-                });
-            }
             db.SaveChanges();
+
+            // The addon goes in as the GM installs it: the zip of ActionScenarios/sanity.
+            using var install = services.CreateScope();
+            var (response, _) = install.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(new InstallAddonCommand
+            {
+                GameID = gameId, Player = gm, AddonFile = AddonZip(), AddonFileName = "sanity.zip",
+            }).GetAwaiter().GetResult();
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
+        private static byte[] AddonZip()
+        {
+            var folder = Path.Combine(AppContext.BaseDirectory, "ActionScenarios", "sanity");
+            using var stream = new MemoryStream();
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+                foreach (var file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories))
+                    using (var entry = zip.CreateEntry(Path.GetRelativePath(folder, file).Replace(Path.DirectorySeparatorChar, '/')).Open())
+                        entry.Write(File.ReadAllBytes(file));
+            return stream.ToArray();
         }
 
         private ElementModel Token(Guid id, string name, int left, int top, Guid? cardId)
@@ -286,6 +294,18 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Empty(Added(player));
         }
 
+        // As the game fires it when a player's client has loaded (GameLobby → Hook.Load).
+        [Fact]
+        public async Task Setup_RunsFromThePlayerLoadHook()
+        {
+            await lobby.ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs { Player = gm });
+
+            NoErrors();
+            Assert.Contains("sanity_fireball", Added(gm));
+            Assert.Contains("sanity_damage_all", Added(gm));
+            Assert.Empty(Added(player));
+        }
+
         [Fact]
         public async Task GmActions_RefusePlayers()
         {
@@ -345,6 +365,9 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Equal("0", PropertyValue(goblinCard, "hp"));      // 20 - 24
             Assert.Equal("0", PropertyValue(rat, "bar1_value"));      // 7 - 24
             Assert.Equal("30", PropertyValue(orcCard, "hp"));         // out of range
+            // Targets may be hidden from players: only the GM learns who was hit and their HP.
+            Assert.Contains(Chat(gm), m => m.Contains("Goblin: -24 HP"));
+            Assert.DoesNotContain(Chat(player), m => m.Contains("Goblin") || m.Contains("Rat"));
         }
 
         [Fact]

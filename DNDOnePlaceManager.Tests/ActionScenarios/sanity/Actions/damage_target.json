@@ -60,10 +60,11 @@
       "id": "0cfd17f7-6b87-58fb-8111-996829cfa8be",
       "Type": "SendChat",
       "Data": {
-        "Label": "Report",
+        "Label": "Report to the GM only (names and HP may be secret)",
         "Template": "Text",
         "Title": "Damage",
-        "Message": "%dt_text%"
+        "Message": "%dt_text%",
+        "Player": "%gmId%"
       }
     }
   ]

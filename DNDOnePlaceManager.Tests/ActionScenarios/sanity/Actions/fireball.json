@@ -35,8 +35,7 @@
         "OutputVariable": "fb_damage",
         "SimpleOutput": true,
         "PrintToChat": true,
-        "ChatTitle": "%playerName%: Fireball",
-        "ChatMessage": "Caught in the blast: %fb_names%"
+        "ChatTitle": "%playerName%: Fireball"
       }
     },
     {
@@ -58,7 +57,7 @@
       "Data": {
         "Label": "Read the answer",
         "Output": "",
-        "Script": "var a = String(vars.fb_answer == null ? \"\" : vars.fb_answer).trim().toLowerCase();\nvar dmg = Number(vars.fb_damage) || 0;\nvar final = 0, text;\nif (vars.fb_count === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" damage to \" + vars.fb_names + \".\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.fb_names + \".\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, fb_apply: final > 0 && vars.fb_count > 0 ? 1 : 0, fb_text: text };"
+        "Script": "var a = String(vars.fb_answer == null ? \"\" : vars.fb_answer).trim().toLowerCase();\nvar dmg = Number(vars.fb_damage) || 0;\nvar final = 0, text;\nif (vars.fb_count === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" fire damage to \" + vars.fb_count + \" creature(s).\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.fb_count + \" creature(s).\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, fb_apply: final > 0 && vars.fb_count > 0 ? 1 : 0, fb_text: text };"
       }
     },
     {
