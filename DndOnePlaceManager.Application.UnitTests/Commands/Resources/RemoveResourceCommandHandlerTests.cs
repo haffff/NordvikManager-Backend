@@ -82,14 +82,25 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             Assert.Equal(CommandResponse.Ok, result);
         }
 
-        // Unlike UpdateResourceData/DeleteResourceData, this handler's permission check has no
-        // Permission.Edit-flag fallback — only literal resource ownership or IsOwner grant access.
+        // Like UpdateResourceData/DeleteResourceData: the uploader, the owner, or a co-GM (the
+        // caller's Permission is their permission on the game).
         [Fact]
-        public async Task Handle_HasEditPermissionFlagButNotOwner_StillThrowsPermissionException()
+        public async Task Handle_CoGmWhoIsNotTheUploader_RemovesIt()
         {
             var game = BuildGame();
             var resource = SeedResource(game, PlayerId);
             var caller = new PlayerDTO { Id = Guid.NewGuid(), Name = "Editor", Permission = Permission.Edit };
+            var cmd = new RemoveResourceCommand { ID = resource.Id, GameId = game.Id, Player = caller };
+
+            Assert.Equal(CommandResponse.Ok, await Handler().Handle(cmd, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_ReaderWhoIsNotTheUploader_ThrowsPermissionException()
+        {
+            var game = BuildGame();
+            var resource = SeedResource(game, PlayerId);
+            var caller = new PlayerDTO { Id = Guid.NewGuid(), Name = "Reader", Permission = Permission.Read };
             var cmd = new RemoveResourceCommand { ID = resource.Id, GameId = game.Id, Player = caller };
 
             await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));

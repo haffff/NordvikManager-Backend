@@ -94,7 +94,8 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                     break;
                 case "/gr":
                     {
-                        var gm = (await GetPlayers(parsedMsg)).FirstOrDefault(p => p.IsOwner == true);
+                        var players = await GetPlayers(parsedMsg);
+                        var gm = players.FirstOrDefault(p => p.IsOwner == true);
                         if (gm == null || splitted.Length < 2)
                         {
                             ReplyToSender(parsedMsg, gm == null ? "This game has no GM to roll to." : "Usage: /gr <dice>, e.g. /gr 1d20+5");
@@ -102,7 +103,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                         }
                         parsedMsg.Data = chatService.ParseRollFromUser(splitted[1], splitted.Length == 3 ? splitted[2] : null);
                         parsedMsg.IsTemplate = true;
-                        MakePrivate(parsedMsg, player, gm, gm);
+                        MakePrivate(parsedMsg, player, gm, Gms(players));
                         break;
                     }
                 case "/w":
@@ -117,7 +118,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                             ReplyToSender(parsedMsg, rest.Length == 0 ? "Usage: /w <player> <text>" : $"No player named \"{rest.Split(' ')[0]}\".");
                             break;
                         }
-                        Whisper(parsedMsg, player, recipient, players, rest[recipient.Name!.Length..].Trim());
+                        Whisper(parsedMsg, player, recipient, players.Where(p => p.IsOwner == true), rest[recipient.Name!.Length..].Trim());
                         break;
                     }
                 case "/gm":
@@ -129,7 +130,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                             ReplyToSender(parsedMsg, gm == null ? "This game has no GM." : "You are the GM.");
                             break;
                         }
-                        Whisper(parsedMsg, player, gm, players, rest);
+                        Whisper(parsedMsg, player, gm, Gms(players), rest);
                         break;
                     }
                 case "/help":
@@ -149,7 +150,11 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             text.StartsWith(name, StringComparison.OrdinalIgnoreCase)
             && (text.Length == name.Length || text[name.Length] == ' ');
 
-        private static void Whisper(WebSocketCommand parsedMsg, PlayerDTO sender, PlayerDTO recipient, List<PlayerDTO> players, string text)
+        // The GM and the co-GMs (players with Edit on the game; PlayerDTO.Permission is that).
+        private static IEnumerable<PlayerDTO> Gms(List<PlayerDTO> players) =>
+            players.Where(p => p.IsOwner == true || ((p.Permission ?? Permission.None) & Permission.Edit) == Permission.Edit);
+
+        private static void Whisper(WebSocketCommand parsedMsg, PlayerDTO sender, PlayerDTO recipient, IEnumerable<PlayerDTO> alsoSeenBy, string text)
         {
             if (text.Length == 0)
             {
@@ -157,14 +162,15 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
                 return;
             }
             parsedMsg.Data = text;
-            MakePrivate(parsedMsg, sender, recipient, players.FirstOrDefault(p => p.IsOwner == true));
+            MakePrivate(parsedMsg, sender, recipient, alsoSeenBy);
         }
 
-        // Seen by the sender, the recipient and the GM.
-        private static void MakePrivate(WebSocketCommand parsedMsg, PlayerDTO sender, PlayerDTO recipient, PlayerDTO? gm)
+        // Seen by the sender, the recipient and alsoSeenBy: the GM for whispers, the GM and
+        // co-GMs for /gm and /gr.
+        private static void MakePrivate(WebSocketCommand parsedMsg, PlayerDTO sender, PlayerDTO recipient, IEnumerable<PlayerDTO> alsoSeenBy)
         {
             parsedMsg.RecipientId = recipient.Id;
-            parsedMsg.VisibleTo = new[] { sender.Id, recipient.Id, gm?.Id }
+            parsedMsg.VisibleTo = new[] { sender.Id, recipient.Id }.Concat(alsoSeenBy.Select(p => p.Id))
                 .Where(id => id != null)
                 .Select(id => id!.Value)
                 .Distinct()

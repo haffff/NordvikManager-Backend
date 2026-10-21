@@ -449,10 +449,15 @@ namespace DNDOnePlaceManager.Services.Implementations
                     });
                 }
 
+                // Whoever may edit the game (the owner or a co-GM) is a GM here.
                 if (!hasPermission)
                 {
-                    var game = await dbContext.Games.FindAsync(GameLobby.GameId);
-                    hasPermission = game != null && cmdArgs.Player.Id == game.MasterId;
+                    hasPermission = cmdArgs.Player.IsOwner == true || await mediator.Send(new CheckPermissionsCommand
+                    {
+                        Player = cmdArgs.Player,
+                        EntityId = GameLobby.GameId,
+                        RequiredPermission = Permission.Edit,
+                    });
                 }
 
                 if (!hasPermission)

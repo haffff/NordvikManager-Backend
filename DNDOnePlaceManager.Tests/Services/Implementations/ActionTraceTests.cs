@@ -81,14 +81,16 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
                 })
                 .ReturnsAsync(true);
 
-            var lobby = new GameLobby(scopeFactory.Object)
+            _lobby = new GameLobby(scopeFactory.Object)
             {
                 GameId = Guid.NewGuid(),
                 SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
                 ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>> { [_player] = new() { connection.Object } },
             };
-            _service = lobby.ActionProcessingService;
+            _service = _lobby.ActionProcessingService;
         }
+
+        private readonly GameLobby _lobby;
 
         private void AddAction(string name, params object[] steps) => _actions.Add(new ActionDto
         {
@@ -107,6 +109,38 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
 
         private static JObject Last(List<JObject> msgs, string stepId) =>
             msgs.Last(m => m["stepId"]?.ToString() == stepId);
+
+        // An action only the GM may run (GmPermission) has no row for a co-GM on the action
+        // itself; Edit on the game is enough, like for the owner.
+        [Fact]
+        public async Task GmOnlyAction_RunByACoGm_Runs()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IRequest<bool> c, CancellationToken _) =>
+                {
+                    var check = (CheckPermissionsCommand)c;
+                    return check.EntityId == _lobby.GameId && check.RequiredPermission == Permission.Edit;
+                });
+            AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
+            _actions[^1].GmPermission = Permission.Execute;
+
+            var msgs = await Run("gm");
+
+            Assert.Equal("Completed", msgs.Last()["state"]?.ToString());
+        }
+
+        [Fact]
+        public async Task GmOnlyAction_RunByAPlayer_IsRefused()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
+            _actions[^1].GmPermission = Permission.Execute;
+
+            await Run("gm"); // no trace: a player who can't edit the game isn't traced
+
+            Assert.Contains(_lobby.EventLog.GetEntries(), e => e.Category == "Permission");
+        }
 
         [Fact]
         public async Task CompletedRun_ReportsEachStepWithVariables_ThenFinished()

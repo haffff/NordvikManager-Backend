@@ -21,19 +21,16 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Link
         {
             await base.Handle(request, cancellationToken);
 
+            // The host's disk belongs to whoever runs this server, not to a game's GM.
+            if (!request.IsLocalAdmin)
+                throw new PermissionException(Permission.Edit);
+
             var playerId = request.Player?.Id ?? Guid.Empty;
 
             var game = await dbContext.Games
                 .Include(g => g.Players)
                 .FirstOrDefaultAsync(g => g.Id == request.GameId && g.Players.Any(p => p.Id == playerId), cancellationToken);
             Guard.NotFound(game, "Game", request.GameId);
-
-            var player = await dbContext.Players.FirstOrDefaultAsync(p => p.Id == playerId, cancellationToken);
-            Guard.NotFound(player, "Player", playerId);
-
-            var isGM = player.System || game.MasterId == playerId;
-            if (!isGM)
-                throw new PermissionException(Permission.Edit);
 
             return storage.ListDirectory(request.Path);
         }

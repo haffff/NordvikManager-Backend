@@ -53,21 +53,19 @@ namespace DndOnePlaceManager.Application.Commands.Playlist.GetPlaylists
                 playlist.Resources = links.Where(x => x.PlaylistId == playlist.Id).Select(x => tracks[x.ResourceId]).ToList();
 
             // Path can reveal the backend host's absolute filesystem layout for
-            // ManagedFile/Linked resources — GM-only, mirrors GetResourcesCommandHandler.
+            // ManagedFile/Linked resources — local admin only, mirrors GetResourcesCommandHandler.
             // The client doesn't need it to play a track anyway.
-            var canSeeAll = request.Player?.System == true || game.MasterId == playerId;
-
-            return playlists.Select(p => MapPlaylist(p, canSeeAll)).ToList();
+            return playlists.Select(p => MapPlaylist(p, request.IsLocalAdmin)).ToList();
         }
 
-        private PlaylistDTO MapPlaylist(Domain.Entities.PlaylistModel playlist, bool canSeeAll)
+        private PlaylistDTO MapPlaylist(Domain.Entities.PlaylistModel playlist, bool showPaths)
         {
             var dto = mapper.Map<PlaylistDTO>(playlist);
             dto.Resources = playlist.Resources.Select(r =>
             {
                 var resourceDto = mapper.Map<ResourceDTO>(r);
                 resourceDto.Data = null;
-                if (!canSeeAll)
+                if (!showPaths)
                     resourceDto.Path = null;
                 return resourceDto;
             }).ToList();

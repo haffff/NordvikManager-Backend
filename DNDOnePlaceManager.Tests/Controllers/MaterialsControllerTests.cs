@@ -6,6 +6,8 @@ using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
 using DndOnePlaceManager.Application.Commands.Resources.GetResourceContent;
+using DndOnePlaceManager.Application.Commands.Resources.Link;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -516,6 +518,48 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Act & Assert
             await Assert.ThrowsAsync<PermissionException>(() =>
                 _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        // =========================================================================
+        // The host's disk: local admin only
+        // =========================================================================
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task BrowseLocalDirectory_PassesWhetherTheUserIsLocalAdmin(bool isLocalAdmin)
+        {
+            BrowseLocalDirectoryCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<BrowseLocalDirectoryCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<IReadOnlyList<LocalDirectoryEntry>>, CancellationToken>((c, _) => sent = (BrowseLocalDirectoryCommand)c)
+                     .ReturnsAsync(new List<LocalDirectoryEntry>());
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = isLocalAdmin });
+
+            await controller.BrowseLocalDirectory(Guid.NewGuid(), null);
+
+            Assert.Equal(isLocalAdmin, sent!.IsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task LinkDirectory_NotLocalAdmin_IsForbiddenBeforeAnythingStarts()
+        {
+            var result = await _controller.LinkDirectory(Guid.NewGuid(), new LinkDirectoryRequest { LocalDirectoryPath = "C:/" });
+
+            Assert.IsType<ForbidResult>(result);
+        }
+
+        [Fact]
+        public async Task GetResources_PassesWhetherTheUserIsLocalAdmin()
+        {
+            GetResourcesCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, List<ResourceDTO>)>, CancellationToken>((c, _) => sent = (GetResourcesCommand)c)
+                     .ReturnsAsync((CommandResponse.Ok, new List<ResourceDTO>()));
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = true });
+
+            await controller.GetResources(Guid.NewGuid());
+
+            Assert.True(sent!.IsLocalAdmin);
         }
     }
 }

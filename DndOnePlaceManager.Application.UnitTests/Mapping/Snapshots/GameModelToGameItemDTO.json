@@ -1,9 +1,11 @@
 {
   "emptyCollections": {
+    "CanManage": false,
     "CentralSessionId": "text20",
     "Color": null,
     "Id": "00000000-0000-0000-0000-000000000002",
     "Image": null,
+    "IsMember": false,
     "IsOwner": false,
     "IsPublic": true,
     "LongDescription": null,
@@ -13,10 +15,12 @@
     "ShortDescription": null
   },
   "filled": {
+    "CanManage": false,
     "CentralSessionId": "text153",
     "Color": null,
     "Id": "00000000-0000-0000-0000-000000000002",
     "Image": null,
+    "IsMember": false,
     "IsOwner": false,
     "IsPublic": true,
     "LongDescription": null,
@@ -26,10 +30,12 @@
     "ShortDescription": null
   },
   "fresh": {
+    "CanManage": false,
     "CentralSessionId": null,
     "Color": null,
     "Id": "00000000-0000-0000-0000-000000000000",
     "Image": null,
+    "IsMember": false,
     "IsOwner": false,
     "IsPublic": false,
     "LongDescription": null,

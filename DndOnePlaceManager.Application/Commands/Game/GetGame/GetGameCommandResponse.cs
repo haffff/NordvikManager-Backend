@@ -26,5 +26,8 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap.GetGame
         // Per-game layout toggles (property-backed; absent => false).
         public bool DisallowPlayerLayouts { get; set; }
         public bool SaveLayoutOnExit { get; set; }
+
+        /// <summary>The caller runs this server (may link its files).</summary>
+        public bool IsLocalAdmin { get; set; }
     }
 }

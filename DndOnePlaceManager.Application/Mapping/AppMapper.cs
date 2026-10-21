@@ -111,6 +111,8 @@ namespace DndOnePlaceManager.Application.Mapping
         [MapperIgnoreTarget(nameof(GameItemDTO.ShortDescription))]
         [MapperIgnoreTarget(nameof(GameItemDTO.Color))]
         [MapperIgnoreTarget(nameof(GameItemDTO.IsOwner))]
+        [MapperIgnoreTarget(nameof(GameItemDTO.IsMember))]
+        [MapperIgnoreTarget(nameof(GameItemDTO.CanManage))]
         [MapperIgnoreTarget(nameof(GameItemDTO.PasswordRequired))]
         private partial GameItemDTO ToDto(GameModel source);
 

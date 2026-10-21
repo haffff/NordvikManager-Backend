@@ -60,6 +60,45 @@ namespace DNDOnePlaceManager.Tests.WebSockets.Handlers
             Assert.Equal(Ids(_alice, _gm), Sorted(stored.VisibleTo));
         }
 
+        // Co-GMs (Edit on the game; PlayerDTO.Permission is the game permission) get GM chat,
+        // but not whispers between players.
+        private readonly PlayerDTO _coGm = new() { Id = Guid.NewGuid(), Name = "Co", Permission = DndOnePlaceManager.Domain.Enums.Permission.Read | DndOnePlaceManager.Domain.Enums.Permission.Edit };
+
+        private void WithCoGm() =>
+            _mediator.Setup(m => m.Send(It.IsAny<GetGamePlayersCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<PlayerDTO> { _gm, _alice, _oldBob, _bob, _coGm });
+
+        [Fact]
+        public async Task GmRoll_IsSeenByCoGmsToo()
+        {
+            WithCoGm();
+
+            var sent = await Send("/gr 1d20", _alice);
+
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(sent.VisibleTo));
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(Assert.Single(_stored).VisibleTo));
+        }
+
+        [Fact]
+        public async Task GmMessage_IsSeenByCoGmsToo()
+        {
+            WithCoGm();
+
+            var sent = await Send("/gm a secret door?", _alice);
+
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(sent.VisibleTo));
+        }
+
+        [Fact]
+        public async Task Whisper_IsNotSeenByCoGms()
+        {
+            WithCoGm();
+
+            var sent = await Send("/w bob psst", _alice);
+
+            Assert.Equal(Ids(_alice, _bob, _gm), Sorted(sent.VisibleTo));
+        }
+
         [Fact]
         public async Task GmRoll_ByTheGm_IsSeenByTheGmOnly()
         {

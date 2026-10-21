@@ -51,6 +51,7 @@ namespace DNDOnePlaceManager.Controllers
                 GameId = gameId,
                 Player = playerResult.Player,
                 Kind = kind,
+                IsLocalAdmin = user?.IsLocalAdmin == true,
             });
 
             return Ok(result);

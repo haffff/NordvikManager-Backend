@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.Commands.Properties.GetTokenViewers;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
@@ -34,7 +35,7 @@ namespace DNDOnePlaceManager.Tests.Services
         public GameLobbyTokenValuesBroadcastTests()
         {
             // Only the owner can read the card.
-            _mediator.Setup(m => m.Send(It.IsAny<GetPermissionsCommand>(), It.IsAny<CancellationToken>()))
+            _mediator.Setup(m => m.Send(It.IsAny<GetEffectivePermissionsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new Dictionary<Guid, Permission> { [_owner.Id!.Value] = Permission.All });
             _mediator.Setup(m => m.Send(It.IsAny<GetTokenViewersCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((GetTokenViewersCommand c, CancellationToken _) =>
@@ -75,6 +76,20 @@ namespace DNDOnePlaceManager.Tests.Services
                 c.CardId == _cardId && c.PropertyName == "bar1_value" && c.GameId == _lobby.GameId
                 && c.PlayerIds.Count == 2 && c.PlayerIds.Contains(_viewer.Id!.Value) && c.PlayerIds.Contains(_stranger.Id!.Value)),
                 It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        // Who reads an entity comes with co-GMs already in (GetEffectivePermissions), so a
+        // co-GM with no row of their own still gets its updates.
+        [Fact]
+        public async Task PropertyUpdate_ReachesWhoeverTheEffectivePermissionsLetRead_ForThisGame()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetEffectivePermissionsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new Dictionary<Guid, Permission> { [_owner.Id!.Value] = Permission.All, [_stranger.Id!.Value] = Permission.All });
+
+            await _lobby.HandlePostCommand(_owner, Change(WebSocketCommandNames.PropertyUpdate, "secret_backstory"));
+
+            Assert.True(Received(_stranger));
+            _mediator.Verify(m => m.Send(It.Is<GetEffectivePermissionsCommand>(c => c.EntityId == _cardId && c.GameId == _lobby.GameId), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

@@ -22,7 +22,7 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
             var result = await dbContext.Games
                 .Include(x => x.Players)
                 .Include(x => x.Properties)
-                .Where(x => x.Players.Any(y => y.CentralServerUserId == request.UserId))
+                .Where(x => request.AllGames || x.Players.Any(y => y.CentralServerUserId == request.UserId))
                 .AsSplitQuery()
                 .ToListAsync();
 
@@ -43,8 +43,11 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
                     ShortDescription = shortDescription,
                     Image = image,
                     Color = color,
-                    IsOwner = x.Players.FirstOrDefault(y => y.CentralServerUserId == request.UserId)?.Id == x.MasterId
                 };
+                var me = x.Players.FirstOrDefault(y => y.CentralServerUserId == request.UserId);
+                gameItem.IsMember = me != null;
+                gameItem.IsOwner = me != null && me.Id == x.MasterId;
+                gameItem.CanManage = gameItem.IsOwner || request.AllGames;
 
                 return gameItem;
             });

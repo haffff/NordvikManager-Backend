@@ -1,6 +1,7 @@
 ﻿using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
@@ -32,12 +33,8 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Transfer
                 .FirstOrDefaultAsync(g => g.Id == request.GameId && g.Players.Any(p => p.Id == playerId), cancellationToken);
             Guard.NotFound(game, "Game", request.GameId);
 
-            var player = await dbContext.Players.FirstOrDefaultAsync(p => p.Id == playerId, cancellationToken);
-            Guard.NotFound(player, "Player", playerId);
-
-            var isGM = player.System || game.MasterId == playerId;
-            if (!isGM)
-                throw new PermissionException(Permission.Edit);
+            // Files go into the server's own folder, so editing the game is enough.
+            game.ThrowIfNoPermission(playerId, Permission.Edit);
 
             var resource = await dbContext.Resources
                 .FirstOrDefaultAsync(r => r.Id == request.ResourceId && r.GameId == request.GameId, cancellationToken);

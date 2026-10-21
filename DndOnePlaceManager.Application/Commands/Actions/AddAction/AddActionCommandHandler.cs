@@ -34,6 +34,9 @@ namespace DndOnePlaceManager.Application.Commands.Actions
 
             action.SetPermissions(request.Player.Id ?? default, Permission.All);
             action.SetPermissions(game.SystemPlayerId, Permission.All);
+            // The owner (and through their row, every co-GM) keeps full rights on it.
+            if (game.MasterId != Guid.Empty && game.MasterId != request.Player.Id)
+                action.SetPermissions(game.MasterId, Permission.All);
 
             return (CommandResponse.Ok, action.Id);
         }

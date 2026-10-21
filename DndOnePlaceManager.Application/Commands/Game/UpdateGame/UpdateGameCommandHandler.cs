@@ -3,6 +3,8 @@ using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
 {
@@ -15,14 +17,29 @@ namespace DndOnePlaceManager.Application.Commands.Game.UpdateGame
         {
             await base.Handle(request, cancellationToken);
 
-            var game = dbContext.Games.FirstOrDefault(x => x.Id == request.GameId);
+            var game = dbContext.Games.Include(x => x.Properties).FirstOrDefault(x => x.Id == request.GameId);
             Guard.NotFound(game, "Game", request.GameId);
 
-            game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
+            if (!request.AsLocalAdmin)
+                game.ThrowIfNoPermission(request.Player?.Id ?? Guid.Empty, Domain.Enums.Permission.Edit);
 
-            game.Name = request?.Name ?? game.Name;
-            game.Password = request.Password ?? request.Password;
-            game.UseMetric = request.BaseDistanceUnit == "metric" ? true : false;
+            // Only what was sent changes: the game list sends name and description, the in-game
+            // settings name and password. An empty password clears it.
+            game.Name = request.Name ?? game.Name;
+            if (request.Password != null)
+                game.Password = request.Password;
+            if (request.BaseDistanceUnit != null)
+                game.UseMetric = request.BaseDistanceUnit == "metric";
+
+            if (request.ShortDescription != null)
+            {
+                game.Properties ??= new List<PropertyModel>();
+                var description = game.Properties.FirstOrDefault(p => p.Name == "shortDescription");
+                if (description == null)
+                    game.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "shortDescription", EntityName = nameof(GameModel), ParentID = game.Id, Value = request.ShortDescription });
+                else
+                    description.Value = request.ShortDescription;
+            }
 
             dbContext.SaveChanges();
 

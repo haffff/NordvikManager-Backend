@@ -35,7 +35,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources
             if (image == null)
                 throw new ResourceNotFoundException("Resource", (object?)request.ID ?? request.Key);
 
-            if (image.PlayerId != request.Player.Id && !(request.Player.IsOwner ?? false))
+            // The uploader, or whoever may edit the game (owner or co-GM).
+            var canEditGame = (request.Player.IsOwner ?? false) || ((request.Player.Permission ?? Permission.None) & Permission.Edit) != 0;
+            if (image.PlayerId != request.Player.Id && !canEditGame)
             {
                 throw new PermissionException(Permission.Edit);
             }
