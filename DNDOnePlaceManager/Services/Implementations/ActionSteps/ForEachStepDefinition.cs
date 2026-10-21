@@ -13,6 +13,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "For Each";
         public string Value => "ForEach";
+        public IReadOnlyList<string> Keywords => new[] { "loop", "each", "every", "all", "repeat", "list" };
         public string Category => "Control Flow";
         public string Description => "Runs the Do steps once for each item of a list variable (e.g. the tokens Find found). In them the current item is the variable named in Item Name; they work on the action's own variables.";
         public string? Summary => "For each {ItemName} in {Collection}";

@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Services.Implementations.ActionBody;
+using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
 using System;
@@ -11,6 +11,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Execute Action";
         public string Value => "ExecuteAction";
+        public IReadOnlyList<string> Keywords => new[] { "call", "run", "another action" };
         public string Category => "Control Flow";
         public string Description => "Runs another action, then continues with the next step. The other action gets a copy of the current variables; variables it sets don't come back.";
         public string? Summary => "Run {Value}";

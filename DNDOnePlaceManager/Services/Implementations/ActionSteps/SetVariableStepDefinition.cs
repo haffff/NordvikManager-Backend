@@ -14,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Set Variable";
         public string Value => "SetVariable";
+        public IReadOnlyList<string> Keywords => new[] { "remember", "store", "variable", "value" };
         public string Category => "Control Flow";
         public string Description => "Sets a variable to a value, with optional type casting and a default fallback when the value is empty.";
         public string? Summary => "{Name} = {Value}";

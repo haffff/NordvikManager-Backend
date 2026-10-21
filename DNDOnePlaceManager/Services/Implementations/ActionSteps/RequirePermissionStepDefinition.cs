@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Require Permission";
         public string Value => "RequirePermission";
+        public IReadOnlyList<string> Keywords => new[] { "gm only", "permission", "allowed", "check" };
         public string Category => "Security";
         public string Description => "Checks if the player who triggered the action has the required permission on an entity. Can store the result in a variable or stop the action if denied.";
         public string? Summary => "Require {Permission} on {EntityId}";

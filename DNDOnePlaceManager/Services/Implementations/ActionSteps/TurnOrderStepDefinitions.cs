@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add To Turn Order";
         public string Value => "AddToTurnOrder";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "combat" };
         public string Category => "Turn order";
         public string Description => "Adds a token (or a free entry, by name) to a map's turn order. The first entry starts round 1.";
         public string? Summary => "Add [{ElementId}][{Name}] to the turn order[ → {Output}]";
@@ -70,6 +71,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Set Initiative";
         public string Value => "SetInitiative";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "combat" };
         public string Category => "Turn order";
         public string Description => "Sets (or clears) the initiative of an entry or a token's entry, optionally sorting the turn order afterwards.";
         public string? Summary => "Set initiative of [{EntryId}][{ElementId}] to {Initiative}";
@@ -96,6 +98,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Next Turn";
         public string Value => "NextTurn";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "round", "combat" };
         public string Category => "Turn order";
         public string Description => "Passes the turn to the next entry of a map's turn order; after the last one, the next round starts.";
         public string? Summary => "Next turn";

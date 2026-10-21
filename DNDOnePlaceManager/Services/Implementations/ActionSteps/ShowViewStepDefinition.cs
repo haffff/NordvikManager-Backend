@@ -26,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Show View";
         public string Value => "ShowView";
+        public IReadOnlyList<string> Keywords => new[] { "open", "window", "view", "panel", "dialog" };
         public string Category => "Client";
         public string Description => "Shows a view (hidden UI panel/card) to a specific player or broadcasts it to all players.";
         public string? Summary => "Show view {ViewKey}[ to {Player}]";

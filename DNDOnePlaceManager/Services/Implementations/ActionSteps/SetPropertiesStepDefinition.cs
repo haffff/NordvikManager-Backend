@@ -27,6 +27,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Set Properties";
         public string Value => "SetProperties";
+        public IReadOnlyList<string> Keywords => new[] { "write", "change", "several values", "properties" };
         public string Category => "Data";
         public string Description => "Creates or updates several properties on one entity. Each line in Properties is 'propertyName=value'.";
         public string? Summary => "Set on {ParentId}: {Properties}";

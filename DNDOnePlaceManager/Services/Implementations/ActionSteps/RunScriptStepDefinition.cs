@@ -32,6 +32,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Run Script";
         public string Value => "RunScript";
+        public IReadOnlyList<string> Keywords => new[] { "calculate", "math", "code", "javascript", "list", "filter", "sort", "text", "json", "random pick" };
         public string Category => "Script";
         public string Description => "Runs a short sandboxed JavaScript snippet for calculations, lists, text and JSON. " +
             "Reads variables through `vars`, returns new values. It cannot change the game directly — use the other steps for that.";

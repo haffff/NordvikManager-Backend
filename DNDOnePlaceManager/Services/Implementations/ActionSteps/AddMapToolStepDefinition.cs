@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add Map Tool";
         public string Value => "AddMapTool";
+        public IReadOnlyList<string> Keywords => new[] { "tool", "click the map", "target", "place" };
         public string Category => "Client";
         public string Description => "Adds a tool to the Tools panel ('Addon tools'). While it is active, clicking the map runs an action with " +
             "the clicked position and element, e.g. a 'Teleport' tool that moves the clicked token.";

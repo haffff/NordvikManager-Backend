@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Play Sound";
         public string Value => "PlaySound";
+        public IReadOnlyList<string> Keywords => new[] { "sound", "audio", "effect" };
         public string Category => "Audio";
         public string Description => "Plays a one-shot soundboard sound (an audio material) for a player or for everyone in the game.";
         public string? Summary => "Play sound {ResourceId}[ for {Player}]";

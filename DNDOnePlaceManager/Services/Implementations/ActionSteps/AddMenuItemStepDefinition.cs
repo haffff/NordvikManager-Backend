@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add Menu Item";
         public string Value => "AddMenuItem";
+        public IReadOnlyList<string> Keywords => new[] { "menu", "right-click", "button", "option" };
         public string Category => "Client";
         public string Description => "Adds an item that runs an action to one of the app's menus (Game, View, Settings, map right-click > Add, ...) or to a toolbar dropdown made with Add Toolbar Button. Pick the menu in Location.";
         public string? Summary => "Menu item {UiName}[ → {Action}]";

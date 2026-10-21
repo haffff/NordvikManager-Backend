@@ -13,6 +13,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Send Request";
         public string Value => "SendRequest";
+        public IReadOnlyList<string> Keywords => new[] { "web", "http", "api", "download", "url" };
         public string Category => "Network";
         public string Description => "Sends an HTTP request to an external URL. Protected properties can be injected into the body or used as a Bearer token. Protected values are never returned to the caller.";
         public string? Summary => "Request[ {HttpMethod}] {TargetUrl}[ → {Output}]";

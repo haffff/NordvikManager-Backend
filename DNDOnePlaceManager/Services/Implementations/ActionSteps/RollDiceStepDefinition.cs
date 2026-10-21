@@ -23,6 +23,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Roll Dice";
         public string Value => "RollDice";
+        public IReadOnlyList<string> Keywords => new[] { "roll", "dice", "random", "damage", "attack", "check", "d20" };
         public string Category => "Roll";
         public string Description => "Rolls dice using standard notation (e.g. '2d6+3'). Also supports keep/drop ('2d20kh1' advantage, '4d6dl1'), " +
             "exploding ('3d6!'), success counting ('6d10cs>7') and Fudge dice ('4dF'). Stores the result and optionally prints it to chat.";

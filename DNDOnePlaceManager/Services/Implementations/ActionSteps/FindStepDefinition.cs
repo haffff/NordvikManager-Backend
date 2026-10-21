@@ -16,6 +16,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Find";
         public string Value => "Find";
+        public IReadOnlyList<string> Keywords => new[] { "tokens", "creatures", "monsters", "targets", "cards", "characters", "maps", "players", "search", "get", "list", "near", "in range" };
         public string Category => "Data";
         public string Description => "Finds the game's tokens, cards, maps, players… and stores them as a list (or the first one). " +
             "Tokens are looked for on the map the player is looking at unless you say otherwise.";

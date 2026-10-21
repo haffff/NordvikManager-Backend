@@ -41,6 +41,8 @@ namespace DNDOnePlaceManager.Models
         /// <summary>Optional one-line template, e.g. "Roll {DiceString}[ → {OutputVariable}]"; [..] segments drop when a placeholder in them is empty.</summary>
         public string? Summary { get; set; }
         public ActionDefinitionArgument[] Arguments { get; set; }
+        /// <summary>What the step is for, in the words someone looking for it would use.</summary>
+        public string[] Keywords { get; set; } = System.Array.Empty<string>();
     }
 
     [JsonObject]

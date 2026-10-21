@@ -15,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Get Property Value";
         public string Value => "GetPropertyValue";
+        public IReadOnlyList<string> Keywords => new[] { "read", "value", "hp", "health", "stat", "property", "get" };
         public string Description => "Reads a single named property's value for one entity, falling back to DefaultValue when it doesn't exist.";
         public string Category => "Properties";
         public string? Summary => "Read {PropertyName} of {ParentId}[ → {Output}]";

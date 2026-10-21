@@ -74,6 +74,18 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal(kind, Arg(step, arg).Arg.Output.Kind);
         }
 
+        // The step picker finds a step by what you want to do, e.g. "monsters" finds Find.
+        [Theory]
+        [InlineData("Find", "tokens")]
+        [InlineData("Find", "monsters")]
+        [InlineData("RollDice", "random")]
+        [InlineData("GetPropertyValue", "hp")]
+        [InlineData("RequestUserInput", "ask")]
+        public void Keywords_SayWhatAStepIsFor(string step, string keyword)
+        {
+            Assert.Contains(keyword, StepDefinitionMetadata.Build(AllSteps().Single(s => s.Value == step)).Keywords);
+        }
+
         [Fact]
         public void EverySummaryPlaceholder_IsAnArgumentOfThatStep()
         {

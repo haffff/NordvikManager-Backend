@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "If";
         public string Value => "If";
+        public IReadOnlyList<string> Keywords => new[] { "condition", "check", "when", "otherwise", "else", "branch" };
         public string Category => "Control Flow";
         public string Description => "Evaluates a true/false condition and runs the Then steps when it is true, the Else steps when it is false. They work on the action's own variables.";
         public string? Summary => "If {Condition}[ → {OutputName}]";

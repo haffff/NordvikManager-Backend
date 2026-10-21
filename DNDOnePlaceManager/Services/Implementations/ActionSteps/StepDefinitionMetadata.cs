@@ -28,6 +28,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Category = x.Category,
                 Description = x.Description,
                 Summary = x.Summary,
+                Keywords = x.Keywords.ToArray(),
                 Arguments = x.DataType?
                     .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                     .Where(y => y.SetMethod?.IsPublic == true)

@@ -26,6 +26,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Exit";
         public string Value => WebSocketCommandNames.StepTypeExit;
+        public IReadOnlyList<string> Keywords => new[] { "stop", "end", "cancel", "quit" };
         public string Category => "Control Flow";
         public string Description => "Stops the current action without running its remaining steps. " +
             "Inside a branch/loop action it stops only that sub-action.";

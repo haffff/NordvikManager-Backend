@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add Toolbar Button";
         public string Value => "AddToolbarButton";
+        public IReadOnlyList<string> Keywords => new[] { "toolbar", "button", "menu" };
         public string Category => "Client";
         public string Description => "Adds a button to the main toolbar that runs an action, or, with a Menu Id, a dropdown menu that Add Menu Item steps can fill.";
         public string? Summary => "Toolbar button {UiName}[ → {Action}]";
