@@ -87,24 +87,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var stepData = step.Data.ToObject<ChangeMapStepData>();
             var mapId = ElementStepHelper.ParseGuid("ChangeMap", "MapId", stepData.MapId);
 
-            Guid battleMapId;
-            if (!string.IsNullOrWhiteSpace(stepData.BattleMapId))
-            {
-                battleMapId = ElementStepHelper.ParseGuid("ChangeMap", "BattleMapId", stepData.BattleMapId);
-            }
-            else
-            {
-                var battleMaps = (await mediator.Send(new GetBattleMapsCommand
-                {
-                    GameID = gameLobby.GameId,
-                    Player = gameLobby.SystemPlayer,
-                }))?.ToList();
-
-                if (battleMaps == null || battleMaps.Count != 1 || battleMaps[0].Id == null)
-                    throw new ActionProcessException(
-                        $"ChangeMap: 'BattleMapId' is required when the game has {battleMaps?.Count ?? 0} battle map views.");
-                battleMapId = battleMaps[0].Id.Value;
-            }
+            var battleMapId = (await ActiveMap.BattleMapAsync(mediator, gameLobby, variables, stepData.BattleMapId))?.Id
+                ?? throw new ActionProcessException("ChangeMap: the game has no battle map view to show the map in.");
 
             // Same shape as the client's CommandFactory map_change command.
             await ElementStepHelper.SendAsync(gameLobby, new WebSocketCommand

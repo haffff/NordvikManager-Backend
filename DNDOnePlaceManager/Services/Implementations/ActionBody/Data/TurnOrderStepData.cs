@@ -7,7 +7,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
     // the game has a single battle map view: its current map is used.
     public class TurnOrderMapStepData
     {
-        [Description("Map whose turn order to change, e.g. %Data.mapId% in a Turn Changed hook. Leave empty to use the map shown in the game's only battle map view.")]
+        [Description("Map whose turn order to change, e.g. %Data.mapId% in a Turn Changed hook. Leave empty for the map the player is looking at (or the game's first battle map view).")]
         public string? MapId { get; set; }
     }
 
