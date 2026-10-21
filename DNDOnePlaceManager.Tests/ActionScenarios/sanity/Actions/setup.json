@@ -94,8 +94,37 @@
       "Data": {
         "Label": "GM tools for GMs",
         "Condition": "'%sg_isGm%' = 'True'",
-        "ActionTrue": "sanity/setup_gm",
-        "ActionFalse": ""
+        "Then": [
+          {
+            "id": "7dbf1188-1519-52e1-b312-a7840fed1687",
+            "Type": "AddMapTool",
+            "Data": {
+              "Label": "Tool: random damage to every token",
+              "Name": "sanity_damage_all",
+              "UiName": "Random damage (all tokens)",
+              "Action": "sanity/damage_all",
+              "Target": "point",
+              "StayActive": false,
+              "OnlyOwner": true,
+              "Hint": "Click the map: every token on it takes 1d6 damage.",
+              "ActionArgs": {
+                "dice": "1d6"
+              }
+            }
+          },
+          {
+            "id": "3e5004a7-e38e-5a17-b872-8b534ec886da",
+            "Type": "AddMenuItem",
+            "Data": {
+              "Label": "Map right-click: random monster",
+              "Name": "sanity_random_enemy",
+              "UiName": "Random monster here",
+              "Action": "sanity/random_enemy",
+              "Location": "battlemap",
+              "OnlyOwner": true
+            }
+          }
+        ]
       }
     }
   ]

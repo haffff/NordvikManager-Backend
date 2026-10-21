@@ -41,8 +41,71 @@
       "Data": {
         "Label": "Any to choose from?",
         "Condition": "%re_count% = 0",
-        "ActionTrue": "sanity/random_enemy_none",
-        "ActionFalse": "sanity/random_enemy_spawn"
+        "Then": [
+          {
+            "id": "dcc9d5ae-6d3c-5b1b-ad49-34167c7a73d1",
+            "Type": "SendChat",
+            "Data": {
+              "Label": "Tell the GM",
+              "Template": "Text",
+              "Title": "Random monster",
+              "Player": "%playerId%",
+              "Message": "No card has the property 'potworny'. Add it (any value) to the cards to pick from."
+            }
+          }
+        ],
+        "Else": [
+          {
+            "id": "2c4e42e4-59cc-5f47-b8f0-ca608b4fbf43",
+            "Type": "RollDice",
+            "Data": {
+              "Label": "Pick one",
+              "DiceString": "1d%re_count%",
+              "OutputVariable": "re_roll",
+              "SimpleOutput": true
+            }
+          },
+          {
+            "id": "5bb5e1f7-7d54-5a21-8575-b58e42373c50",
+            "Type": "RunScript",
+            "Data": {
+              "Label": "The picked card",
+              "Output": "",
+              "Script": "var p = vars.re_pool[Number(vars.re_roll) - 1];\nreturn { re_id: p.id, re_name: p.name };"
+            }
+          },
+          {
+            "id": "9a8a8d61-1262-5a83-971a-22e3ceac5c40",
+            "Type": "CreateCard",
+            "Data": {
+              "Label": "A copy of it",
+              "Name": "%re_name%",
+              "TemplateId": "%re_id%",
+              "Output": "re_newCard"
+            }
+          },
+          {
+            "id": "fb4a81b8-56cf-5ab3-8305-fd1f4e617f59",
+            "Type": "RunClientCommand",
+            "Data": {
+              "Label": "Its token where the map was clicked",
+              "Panel": "BattleMap_token",
+              "Command": "CreateToken",
+              "Player": "%playerId%",
+              "Data": "{\"contextId\": \"%battleMapId%\", \"cardId\": \"%re_newCard%\", \"position\": %position%}"
+            }
+          },
+          {
+            "id": "3bec3fd2-5a82-5c99-815c-67a5b5772989",
+            "Type": "SendChat",
+            "Data": {
+              "Label": "Announce",
+              "Template": "Text",
+              "Title": "Random monster",
+              "Message": "A wild %re_name% appears!"
+            }
+          }
+        ]
       }
     }
   ],

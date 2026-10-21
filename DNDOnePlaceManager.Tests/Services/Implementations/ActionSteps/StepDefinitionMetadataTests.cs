@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Enums;
+using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using System;
 using System.Linq;
@@ -85,9 +85,15 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Theory]
-        [InlineData("If", "ActionTrue")]
-        [InlineData("If", "ActionFalse")]
-        [InlineData("ForEach", "Action")]
+        [InlineData("If", "Then")]
+        [InlineData("If", "Else")]
+        [InlineData("ForEach", "Do")]
+        public void Blocks_UseTheStepsWidget(string step, string arg)
+        {
+            Assert.Equal("steps", Arg(step, arg).Arg.Type);
+        }
+
+        [Theory]
         [InlineData("ExecuteAction", "Value")]
         [InlineData("RollDice", "FollowUpActionName")]
         public void ActionReferences_UseActionWidget(string step, string arg)

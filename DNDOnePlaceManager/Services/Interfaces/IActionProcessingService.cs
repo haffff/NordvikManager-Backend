@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using Newtonsoft.Json.Linq;
+using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Models;
 using DNDOnePlaceManager.Services.Implementations;
@@ -23,6 +24,8 @@ namespace DNDOnePlaceManager.Services.Interfaces
         Task CommandToHook(WebSocketCommand webSocketCommand);
         Task<bool> HasEnabledHookAsync(Hook hook);
         Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null);
+        /// <summary>Runs a block's steps (If's Then/Else, ForEach's Do) inside the running action, on its variables.</summary>
+        Task RunBlockAsync(JArray steps, Dictionary<string, object> variables, string blockName);
         Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, ActionTrace trace = null);
     }
 }

@@ -24,8 +24,9 @@ namespace DNDOnePlaceManager.Services.Implementations
         public Guid TraceId { get; init; }
         public PlayerDTO Player { get; init; }
 
-        public void Step(GameLobby lobby, int index, string stepId, string type, string status, string error = null, JObject variables = null)
-            => Send(lobby, new { traceId = TraceId, stepIndex = index, stepId, type, status, error, variables });
+        // stepPath: the step's position, "3" or inside a block "3/Then/1".
+        public void Step(GameLobby lobby, string stepPath, string stepId, string type, string status, string error = null, JObject variables = null)
+            => Send(lobby, new { traceId = TraceId, stepPath, stepId, type, status, error, variables });
 
         public void Finished(GameLobby lobby, string state, string error = null)
             => Send(lobby, new { traceId = TraceId, status = "finished", state, error });

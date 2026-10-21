@@ -43,7 +43,26 @@
         "Label": "Each token",
         "Collection": "da_tokens",
         "ItemName": "target",
-        "Action": "sanity/damage_random_one"
+        "Do": [
+          {
+            "id": "5519a01b-81e4-524f-bf8e-eca94118d006",
+            "Type": "RollDice",
+            "Data": {
+              "Label": "Damage",
+              "DiceString": "%dice%",
+              "OutputVariable": "damage",
+              "SimpleOutput": true
+            }
+          },
+          {
+            "id": "7d3891de-c6fd-5cfc-b247-f1b4d4cd635e",
+            "Type": "ExecuteAction",
+            "Data": {
+              "Label": "Apply it",
+              "Value": "sanity/damage_target"
+            }
+          }
+        ]
       }
     }
   ],

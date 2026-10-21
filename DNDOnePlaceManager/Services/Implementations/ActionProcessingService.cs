@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using DndOnePlaceManager.Application.Commands.Actions.ActionGetData;
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
@@ -246,9 +246,6 @@ namespace DNDOnePlaceManager.Services.Implementations
             CurrentRun.Value = entry;
             var fullName = string.IsNullOrEmpty(action.Prefix) ? action.Name : $"{action.Prefix}/{action.Name}";
 
-            var stepIndex = -1;
-            string stepId = null, stepType = null;
-
             try
             {
                 var steps = JArray.Parse(action.Content);
@@ -283,64 +280,26 @@ namespace DNDOnePlaceManager.Services.Implementations
 
                 await DebugLog(mediator, DebugLogData.Starting(action, steps, variables), entry: entry);
 
-                foreach (var step in steps)
+                var run = new RunContext(action, entry, trace, mediator, dbContext);
+                var outerRun = CurrentStepRun.Value;
+                CurrentStepRun.Value = run;
+                try
                 {
-                    stepIndex++;
-                    stepId = step["id"]?.ToString();
-                    stepType = step[WebSocketCommandNames.StepTypeKey]?.ToString();
-                    entry.CancellationToken.ThrowIfCancellationRequested();
-
-                    var debugCmd = await DebugLog(mediator, DebugLogData.ExecutingStep(action, step, variables), entry: entry);
-
-                    if (debugCmd != null && debugCmd.Data.ToString() == WebSocketCommandNames.DebugStopSignal)
-                    {
-                        entry.SetCompleted();
-                        trace?.Finished(GameLobby, "Exited", "Stopped from the debug console.");
-                        return;
-                    }
-
-                    if (!actionStepDefinitions.TryGetValue(step[WebSocketCommandNames.StepTypeKey].ToString(), out var stepDefinition))
-                    {
-                        await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
-                        trace?.Step(GameLobby, stepIndex, stepId, stepType, "failed", $"Unknown step type '{stepType}', skipped.");
-                        continue;
-                    }
-                    else
-                    {
-                        var stepObject = step as JObject;
-                        entry.SetStep(stepType);
-                        trace?.Step(GameLobby, stepIndex, stepId, stepType, "running");
-                        var childFaultsBefore = entry.ChildFaultCount;
-
-                        // Fill in tokens (%var%, %dto:%, %v:%, %q:%) in one pass.
-                        // Skip "DefaultValue" tokens — those are resolved lazily inside the step definition
-                        // after Value has been evaluated, so a %var% default isn't erased by an empty variable.
-                        // Likewise skip any argument the step declares as deferred (IDeferredArgumentsStep).
-                        var deferred = (stepDefinition as IDeferredArgumentsStep)?.DeferredArguments;
-                        var resolver = new ActionTokenResolver(dbContext, GameLobby.GameId);
-                        foreach (var token in stepObject.Descendants().OfType<JValue>())
-                        {
-                            if (token.Parent is JProperty jp &&
-                                (jp.Name == "DefaultValue" || (deferred != null && deferred.Contains(jp.Name, StringComparer.OrdinalIgnoreCase))))
-                                continue;
-
-                            token.Value = await resolver.ResolveAsync(token.Value?.ToString() ?? string.Empty, variables);
-                        }
-
-                        await stepDefinition.Execute(mediator, variables, GameLobby, step.ToObject<ActionStep>());
-
-                        if (trace != null)
-                        {
-                            // A sub-action's error doesn't throw here, so check what it recorded.
-                            var childError = entry.ChildFaultsSince(childFaultsBefore);
-                            trace.Step(GameLobby, stepIndex, stepId, stepType, childError == null ? "done" : "failed",
-                                childError, VariableSnapshot.Build(variables, ActionTrace.MaxVariableChars));
-                        }
-                    }
+                    await RunStepsAsync(run, steps, variables, pathPrefix: "");
                 }
+                finally
+                {
+                    CurrentStepRun.Value = outerRun;
+                }
+
                 await DebugLog(mediator, DebugLogData.Finishing(action, steps, variables), entry: entry);
                 entry.SetCompleted();
                 trace?.Finished(GameLobby, "Completed");
+            }
+            catch (DebugStopException)
+            {
+                entry.SetCompleted();
+                trace?.Finished(GameLobby, "Exited", "Stopped from the debug console.");
             }
             catch (OperationCanceledException)
             {
@@ -353,7 +312,6 @@ namespace DNDOnePlaceManager.Services.Implementations
                     GameLobby?.EventLog?.Log("Info", "Action", $"Action '{action.Name}' exited: {exit.ExitMessage}",
                         details: new { actionName = action.Name, actionId = action.Id });
                 entry.SetCompleted();
-                trace?.Step(GameLobby, stepIndex, stepId, stepType, "exited", exit.ExitMessage);
                 trace?.Finished(GameLobby, "Exited", exit.ExitMessage);
             }
             catch (Exception e)
@@ -363,7 +321,6 @@ namespace DNDOnePlaceManager.Services.Implementations
                     details: new { actionName = action.Name, actionId = action.Id, lastStep = entry.CurrentStep, exceptionType = e.GetType().Name });
                 await DebugLog(mediator, DebugLogData.Fault(e.Message), false, entry: entry);
                 parentRun?.AddChildFault($"{fullName} failed: {e.Message}");
-                trace?.Step(GameLobby, stepIndex, stepId, stepType, "failed", e.Message);
                 trace?.Finished(GameLobby, "Faulted", e.Message);
             }
             finally
@@ -471,6 +428,114 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
 
             await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator, trace);
+        }
+
+        // The action whose steps are running on this async flow, so a step holding a block
+        // (If, ForEach) runs that block inside the same action: same variables, trace and run.
+        private static readonly AsyncLocal<RunContext> CurrentStepRun = new();
+
+        // The path of the step being run ("3", "3/Then/1"); a block's steps are numbered under it.
+        private static readonly AsyncLocal<string> CurrentStepPath = new();
+
+        private sealed record RunContext(ActionDto Action, ActionRunEntry Entry, ActionTrace Trace, IMediator Mediator, IDbContext DbContext);
+
+        // "Stopped from the debug console" while a block runs: ends the whole action.
+        private sealed class DebugStopException : Exception { }
+
+        public Task RunBlockAsync(JArray steps, Dictionary<string, object> variables, string blockName)
+        {
+            var run = CurrentStepRun.Value
+                ?? throw new InvalidOperationException("A block can only run inside a running action.");
+            if (steps == null || steps.Count == 0)
+                return Task.CompletedTask;
+            return RunStepsAsync(run, steps, variables, CurrentStepPath.Value + "/" + blockName + "/");
+        }
+
+        private async Task RunStepsAsync(RunContext run, JArray steps, Dictionary<string, object> variables, string pathPrefix)
+        {
+            var (action, entry, trace, mediator, dbContext) = run;
+            for (var index = 0; index < steps.Count; index++)
+            {
+                var step = steps[index];
+                var stepPath = pathPrefix + index;
+                var stepId = step["id"]?.ToString();
+                var stepType = step[WebSocketCommandNames.StepTypeKey]?.ToString();
+                entry.CancellationToken.ThrowIfCancellationRequested();
+
+                var debugCmd = await DebugLog(mediator, DebugLogData.ExecutingStep(action, step, variables), entry: entry);
+                if (debugCmd != null && debugCmd.Data.ToString() == WebSocketCommandNames.DebugStopSignal)
+                    throw new DebugStopException();
+
+                if (stepType == null || !actionStepDefinitions.TryGetValue(stepType, out var stepDefinition))
+                {
+                    await DebugLog(mediator, DebugLogData.StepNotFound(step), false, entry: entry);
+                    trace?.Step(GameLobby, stepPath, stepId, stepType, "failed", $"Unknown step type '{stepType}', skipped.");
+                    continue;
+                }
+
+                // A copy, so filling in the tokens doesn't change the action's own steps: a
+                // loop runs its block again with new values.
+                var stepObject = (JObject)step.DeepClone();
+                entry.SetStep(stepType);
+                trace?.Step(GameLobby, stepPath, stepId, stepType, "running");
+                var childFaultsBefore = entry.ChildFaultCount;
+
+                try
+                {
+                    // Fill in tokens (%var%, %q:%) in one pass. Skip "DefaultValue" (resolved
+                    // inside the step, after Value) and any argument the step declares deferred
+                    // (IDeferredArgumentsStep), such as a block's own steps.
+                    var deferred = (stepDefinition as IDeferredArgumentsStep)?.DeferredArguments;
+                    var resolver = new ActionTokenResolver(dbContext, GameLobby.GameId);
+                    foreach (var token in stepObject.Descendants().OfType<JValue>().ToList())
+                    {
+                        if (IsDeferred(token, stepObject, deferred))
+                            continue;
+                        token.Value = await resolver.ResolveAsync(token.Value?.ToString() ?? string.Empty, variables);
+                    }
+
+                    var outerPath = CurrentStepPath.Value;
+                    CurrentStepPath.Value = stepPath;
+                    try
+                    {
+                        await stepDefinition.Execute(mediator, variables, GameLobby, stepObject.ToObject<ActionStep>());
+                    }
+                    finally
+                    {
+                        CurrentStepPath.Value = outerPath;
+                    }
+                }
+                catch (ActionExitException exit)
+                {
+                    trace?.Step(GameLobby, stepPath, stepId, stepType, "exited", exit.ExitMessage);
+                    throw;
+                }
+                catch (Exception e) when (e is not OperationCanceledException && e is not DebugStopException)
+                {
+                    trace?.Step(GameLobby, stepPath, stepId, stepType, "failed", e.Message);
+                    throw;
+                }
+
+                if (trace != null)
+                {
+                    // A sub-action's (ExecuteAction) error doesn't throw here, so check what it recorded.
+                    var childError = entry.ChildFaultsSince(childFaultsBefore);
+                    trace.Step(GameLobby, stepPath, stepId, stepType, childError == null ? "done" : "failed",
+                        childError, VariableSnapshot.Build(variables, ActionTrace.MaxVariableChars));
+                }
+            }
+        }
+
+        // Directly under "Data": DefaultValue and the step's deferred arguments, at any depth.
+        private static bool IsDeferred(JToken token, JObject step, IReadOnlyCollection<string> deferred)
+        {
+            for (var node = token.Parent; node != null && node != step; node = node.Parent)
+            {
+                if (node is JProperty property && property.Parent?.Parent is JProperty { Name: "Data" } &&
+                    (property.Name == "DefaultValue" || (deferred != null && deferred.Contains(property.Name, StringComparer.OrdinalIgnoreCase))))
+                    return true;
+            }
+            return false;
         }
 
         private async Task<bool> CanTraceAsync(IMediator mediator, IDbContext dbContext, PlayerDTO player)

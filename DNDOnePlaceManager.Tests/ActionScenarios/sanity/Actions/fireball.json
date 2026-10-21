@@ -66,8 +66,27 @@
       "Data": {
         "Label": "Apply when the GM agreed",
         "Condition": "%fb_apply% = 1",
-        "ActionTrue": "sanity/fireball_apply",
-        "ActionFalse": ""
+        "Then": [
+          {
+            "id": "bb6d0fe2-7f11-52d0-89bf-09bcc9142360",
+            "Type": "ForEach",
+            "Data": {
+              "Label": "Each token hit",
+              "Collection": "fb_targets",
+              "ItemName": "target",
+              "Do": [
+                {
+                  "id": "6cfcb852-3176-599a-a2e1-ac2b88e37bc4",
+                  "Type": "ExecuteAction",
+                  "Data": {
+                    "Label": "Damage it",
+                    "Value": "sanity/damage_target"
+                  }
+                }
+              ]
+            }
+          }
+        ]
       }
     },
     {

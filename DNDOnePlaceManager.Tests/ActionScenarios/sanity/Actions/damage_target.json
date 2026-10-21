@@ -52,8 +52,18 @@
       "Data": {
         "Label": "Only when it has HP",
         "Condition": "%dt_has% = 1",
-        "ActionTrue": "sanity/damage_target_set",
-        "ActionFalse": ""
+        "Then": [
+          {
+            "id": "a20d7ace-5f9d-5622-81ed-6a6da57fb011",
+            "Type": "SetProperty",
+            "Data": {
+              "Label": "HP",
+              "ParentId": "%dt_parent%",
+              "PropertyName": "%dt_prop%",
+              "PropertyValue": "%dt_new%"
+            }
+          }
+        ]
       }
     },
     {
