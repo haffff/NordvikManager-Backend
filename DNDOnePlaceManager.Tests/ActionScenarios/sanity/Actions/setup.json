@@ -10,23 +10,6 @@
       "id": "c28099eb-7077-50c9-9a64-8709217635ce",
       "Type": "AddMapTool",
       "Data": {
-        "Label": "Tool: mark up to 3 targets",
-        "Name": "sanity_target",
-        "UiName": "Mark targets",
-        "Action": "sanity/toggle_target",
-        "Target": "token",
-        "StayActive": true,
-        "OnlyTriggeringPlayer": true,
-        "Hint": "Click tokens to mark up to 3 targets; click a marked one to unmark it.",
-        "ActionArgs": {
-          "maxTargets": "3"
-        }
-      }
-    },
-    {
-      "id": "f3283248-7ed3-5385-ae83-ad4d662c86f5",
-      "Type": "AddMapTool",
-      "Data": {
         "Label": "Tool: Fireball",
         "Name": "sanity_fireball",
         "UiName": "Fireball",
@@ -42,7 +25,7 @@
       }
     },
     {
-      "id": "7555f5cb-6cd0-5833-bda1-7615b1444e79",
+      "id": "f3283248-7ed3-5385-ae83-ad4d662c86f5",
       "Type": "AddToolbarButton",
       "Data": {
         "Label": "Toolbar menu",
@@ -54,31 +37,19 @@
       }
     },
     {
-      "id": "27adfe46-b403-5b58-9e57-c03f74bca10c",
+      "id": "7555f5cb-6cd0-5833-bda1-7615b1444e79",
       "Type": "AddMenuItem",
       "Data": {
         "Label": "Menu: Bless",
         "Name": "sanity_bless",
-        "UiName": "Bless the marked targets",
+        "UiName": "Bless (pick up to 3)",
         "Action": "sanity/bless",
         "Location": "sanity_menu",
         "OnlyTriggeringPlayer": true
       }
     },
     {
-      "id": "a2bd7095-0a8f-5d93-80f1-1c56990cad6b",
-      "Type": "AddMenuItem",
-      "Data": {
-        "Label": "Menu: clear targets",
-        "Name": "sanity_clear",
-        "UiName": "Clear marked targets",
-        "Action": "sanity/clear_targets",
-        "Location": "sanity_menu",
-        "OnlyTriggeringPlayer": true
-      }
-    },
-    {
-      "id": "1d41fbd9-795a-5208-88c2-4688c50ae34c",
+      "id": "27adfe46-b403-5b58-9e57-c03f74bca10c",
       "Type": "AddMenuItem",
       "Data": {
         "Label": "Menu (GM): random damage to every token on the map",
@@ -94,7 +65,7 @@
       }
     },
     {
-      "id": "fcebfa86-9211-56ff-a01f-95997738257f",
+      "id": "a2bd7095-0a8f-5d93-80f1-1c56990cad6b",
       "Type": "AddMenuItem",
       "Data": {
         "Label": "Map right-click (GM): random monster",

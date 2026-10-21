@@ -45,10 +45,11 @@
         "Label": "Ask the GM",
         "UserID": "%gmId%",
         "ShowDialog": true,
-        "DefaultInput": "yes",
+        "Options": "yes\nhalf\nno",
+        "StopIfCancelled": false,
         "Timeout": "00:02:00",
         "Output": "answer",
-        "Message": "Fireball by %playerName%: %fireDamage% fire damage to %hitNames%. Apply it? Type yes, half or no."
+        "Message": "Fireball by %playerName%: %fireDamage% fire damage to %hitNames%. Apply it?"
       }
     },
     {

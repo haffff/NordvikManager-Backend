@@ -51,6 +51,8 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         private readonly GameLobby lobby;
         private readonly List<(PlayerDTO To, WebSocketCommand Command)> sent = new();
         private string gmAnswer = "yes";
+        // What the player picks when asked for targets; null cancels.
+        private JArray? targetsAnswer;
 
         private readonly Guid gameId = Guid.NewGuid();
         private readonly PlayerDTO gm;
@@ -226,6 +228,12 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 {
                     if (message is not WebSocketCommand command) return;
                     lock (sent) sent.Add((who, command));
+                    if (command.Command == "request_targets" && command.InputToken is Guid picking)
+                        _ = Task.Run(() =>
+                        {
+                            if (lobby.ActionProcessingService.InputHandler.TryRemove(picking, out var answer))
+                                answer.TrySetResult(new WebSocketCommand { Data = (JToken?)targetsAnswer ?? new JObject { ["cancelled"] = true } });
+                        });
                     if (command.Command == "request_input" && command.InputToken is Guid token)
                         _ = Task.Run(() =>
                         {
@@ -279,7 +287,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             await Run("sanity/setup", player);
 
             NoErrors();
-            Assert.Equal(new[] { "sanity_target", "sanity_fireball", "sanity_menu", "sanity_bless", "sanity_clear" }, Added(player));
+            Assert.Equal(new[] { "sanity_fireball", "sanity_menu", "sanity_bless" }, Added(player));
             Assert.Empty(Added(gm));
         }
 
@@ -314,45 +322,33 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
         }
 
+        // The player picks up to 3 tokens on the map (RequestTargets), then each gets blessed.
         [Fact]
-        public async Task Targets_UpToThree_ThenBless()
+        public async Task Bless_OnThePickedTargets()
         {
-            var fourth = Guid.NewGuid();
-            foreach (var id in new[] { goblin, rat, farOrc, fourth })
-                await Run("sanity/toggle_target", player, new { elementId = id.ToString(), maxTargets = "3" });
-
-            NoErrors();
-            var marked = JArray.Parse(PropertyValue(gameId, $"sanity_targets_{player.Id}")!);
-            Assert.Equal(new[] { goblin, rat, farOrc }.Select(x => x.ToString()), marked.Select(x => x.ToString()));
-            Assert.Contains(Chat(player), m => m.Contains("Already 3 targets"));
+            targetsAnswer = new JArray(goblin.ToString(), rat.ToString(), farOrc.ToString());
 
             await Run("sanity/bless", player);
 
             NoErrors();
+            var asked = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_targets");
+            Assert.Equal(3, (int)asked.Command.Data!["max"]!);
             Assert.Equal("true", PropertyValue(goblin, "sanity_blessed"));
             Assert.Equal("true", PropertyValue(rat, "sanity_blessed"));
             Assert.Equal("true", PropertyValue(farOrc, "sanity_blessed"));
-            Assert.Contains(Chat(gm), m => m.Contains("Bless") && m.Contains("Goblin, Rat, Far orc"));
-            Assert.Equal("[]", PropertyValue(gameId, $"sanity_targets_{player.Id}"));
+            Assert.Contains(Chat(gm), m => m.Contains("Bless on Goblin, Rat, Far orc"));
         }
 
         [Fact]
-        public async Task Targets_ClickingAMarkedOneUnmarksIt()
+        public async Task Bless_Cancelled_DoesNothing()
         {
-            await Run("sanity/toggle_target", player, new { elementId = goblin.ToString(), maxTargets = "3" });
-            await Run("sanity/toggle_target", player, new { elementId = goblin.ToString(), maxTargets = "3" });
+            targetsAnswer = null;
 
-            Assert.Equal("[]", PropertyValue(gameId, $"sanity_targets_{player.Id}"));
-        }
-
-        [Fact]
-        public async Task Bless_WithoutTargets_TellsOnlyThePlayer()
-        {
             await Run("sanity/bless", player);
 
             NoErrors();
-            Assert.Contains(Chat(player), m => m.Contains("No targets marked"));
-            Assert.DoesNotContain(Chat(gm), m => m.Contains("No targets marked"));
+            Assert.Null(PropertyValue(goblin, "sanity_blessed"));
+            Assert.DoesNotContain(Chat(gm), m => m.Contains("Bless on"));
         }
 
         [Fact]

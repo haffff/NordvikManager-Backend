@@ -74,6 +74,15 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal(kind, Arg(step, arg).Arg.Output.Kind);
         }
 
+        // A switch that is on unless turned off shows as on in the editor.
+        [Fact]
+        public void Defaults_AreSent()
+        {
+            Assert.Equal(true, Arg("RequestTargets", "StopIfCancelled").Arg.Default);
+            Assert.Equal(true, Arg("RequestUserInput", "StopIfCancelled").Arg.Default);
+            Assert.Null(Arg("RequestUserInput", "ShowDialog").Arg.Default);
+        }
+
         // The step picker finds a step by what you want to do, e.g. "monsters" finds Find.
         [Theory]
         [InlineData("Find", "tokens")]

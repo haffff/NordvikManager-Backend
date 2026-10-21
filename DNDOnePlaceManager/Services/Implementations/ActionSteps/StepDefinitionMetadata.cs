@@ -42,6 +42,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                         IsOutput = y.GetCustomAttribute<VariableOutputAttribute>() != null,
                         Deferred = deferred.Contains(y.Name, StringComparer.OrdinalIgnoreCase),
                         Output = Shape(y.GetCustomAttribute<VariableOutputAttribute>()),
+                        Default = y.GetCustomAttribute<DefaultValueAttribute>()?.Value,
                     }).ToArray()
             };
         }

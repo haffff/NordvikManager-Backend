@@ -16,6 +16,8 @@ namespace DNDOnePlaceManager.Models
         public bool IsOutput { get; set; }
         /// <summary>True when %tokens% in this argument are NOT filled in before the step runs.</summary>
         public bool Deferred { get; set; }
+        /// <summary>The value the step uses when the argument isn't set (e.g. true for a switch that is on unless turned off).</summary>
+        public object? Default { get; set; }
         /// <summary>For an output argument: what the variable it names holds.</summary>
         public OutputShape? Output { get; set; }
     }

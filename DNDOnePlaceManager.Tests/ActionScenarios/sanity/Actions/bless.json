@@ -2,42 +2,22 @@
   "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
   "name": "bless",
   "prefix": "sanity",
-  "description": "Bless on up to 3 marked targets.",
+  "description": "Bless on up to 3 creatures the player picks on the map.",
   "hook": 0,
   "isEnabled": false,
   "content": [
     {
       "id": "80a10d8c-1b7b-54d4-9030-df715484945e",
-      "Type": "GetPropertyValue",
+      "Type": "RequestTargets",
       "Data": {
-        "Label": "This player's targets",
-        "Of": "game",
-        "PropertyName": "sanity_targets_%playerId%",
-        "DefaultValue": "[]",
-        "Output": "marked"
+        "Label": "Who gets blessed",
+        "Max": "3",
+        "Message": "Pick up to 3 creatures to bless",
+        "Output": "targets"
       }
     },
     {
       "id": "ec7e7c7b-3cfb-53a3-a880-a71648e942c5",
-      "Type": "Find",
-      "Data": {
-        "Label": "Every token (to skip removed ones and get the names)",
-        "What": "tokens",
-        "AllMaps": true,
-        "Output": "tokens"
-      }
-    },
-    {
-      "id": "06ec0c67-d928-536e-8627-fd2771279de5",
-      "Type": "RunScript",
-      "Data": {
-        "Label": "The marked tokens that still exist",
-        "Output": "",
-        "Script": "var ids = [];\ntry { ids = JSON.parse(vars.marked || \"[]\"); } catch (e) { ids = []; }\nvar targets = ids.map(function (id) { return vars.tokens.filter(function (t) { return t.id === id; })[0]; })\n                 .filter(function (t) { return t; });\nvar none = targets.length === 0;\nreturn {\n  targets: targets,\n  announcement: none ? \"No targets marked: use the Mark targets tool first.\"\n                     : vars.playerName + \": Bless on \" + targets.map(function (t) { return t.name; }).join(\", \"),\n  tellOnly: none ? vars.playerId : \"\"\n};"
-      }
-    },
-    {
-      "id": "8d395d80-cd48-582a-80da-e70ab99f7086",
       "Type": "ForEach",
       "Data": {
         "Label": "Bless each target",
@@ -45,7 +25,7 @@
         "ItemName": "target",
         "Do": [
           {
-            "id": "9d5e105d-5f47-5cb6-b13d-38f819cf122c",
+            "id": "63024fa6-9bc0-5e4a-9c4b-e5c843e86771",
             "Type": "SetProperty",
             "Data": {
               "Label": "Blessed",
@@ -58,24 +38,22 @@
       }
     },
     {
-      "id": "b1983bb4-0b12-5092-bdb0-d1ed970def3b",
-      "Type": "SendChat",
+      "id": "06ec0c67-d928-536e-8627-fd2771279de5",
+      "Type": "RunScript",
       "Data": {
-        "Label": "Announce (or tell the player there were none)",
-        "Template": "Text",
-        "Title": "Bless (+1d4 to attacks and saves, 1 minute)",
-        "Message": "%announcement%",
-        "Player": "%tellOnly%"
+        "Label": "Their names",
+        "Output": "",
+        "Script": "return { names: vars.targets.map(function (t) { return t.name; }).join(\", \") };"
       }
     },
     {
-      "id": "7d2e6e62-b4b8-5456-ab90-824ee4ecaafe",
-      "Type": "SetProperty",
+      "id": "8d395d80-cd48-582a-80da-e70ab99f7086",
+      "Type": "SendChat",
       "Data": {
-        "Label": "Clear the targets",
-        "Of": "game",
-        "PropertyName": "sanity_targets_%playerId%",
-        "PropertyValue": "[]"
+        "Label": "Announce",
+        "Template": "Text",
+        "Title": "Bless (+1d4 to attacks and saves, 1 minute)",
+        "Message": "%playerName%: Bless on %names%"
       }
     }
   ]
