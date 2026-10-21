@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "damage_all",
+  "prefix": "sanity",
+  "description": "Map tool (GM): every token on the clicked map takes a random amount of damage.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "0ec0a603-8aeb-5271-828d-2d00d6da33ed",
+      "Type": "RequirePermission",
+      "Data": {
+        "Label": "GMs only",
+        "EntityId": "%gameId%",
+        "Permission": "Edit",
+        "StopIfDenied": true
+      }
+    },
+    {
+      "id": "0e055dfc-a62b-50fb-b6b8-834403e5f9ac",
+      "Type": "GetData",
+      "Data": {
+        "Label": "The clicked map with its elements",
+        "Type": "Map",
+        "Id": "%mapId%",
+        "SingleElement": true,
+        "Output": "da_map"
+      }
+    },
+    {
+      "id": "15d438db-b43d-5dd8-9194-abb64d9b7b0f",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Its tokens",
+        "Output": "",
+        "Script": "function tokensOf(map) {\n  var out = [];\n  (map && map.Elements || []).forEach(function (e) {\n    var o;\n    try { o = JSON.parse(e.Object || \"{}\"); } catch (x) { return; }\n    if (!o.isToken) return;\n    var w = (o.width || 0) * (o.scaleX || 1), h = (o.height || 0) * (o.scaleY || 1);\n    var x = o.originX === \"center\" ? o.left : (o.left || 0) + w / 2;\n    var y = o.originY === \"center\" ? o.top : (o.top || 0) + h / 2;\n    out.push({ id: String(e.Id), name: o.name || \"token\", x: x, y: y, r: Math.min(w, h) / 2 });\n  });\n  return out;\n}return { da_tokens: tokensOf(vars.da_map).map(function (t) { return { id: t.id, name: t.name }; }) };"
+      }
+    },
+    {
+      "id": "3af68e4b-36b1-57a9-9d73-24a3cd4dcc0b",
+      "Type": "ForEach",
+      "Data": {
+        "Label": "Each token",
+        "Collection": "da_tokens",
+        "ItemName": "target",
+        "Action": "sanity/damage_random_one"
+      }
+    }
+  ],
+  "gmPermission": 31
+}

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "fireball",
+  "prefix": "sanity",
+  "description": "Map tool: rolls Fireball where the map was clicked; asks the GM before damaging the tokens in range.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "a822e2fb-5a41-58eb-ae8d-ecb7774cdfdc",
+      "Type": "GetData",
+      "Data": {
+        "Label": "The clicked map with its elements",
+        "Type": "Map",
+        "Id": "%mapId%",
+        "SingleElement": true,
+        "Output": "fb_map"
+      }
+    },
+    {
+      "id": "74a444ae-5431-5b19-81a8-5aa57e419b89",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Tokens within the radius",
+        "Output": "",
+        "Script": "function tokensOf(map) {\n  var out = [];\n  (map && map.Elements || []).forEach(function (e) {\n    var o;\n    try { o = JSON.parse(e.Object || \"{}\"); } catch (x) { return; }\n    if (!o.isToken) return;\n    var w = (o.width || 0) * (o.scaleX || 1), h = (o.height || 0) * (o.scaleY || 1);\n    var x = o.originX === \"center\" ? o.left : (o.left || 0) + w / 2;\n    var y = o.originY === \"center\" ? o.top : (o.top || 0) + h / 2;\n    out.push({ id: String(e.Id), name: o.name || \"token\", x: x, y: y, r: Math.min(w, h) / 2 });\n  });\n  return out;\n}var grid = (vars.fb_map && vars.fb_map.GridSize) || 50;\nvar radius = parseFloat(vars.radiusSquares || \"4\") * grid;\nvar p = vars.position || { x: 0, y: 0 };\nvar hits = tokensOf(vars.fb_map).filter(function (t) {\n  return Math.sqrt(Math.pow(t.x - p.x, 2) + Math.pow(t.y - p.y, 2)) <= radius + t.r;\n}).map(function (t) { return { id: t.id, name: t.name }; });\nreturn {\n  fb_targets: hits,\n  fb_count: hits.length,\n  fb_names: hits.length ? hits.map(function (t) { return t.name; }).join(\", \") : \"nobody\"\n};"
+      }
+    },
+    {
+      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Fire damage",
+        "DiceString": "%dice%",
+        "OutputVariable": "fb_damage",
+        "SimpleOutput": true,
+        "PrintToChat": true,
+        "ChatTitle": "%playerName%: Fireball",
+        "ChatMessage": "Caught in the blast: %fb_names%"
+      }
+    },
+    {
+      "id": "811843ed-1ac6-5a91-bc33-0bcab8f7db76",
+      "Type": "RequestUserInput",
+      "Data": {
+        "Label": "Ask the GM",
+        "UserID": "%gmId%",
+        "ShowDialog": true,
+        "DefaultInput": "yes",
+        "Timeout": "00:02:00",
+        "Output": "fb_answer",
+        "Message": "Fireball by %playerName%: %fb_damage% fire damage to %fb_names%. Apply it? Type yes, half or no."
+      }
+    },
+    {
+      "id": "638037a8-6b1e-58b0-b946-6a04d270f0c1",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Read the answer",
+        "Output": "",
+        "Script": "var a = String(vars.fb_answer == null ? \"\" : vars.fb_answer).trim().toLowerCase();\nvar dmg = Number(vars.fb_damage) || 0;\nvar final = 0, text;\nif (vars.fb_count === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" damage to \" + vars.fb_names + \".\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.fb_names + \".\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, fb_apply: final > 0 && vars.fb_count > 0 ? 1 : 0, fb_text: text };"
+      }
+    },
+    {
+      "id": "229b766e-5225-5779-9995-ec2fef0d0370",
+      "Type": "If",
+      "Data": {
+        "Label": "Apply when the GM agreed",
+        "Condition": "%fb_apply% = 1",
+        "ActionTrue": "sanity/fireball_apply",
+        "ActionFalse": ""
+      }
+    },
+    {
+      "id": "6e588571-361f-5f09-98d7-2b8131b46486",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Result",
+        "Template": "Text",
+        "Title": "Fireball",
+        "Message": "%fb_text%"
+      }
+    }
+  ]
+}

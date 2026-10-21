@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "random_enemy",
+  "prefix": "sanity",
+  "description": "Map right-click: places a copy of a random card that has the property 'potworny'.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "3e243ea2-fd2c-5d94-9f06-b87329755588",
+      "Type": "RequirePermission",
+      "Data": {
+        "Label": "GMs only",
+        "EntityId": "%gameId%",
+        "Permission": "Edit",
+        "StopIfDenied": true
+      }
+    },
+    {
+      "id": "5231358a-c57c-592e-b17f-b9d345b31dad",
+      "Type": "GetData",
+      "Data": {
+        "Label": "Cards with the property",
+        "Type": "Card",
+        "PropertyName": "potworny",
+        "Output": "re_cards"
+      }
+    },
+    {
+      "id": "76f28bb5-eb44-5a93-a2b4-16c996dfa786",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "The pool (not the copies this action made)",
+        "Output": "",
+        "Script": "var cards = vars.re_cards || [];\nvar ids = {};\ncards.forEach(function (c) { ids[String(c.Id)] = true; });\nvar pool = cards.filter(function (c) { return !(c.TemplateId && ids[String(c.TemplateId)]); })\n                .map(function (c) { return { id: String(c.Id), name: c.Name }; });\nreturn { re_pool: pool, re_count: pool.length };"
+      }
+    },
+    {
+      "id": "eeca2b65-f50a-5271-83d5-c20c58625f4a",
+      "Type": "If",
+      "Data": {
+        "Label": "Any to choose from?",
+        "Condition": "%re_count% = 0",
+        "ActionTrue": "sanity/random_enemy_none",
+        "ActionFalse": "sanity/random_enemy_spawn"
+      }
+    }
+  ],
+  "gmPermission": 31
+}

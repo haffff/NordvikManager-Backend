@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "bless_one",
+  "prefix": "sanity",
+  "description": "Marks one target as blessed.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "605c9f14-1a7f-589c-90b4-aaedb6d23960",
+      "Type": "SetProperty",
+      "Data": {
+        "Label": "Blessed",
+        "ParentId": "%v:target.id%",
+        "PropertyName": "sanity_blessed",
+        "PropertyValue": "true"
+      }
+    }
+  ]
+}

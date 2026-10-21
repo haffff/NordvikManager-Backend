@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "damage_random_one",
+  "prefix": "sanity",
+  "description": "Rolls damage for one token and applies it.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "d9bb95c5-7d5b-57ba-8a9b-ad7e1981d87f",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Damage",
+        "DiceString": "%dice%",
+        "OutputVariable": "damage",
+        "SimpleOutput": true
+      }
+    },
+    {
+      "id": "b072d312-ee48-5747-b359-9beed3a4ffd4",
+      "Type": "ExecuteAction",
+      "Data": {
+        "Label": "Apply it",
+        "Value": "sanity/damage_target"
+      }
+    }
+  ]
+}

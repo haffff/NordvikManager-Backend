@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "clear_targets",
+  "prefix": "sanity",
+  "description": "Forgets this player's marked targets.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "3030b666-8a02-5ccc-91fb-5e9213c48dea",
+      "Type": "SetProperty",
+      "Data": {
+        "Label": "No targets",
+        "ParentId": "%gameId%",
+        "PropertyName": "sanity_targets_%playerId%",
+        "PropertyValue": "[]"
+      }
+    },
+    {
+      "id": "a1a3635f-570e-56a9-8029-8bb283dc79aa",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Tell the player",
+        "Template": "Text",
+        "Title": "Targets",
+        "Message": "Targets cleared.",
+        "Player": "%playerId%"
+      }
+    }
+  ]
+}

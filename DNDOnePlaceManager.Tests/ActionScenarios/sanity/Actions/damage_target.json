@@ -1,0 +1,70 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "damage_target",
+  "prefix": "sanity",
+  "description": "Lowers a token's HP by 'damage': its card's hp, or a card-less token's Bar 1.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "2f756c64-500f-5f06-ab99-5f5c0422899f",
+      "Type": "GetData",
+      "Data": {
+        "Label": "The token",
+        "Type": "Element",
+        "Id": "%v:target.id%",
+        "SingleElement": true,
+        "Output": "dt_el"
+      }
+    },
+    {
+      "id": "0fe8a9c9-509a-5b2b-a95b-b69756902803",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Where its HP is",
+        "Output": "",
+        "Script": "var o = {};\ntry { o = JSON.parse((vars.dt_el && vars.dt_el.Object) || \"{}\"); } catch (e) {}\nvar cardId = (o.tokenData && o.tokenData.cardId) || o.cardId || \"\";\nreturn {\n  dt_parent: cardId ? String(cardId) : String(vars.target.id),\n  dt_prop: cardId ? \"hp\" : \"bar1_value\",\n  dt_name: o.name || vars.target.name || \"token\"\n};"
+      }
+    },
+    {
+      "id": "b0906d4c-4d9f-5f2b-aede-056745637964",
+      "Type": "GetPropertyValue",
+      "Data": {
+        "Label": "Its HP",
+        "ParentId": "%dt_parent%",
+        "PropertyName": "%dt_prop%",
+        "DefaultValue": "",
+        "Output": "dt_hp"
+      }
+    },
+    {
+      "id": "dd73f653-88bd-51d1-8027-089fa35c85ee",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "New HP",
+        "Output": "",
+        "Script": "var cur = parseInt(vars.dt_hp, 10);\nvar dmg = Number(vars.damage) || 0;\nif (isNaN(cur)) return { dt_has: 0, dt_text: vars.dt_name + \" has no HP to lower.\" };\nvar now = Math.max(0, cur - dmg);\nreturn { dt_has: 1, dt_new: String(now), dt_text: vars.dt_name + \": -\" + dmg + \" HP (\" + cur + \" -> \" + now + \")\" };"
+      }
+    },
+    {
+      "id": "887cc348-45a3-5a9b-b58d-688c90acbe8c",
+      "Type": "If",
+      "Data": {
+        "Label": "Only when it has HP",
+        "Condition": "%dt_has% = 1",
+        "ActionTrue": "sanity/damage_target_set",
+        "ActionFalse": ""
+      }
+    },
+    {
+      "id": "0cfd17f7-6b87-58fb-8111-996829cfa8be",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Report",
+        "Template": "Text",
+        "Title": "Damage",
+        "Message": "%dt_text%"
+      }
+    }
+  ]
+}

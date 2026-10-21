@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "random_enemy_spawn",
+  "prefix": "sanity",
+  "description": "Picks, copies and places the monster.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "d65be270-c9c7-5570-bbe7-4c2cb9cab0a7",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Pick one",
+        "DiceString": "1d%re_count%",
+        "OutputVariable": "re_roll",
+        "SimpleOutput": true
+      }
+    },
+    {
+      "id": "6bfe9e12-c1ed-5a3b-8f4a-4b3814b9d5d1",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "The picked card",
+        "Output": "",
+        "Script": "var p = vars.re_pool[Number(vars.re_roll) - 1];\nreturn { re_id: p.id, re_name: p.name };"
+      }
+    },
+    {
+      "id": "45683e56-ddfb-57a9-8604-b1a16ffde9e7",
+      "Type": "CreateCard",
+      "Data": {
+        "Label": "A copy of it",
+        "Name": "%re_name%",
+        "TemplateId": "%re_id%",
+        "Output": "re_newCard"
+      }
+    },
+    {
+      "id": "0c56fd5f-a032-5003-be8b-6c3c33cc9d27",
+      "Type": "RunClientCommand",
+      "Data": {
+        "Label": "Its token where the map was clicked",
+        "Panel": "BattleMap_token",
+        "Command": "CreateToken",
+        "Player": "%playerId%",
+        "Data": "{\"contextId\": \"%battleMapId%\", \"cardId\": \"%re_newCard%\", \"position\": %position%}"
+      }
+    },
+    {
+      "id": "af5d2a04-c6a5-50b4-a512-d67a9048f98d",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Announce",
+        "Template": "Text",
+        "Title": "Random monster",
+        "Message": "A wild %re_name% appears!"
+      }
+    }
+  ]
+}

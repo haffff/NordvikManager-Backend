@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "bless",
+  "prefix": "sanity",
+  "description": "Bless on up to 3 marked targets.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "80a10d8c-1b7b-54d4-9030-df715484945e",
+      "Type": "SetVariable",
+      "Data": {
+        "Label": "What to do per target",
+        "Name": "targetAction",
+        "Value": "sanity/bless_one"
+      }
+    },
+    {
+      "id": "ec7e7c7b-3cfb-53a3-a880-a71648e942c5",
+      "Type": "SetVariable",
+      "Data": {
+        "Label": "What to call it",
+        "Name": "targetsLabel",
+        "Value": "Bless (+1d4 to attacks and saves, 1 minute)"
+      }
+    },
+    {
+      "id": "06ec0c67-d928-536e-8627-fd2771279de5",
+      "Type": "ExecuteAction",
+      "Data": {
+        "Label": "On the marked targets",
+        "Value": "sanity/for_targets"
+      }
+    }
+  ]
+}
