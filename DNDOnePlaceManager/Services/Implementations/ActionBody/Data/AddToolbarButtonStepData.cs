@@ -22,8 +22,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Not used yet: buttons are always added at the end of the main toolbar.")]
         public string Location { get; set; }
 
-        [Description("If true, only the player who triggered this action gets the button; otherwise every connected player does.")]
-        public bool OnlyOwner { get; set; }
+        [Description("Only the player who triggered this action gets the button (e.g. the player whose game just loaded). Otherwise every connected player does.")]
+        public bool OnlyTriggeringPlayer { get; set; }
+
+        [Description("Only GMs get the button: the game's owner and players with Edit on the game.")]
+        public bool GmOnly { get; set; }
 
         [Description("If set, the button opens a dropdown menu with this id instead of running an action. Fill it with Add Menu Item steps that use this id as their Location, e.g. 'myaddon_menu'.")]
         public string MenuId { get; set; }

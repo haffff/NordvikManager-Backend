@@ -272,6 +272,7 @@ namespace DNDOnePlaceManager.Services.Implementations
                     variables["playerName"]    = pd.Name ?? string.Empty;
                     variables["playerColor"]   = pd.Color ?? string.Empty;
                     variables["playerIsOwner"] = pd.IsOwner?.ToString()?.ToLower() ?? "false";
+                    variables["playerIsGm"] = (await UiDelivery.IsGmAsync(mediator, GameLobby, pd)).ToString().ToLower();
                 }
 
                 var game = await dbContext.Games.FindAsync(GameLobby.GameId);

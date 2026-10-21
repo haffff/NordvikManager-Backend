@@ -16,7 +16,7 @@
         "Action": "sanity/toggle_target",
         "Target": "token",
         "StayActive": true,
-        "OnlyOwner": true,
+        "OnlyTriggeringPlayer": true,
         "Hint": "Click tokens to mark up to 3 targets; click a marked one to unmark it.",
         "ActionArgs": {
           "maxTargets": "3"
@@ -33,7 +33,7 @@
         "Action": "sanity/fireball",
         "Target": "point",
         "StayActive": false,
-        "OnlyOwner": true,
+        "OnlyTriggeringPlayer": true,
         "Hint": "Click where the Fireball explodes (20 ft radius).",
         "ActionArgs": {
           "radiusSquares": "4",
@@ -50,7 +50,7 @@
         "UiName": "Sanity",
         "MenuId": "sanity_menu",
         "MenuName": "Sanity",
-        "OnlyOwner": true
+        "OnlyTriggeringPlayer": true
       }
     },
     {
@@ -62,7 +62,7 @@
         "UiName": "Bless the marked targets",
         "Action": "sanity/bless",
         "Location": "sanity_menu",
-        "OnlyOwner": true
+        "OnlyTriggeringPlayer": true
       }
     },
     {
@@ -74,7 +74,7 @@
         "UiName": "Clear marked targets",
         "Action": "sanity/clear_targets",
         "Location": "sanity_menu",
-        "OnlyOwner": true
+        "OnlyTriggeringPlayer": true
       }
     },
     {
@@ -105,7 +105,7 @@
               "Action": "sanity/damage_all",
               "Target": "point",
               "StayActive": false,
-              "OnlyOwner": true,
+              "OnlyTriggeringPlayer": true,
               "Hint": "Click the map: every token on it takes 1d6 damage.",
               "ActionArgs": {
                 "dice": "1d6"
@@ -121,7 +121,7 @@
               "UiName": "Random monster here",
               "Action": "sanity/random_enemy",
               "Location": "battlemap",
-              "OnlyOwner": true
+              "OnlyTriggeringPlayer": true
             }
           }
         ]

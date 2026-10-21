@@ -37,26 +37,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data = payload
             };
 
-            if (stepData.OnlyOwner)
-            {
-                variables.TryGetValue("Player", out var playerObj);
-                var triggeringPlayer = playerObj as PlayerDTO;
-
-                if (triggeringPlayer == null)
-                    throw new ActionProcessException("AddMenuItem: OnlyOwner is true but no triggering player found in context.");
-
-                var connectedPlayer = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(
-                    x => x.Id == triggeringPlayer.Id)
-                    ?? throw new ActionProcessException("AddMenuItem: Triggering player is not connected.");
-
-                gameLobby.SendToPlayer(command, connectedPlayer);
-            }
-            else
-            {
-                gameLobby.Broadcast(command, gameLobby.SystemPlayer);
-            }
-
-            await Task.CompletedTask;
+            await UiDelivery.SendAsync(mediator, gameLobby, variables, "AddMenuItem", command, stepData.OnlyTriggeringPlayer, stepData.GmOnly);
         }
     }
 }

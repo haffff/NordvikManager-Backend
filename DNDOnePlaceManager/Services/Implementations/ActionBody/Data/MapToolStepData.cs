@@ -29,8 +29,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
             "Otherwise it goes back to Select after one use.")]
         public bool StayActive { get; set; }
 
-        [Description("If true, only the player who triggered this action gets the tool; otherwise every connected player does.")]
-        public bool OnlyOwner { get; set; }
+        [Description("Only the player who triggered this action gets the tool (e.g. the player whose game just loaded). Otherwise every connected player does.")]
+        public bool OnlyTriggeringPlayer { get; set; }
+
+        [Description("Only GMs get the tool: the game's owner and players with Edit on the game.")]
+        public bool GmOnly { get; set; }
 
         [Description("Optional key/value arguments passed to the action when the tool is used. Accessible as variables in that action.")]
         public Dictionary<string, object> ActionArgs { get; set; }

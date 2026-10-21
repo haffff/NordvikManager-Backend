@@ -38,23 +38,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data = JObject.FromObject(stepData)
             };
 
-            if (stepData.OnlyOwner)
-            {
-                variables.TryGetValue("Player", out var playerObj);
-                var triggeringPlayer = playerObj as PlayerDTO
-                    ?? throw new ActionProcessException("AddMapTool: OnlyOwner is true but no triggering player found in context.");
-
-                var connectedPlayer = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == triggeringPlayer.Id)
-                    ?? throw new ActionProcessException("AddMapTool: Triggering player is not connected.");
-
-                gameLobby.SendToPlayer(command, connectedPlayer);
-            }
-            else
-            {
-                gameLobby.Broadcast(command, gameLobby.SystemPlayer);
-            }
-
-            await Task.CompletedTask;
+            await UiDelivery.SendAsync(mediator, gameLobby, variables, "AddMapTool", command, stepData.OnlyTriggeringPlayer, stepData.GmOnly);
         }
     }
 }
