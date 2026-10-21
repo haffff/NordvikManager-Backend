@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Exceptions;
 using Microsoft.Extensions.Logging;
 using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
@@ -445,6 +446,28 @@ namespace DNDOnePlaceManager.Services.Implementations
         private sealed record RunContext(ActionDto Action, ActionRunEntry Entry, ActionTrace Trace, IMediator Mediator, IDbContext DbContext)
         {
             public List<Func<Task>> AtEnd { get; } = new();
+        }
+
+        // Steps a script can't run: they wait for a player, or run steps of their own.
+        private static readonly HashSet<string> NotFromScripts = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "RequestUserInput", "RequestTargets", "If", "ForEach", "ExecuteAction", "RunScript", "Exit", "Delay",
+        };
+
+        public async Task<Dictionary<string, object>> RunStepAsync(string type, JObject data, Dictionary<string, object> variables)
+        {
+            if (NotFromScripts.Contains(type))
+                throw new ActionProcessException($"game.step: {type} can't run from a script (it waits for a player or runs other steps); use the step itself.");
+            if (!actionStepDefinitions.TryGetValue(type, out var definition))
+                throw new ActionProcessException($"game.step: there is no step '{type}'.");
+            var run = CurrentStepRun.Value
+                ?? throw new InvalidOperationException("A step can only run inside a running action.");
+
+            var scratch = new Dictionary<string, object>(variables);
+            await definition.Execute(run.Mediator, scratch, GameLobby, new ActionStep { Type = type, Data = data });
+            return scratch
+                .Where(kv => !variables.TryGetValue(kv.Key, out var before) || !ReferenceEquals(before, kv.Value))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
         }
 
         public void AtActionEnd(Func<Task> cleanup) =>

@@ -481,6 +481,115 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
         }
 
+        // ── RunScript's game API: the steps, from a script ─────────────────────────
+
+        private async Task RunScript(string script)
+        {
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "script", Prefix = "test", IsEnabled = true,
+                Content = new JArray(new JObject { ["Type"] = "RunScript", ["Data"] = new JObject { ["Script"] = script, ["Output"] = "" } },
+                    new JObject { ["Type"] = "SetVariable", ["Data"] = new JObject { ["Name"] = "done", ["Value"] = "yes" } }).ToString(),
+            };
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+        }
+
+        [Fact]
+        public async Task Script_FindsReadsAndWrites()
+        {
+            await RunScript(@"
+                var tokens = game.find('tokens');
+                var goblin = tokens.filter(function (t) { return t.name === 'Goblin'; })[0];
+                var hp = Number(game.getProperty(goblin.cardId, 'hp', '0'));
+                game.setProperty(goblin.cardId, 'hp', hp - 5);
+                game.chat('Goblin: ' + (hp - 5), { title: 'HP' });
+                return { count: tokens.length };");
+
+            NoErrors();
+            Assert.Equal("15", PropertyValue(goblinCard, "hp"));
+            Assert.Contains(Chat(gm), m => m.Contains("Goblin: 15"));
+        }
+
+        [Fact]
+        public async Task Script_RunsAnyStep_AndGetsItsOutput()
+        {
+            await RunScript(@"
+                var r = game.roll('2d6');
+                game.step('SetProperty', { ParentId: vars.mapId, PropertyName: 'lastRoll', PropertyValue: String(r.result) });
+                return {};");
+
+            NoErrors();
+            Assert.Equal("6", PropertyValue(mapId, "lastRoll")); // every die shows 3
+        }
+
+        [Fact]
+        public async Task Script_CantAskPlayersOrBranch()
+        {
+            await RunScript("game.step('RequestUserInput', { UserID: vars.gmId, Output: 'x' }); return {};");
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error" && e.Message.Contains("RequestUserInput"));
+        }
+
+        // Protected properties (API keys etc.) never reach a script.
+        [Fact]
+        public async Task Script_NeverReadsProtectedValues()
+        {
+            using (var scope = services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                var card = db.Cards.Single(c => c.Id == goblinCard);
+                var secret = Property("CardModel", goblinCard, "apiKey", "s3cret", p => p.Card = card);
+                secret.IsProtected = true;
+                db.Properties.Add(secret);
+                await db.SaveChangesAsync(default);
+            }
+
+            await RunScript($"game.setProperty(vars.mapId, 'leak', game.getProperty('{goblinCard}', 'apiKey', 'none')); return {{}};");
+
+            NoErrors();
+            Assert.NotEqual("s3cret", PropertyValue(mapId, "leak"));
+        }
+
+        // Include: shared script files (an addon's resources) go before the script.
+        [Fact]
+        public async Task Script_IncludesSharedFiles()
+        {
+            using (var scope = services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                db.Resources.Add(new DndOnePlaceManager.Domain.Entities.Resources.ResourceModel
+                {
+                    Id = Guid.NewGuid(), GameId = gameId, PlayerId = gm.Id!.Value, Name = "sanity_lib.js", Key = "sanity_lib.js",
+                    MimeType = MimeType.JavaScript, Data = System.Text.Encoding.UTF8.GetBytes("function twice(x) { return x * 2; }"),
+                });
+                await db.SaveChangesAsync(default);
+            }
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "inc", Prefix = "test", IsEnabled = true,
+                Content = new JArray(
+                    new JObject { ["Type"] = "RunScript", ["Data"] = new JObject { ["Script"] = "return { n: twice(21) };", ["Include"] = "sanity_lib.js", ["Output"] = "" } },
+                    new JObject { ["Type"] = "SetProperty", ["Data"] = new JObject { ["Of"] = "map", ["PropertyName"] = "n", ["PropertyValue"] = "%n%" } }).ToString(),
+            };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+
+            NoErrors();
+            Assert.Equal("42", PropertyValue(mapId, "n"));
+        }
+
+        [Fact]
+        public async Task Script_HasACallLimit()
+        {
+            await RunScript("for (var i = 0; i < 300; i++) game.log('x'); return {};");
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error" && e.Message.Contains("200"));
+        }
+
         [Fact]
         public async Task DamageAll_EveryTokenOnTheMapTakesTheRoll()
         {
