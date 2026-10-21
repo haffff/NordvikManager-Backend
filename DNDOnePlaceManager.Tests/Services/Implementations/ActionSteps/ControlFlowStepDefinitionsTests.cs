@@ -80,7 +80,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             {
                 Collection = "cards",
                 ItemName = "c",
-                Condition = "%v:c.hp% > 0",
+                Condition = "%c.hp% > 0",
                 OutputName = "alive",
             }));
 

@@ -22,7 +22,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "FilterCollection";
         public string Category => "Collection";
         public string Description => "Filters a collection based on a condition. The condition is evaluated once per item, " +
-            "with the current item available as %ItemName% (or %v:ItemName.field% for objects). " +
+            "with the current item available as %ItemName% (or %ItemName.field% for objects). " +
             "Property queries (%q:...%) are not resolved inside Condition — read them into a variable first.";
         public string? Summary => "Filter {Collection} where {Condition}[ → {OutputName}]";
         public Type DataType => typeof(FilterStepData);

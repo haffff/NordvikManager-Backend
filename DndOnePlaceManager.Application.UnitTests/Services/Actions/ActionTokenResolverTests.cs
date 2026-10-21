@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using DndOnePlaceManager.Application.Services.Actions;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
@@ -72,16 +73,42 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Actions
             Assert.Equal("Hello World %missing%", await Resolve("Hello %name% %missing%", vars));
         }
 
+        // One form for variables: a dot or [n] reaches inside, objects and lists come out as JSON.
         [Fact]
-        public async Task DtoAndPathTokens_AreReplaced()
+        public async Task Path_ReachesInsideAVariable()
+        {
+            var vars = new Dictionary<string, object>
+            {
+                ["output"] = new Dictionary<string, object> { ["ResponseBody"] = "{\"results\":[{\"name\":\"Dagger\"}]}" },
+                ["target"] = JObject.Parse("{\"id\":\"t-1\",\"name\":\"Rat\"}"),
+            };
+
+            Assert.Equal("Dagger t-1", await Resolve("%output.ResponseBody.results[0].name% %target.id%", vars));
+        }
+
+        [Fact]
+        public async Task ObjectsAndLists_ComeOutAsCompactCamelCaseJson()
         {
             var vars = new Dictionary<string, object>
             {
                 ["ids"] = new List<string> { "a", "b" },
-                ["output"] = new Dictionary<string, object> { ["ResponseBody"] = "{\"results\":[{\"name\":\"Dagger\"}]}" },
+                ["target"] = JObject.Parse("{\"id\": \"t-1\"}"),
+                ["player"] = new DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO { Name = "Bob" },
+                ["name"] = "Bob",
             };
 
-            Assert.Equal("[\"a\",\"b\"] Dagger", await Resolve("%dto:ids% %v:output.ResponseBody.results[0].name%", vars));
+            Assert.Equal("[\"a\",\"b\"]", await Resolve("%ids%", vars));
+            Assert.Equal("{\"id\":\"t-1\"}", await Resolve("%target%", vars));
+            Assert.Contains("\"name\":\"Bob\"", await Resolve("%player%", vars));
+            Assert.Equal("{\"n\": \"Bob\"}", await Resolve("{\"n\": \"%name%\"}", vars));
+        }
+
+        [Fact]
+        public async Task OldVariableForms_AreNoLongerFilledIn()
+        {
+            var vars = new Dictionary<string, object> { ["ids"] = new List<string> { "a" }, ["t"] = JObject.Parse("{\"id\":\"1\"}") };
+
+            Assert.Equal("%dto:ids% %v:t.id%", await Resolve("%dto:ids% %v:t.id%", vars));
         }
 
         // ── %q:type[name].prop% ─────────────────────────────────────────────────
@@ -143,6 +170,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Actions
         }
 
         [Fact]
+        public async Task ById_FromAFieldOfAVariable()
+        {
+            var vars = new Dictionary<string, object> { ["token"] = JObject.FromObject(new { cardId = goblinId.ToString() }) };
+
+            Assert.Equal("7", await Resolve("%q:{token.cardId}.hp%", vars));
+        }
+
+        [Fact]
         public async Task ProtectedProperty_IsEmpty()
         {
             Assert.Equal("[]", await Resolve("[%q:card[Goblin].secret%]"));
@@ -170,7 +205,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Actions
         {
             var vars = new Dictionary<string, object> { ["chat"] = new Dictionary<string, object> { ["text"] = "%q:card[Goblin].hp%" } };
 
-            Assert.Equal("%q:card[Goblin].hp%", await Resolve("%v:chat.text%", vars));
+            Assert.Equal("%q:card[Goblin].hp%", await Resolve("%chat.text%", vars));
         }
 
         [Fact]
@@ -188,9 +223,10 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Actions
         {
             var resolver = Resolver();
 
-            await resolver.ResolveAsync("%q:card[Goblin].hp% %q:card[Nobody].hp% %v:nope.x%", new Dictionary<string, object>());
+            await resolver.ResolveAsync("%q:card[Goblin].hp% %q:card[Nobody].hp% %t.nope%",
+                new Dictionary<string, object> { ["t"] = JObject.Parse("{\"id\":\"1\"}") });
 
-            Assert.Equal(new[] { "%q:card[Nobody].hp%", "%v:nope.x%" }, resolver.Unresolved);
+            Assert.Equal(new[] { "%q:card[Nobody].hp%", "%t.nope%" }, resolver.Unresolved);
         }
 
         // ── Without a database (FilterCollection's Condition) ───────────────────
@@ -200,7 +236,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Services.Actions
         {
             var vars = new Dictionary<string, object> { ["c"] = new Dictionary<string, object> { ["hp"] = 4 }, ["x"] = "%q:card[Goblin].hp%" };
 
-            Assert.Equal("4 > 0 %q:card[Goblin].hp% %q:card[Goblin].hp%", ActionTokenResolver.ResolveVariables("%v:c.hp% > 0 %x% %q:card[Goblin].hp%", vars));
+            Assert.Equal("4 > 0 %q:card[Goblin].hp% %q:card[Goblin].hp%", ActionTokenResolver.ResolveVariables("%c.hp% > 0 %x% %q:card[Goblin].hp%", vars));
         }
     }
 }

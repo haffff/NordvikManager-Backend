@@ -12,14 +12,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the variable where the result is stored. Leave empty to skip storing.")]
         public string? OutputVariable { get; set; }
 
-        [Description("When true, stores only the integer total in OutputVariable. When false (default), stores the full roll object — fields accessible via %v:OutputVariable.Result% and %v:OutputVariable.Rolled% in subsequent steps.")]
+        [Description("When true, stores only the integer total in OutputVariable. When false (default), stores the full roll object — fields accessible via %OutputVariable.Result% and %OutputVariable.Rolled% in subsequent steps.")]
         public bool SimpleOutput { get; set; }
 
         [Description("When true, broadcasts the roll result to the game chat using the options below.")]
         public bool PrintToChat { get; set; }
 
         [ShowIf("PrintToChat", "true")]
-        [Description("Title shown on the chat roll card. Supports %variable% substitution. Default: 'Roll'. Note: the current roll's result is not yet available here — use a separate SendChat step after this one if you need %v:var.Result% in the title.")]
+        [Description("Title shown on the chat roll card. Supports %variable% substitution. Default: 'Roll'. Note: the current roll's result is not yet available here — use a separate SendChat step after this one if you need %var.Result% in the title.")]
         public string? ChatTitle { get; set; }
 
         [ShowIf("PrintToChat", "true")]

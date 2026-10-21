@@ -12,7 +12,7 @@
       "Data": {
         "Label": "The token",
         "Type": "Element",
-        "Id": "%v:target.id%",
+        "Id": "%target.id%",
         "SingleElement": true,
         "Output": "dt_el"
       }

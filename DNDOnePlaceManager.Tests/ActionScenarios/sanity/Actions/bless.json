@@ -48,7 +48,7 @@
             "Type": "SetProperty",
             "Data": {
               "Label": "Blessed",
-              "ParentId": "%v:target.id%",
+              "ParentId": "%target.id%",
               "PropertyName": "sanity_blessed",
               "PropertyValue": "true"
             }

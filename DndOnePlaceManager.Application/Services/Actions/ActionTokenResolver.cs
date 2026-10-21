@@ -16,12 +16,12 @@ namespace DndOnePlaceManager.Application.Services.Actions
     /// Fills in the tokens in an action step argument, in one pass — what a token turns
     /// into is never read as tokens again, so text a player typed can't smuggle a query in:
     /// <list type="bullet">
-    /// <item><c>%name%</c> a variable as text (an unknown one is left as it is)</item>
-    /// <item><c>%dto:name%</c> a variable as JSON</item>
-    /// <item><c>%v:name.path[0].x%</c> a value inside an object variable</item>
+    /// <item><c>%name%</c> / <c>%name.path[0].x%</c> a variable, or a value inside it. Text and
+    /// numbers come out as they are, objects and lists as compact camelCase JSON. An unknown
+    /// variable is left as it is.</item>
     /// <item><c>%q:type[name].prop%</c> a property of the game's entity with that name
     /// (type: game, card, player, action, map, resource)</item>
-    /// <item><c>%q:{var}.prop%</c> / <c>%q:&lt;guid&gt;.prop%</c> a property of the entity with that id</item>
+    /// <item><c>%q:{var}.prop%</c> / <c>%q:{var.path}.prop%</c> / <c>%q:&lt;guid&gt;.prop%</c> a property of the entity with that id</item>
     /// </list>
     /// <c>.id</c> and <c>.name</c> give the entity's own id and name. Queries only see the
     /// game's own entities and never protected properties; a miss gives empty text and is
@@ -34,14 +34,13 @@ namespace DndOnePlaceManager.Application.Services.Actions
         private static readonly Regex _tokenPattern = new(
             @"%(?:" +
             @"q:(?<type>[A-Za-z]+)\[(?<name>[^\]]+)\]\.(?<prop>[^%]+)" +
-            @"|q:\{(?<var>\w+)\}\.(?<prop>[^%]+)" +
+            @"|q:\{(?<var>\w+)(?<varPath>(?:\.\w+|\[\d+\])*)\}\.(?<prop>[^%]+)" +
             @"|q:(?<guid>" + Guid + @")\.(?<prop>[^%]+)" +
-            @"|v:(?<root>\w+)(?<path>(?:\.\w+|\[\d+\])+)" +
-            @"|(?<dto>dto:)?(?<word>\w+)" +
+            @"|(?<root>\w+)(?<path>(?:\.\w+|\[\d+\])*)" +
             @")%",
             RegexOptions.Compiled);
 
-        private static readonly JsonSerializer _dtoSerializer = new()
+        private static readonly JsonSerializer _jsonSerializer = new()
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
@@ -80,7 +79,7 @@ namespace DndOnePlaceManager.Application.Services.Actions
         }
 
         /// <summary>
-        /// Fills in variable tokens only (%name%, %dto:name%, %v:path%), leaving %q:% queries
+        /// Fills in variable tokens only (%name%, %name.path%), leaving %q:% queries
         /// as they are — for places with no database at hand.
         /// </summary>
         public static string ResolveVariables(string raw, Dictionary<string, object> variables)
@@ -94,24 +93,31 @@ namespace DndOnePlaceManager.Application.Services.Actions
 
         private static string ResolveVariable(Match m, Dictionary<string, object> variables, List<string>? unresolved)
         {
-            if (m.Groups["root"].Success)
+            if (!variables.TryGetValue(m.Groups["root"].Value, out var root))
             {
-                var value = variables.TryGetValue(m.Groups["root"].Value, out var root)
-                    ? VariablePathResolver.Resolve(root, m.Groups["path"].Value)
-                    : null;
-                if (value == null)
+                // Not a variable (yet): left as it is, like any text between percent signs.
+                if (m.Groups["path"].Length > 0)
                     unresolved?.Add(m.Value);
-                return VariablePathResolver.Stringify(value);
+                return m.Value;
             }
 
-            if (!variables.TryGetValue(m.Groups["word"].Value, out var variable))
-                return m.Value;
-
-            if (m.Groups["dto"].Success)
-                return variable == null ? "null" : JToken.FromObject(variable, _dtoSerializer).ToString(Formatting.None);
-
-            return variable?.ToString() ?? string.Empty;
+            var value = m.Groups["path"].Length > 0 ? VariablePathResolver.Resolve(root, m.Groups["path"].Value) : root;
+            if (value == null && m.Groups["path"].Length > 0)
+                unresolved?.Add(m.Value);
+            return Stringify(value);
         }
+
+        /// <summary>Text and numbers as they are; objects and lists as compact camelCase JSON.</summary>
+        public static string Stringify(object? value) => value switch
+        {
+            null => string.Empty,
+            string text => text,
+            JValue jv => jv.Value?.ToString() ?? string.Empty,
+            JToken jt => jt.ToString(Formatting.None),
+            System.Guid or DateTime or bool or char or Enum => value.ToString()!,
+            _ when value.GetType().IsPrimitive || value is decimal => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
+            _ => JToken.FromObject(value, _jsonSerializer).ToString(Formatting.None),
+        };
 
         private async Task<string> ResolveQueryAsync(Match m, Dictionary<string, object> variables)
         {
@@ -121,7 +127,9 @@ namespace DndOnePlaceManager.Application.Services.Actions
             else
             {
                 var idText = m.Groups["var"].Success
-                    ? (variables.TryGetValue(m.Groups["var"].Value, out var v) ? v?.ToString() : null)
+                    ? (variables.TryGetValue(m.Groups["var"].Value, out var v)
+                        ? Stringify(m.Groups["varPath"].Length > 0 ? VariablePathResolver.Resolve(v, m.Groups["varPath"].Value) : v)
+                        : null)
                     : m.Groups["guid"].Value;
                 id = System.Guid.TryParse(idText, out var parsed) ? parsed : null;
             }

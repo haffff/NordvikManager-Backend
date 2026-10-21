@@ -13,10 +13,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         public string? RollVariable { get; set; }
 
         [ShowIf("Template", "BigNumber")]
-        [Description("The number to display prominently. Supports %variable% substitution (e.g. %v:rollResult.Result%).")]
+        [Description("The number to display prominently. Supports %variable% substitution (e.g. %rollResult.Result%).")]
         public string? Number { get; set; }
 
-        [Description("Title shown on the chat card. Supports %variable% substitution (e.g. %v:rollResult.Result%).")]
+        [Description("Title shown on the chat card. Supports %variable% substitution (e.g. %rollResult.Result%).")]
         public string? Title { get; set; }
 
         [UIType("textarea")]

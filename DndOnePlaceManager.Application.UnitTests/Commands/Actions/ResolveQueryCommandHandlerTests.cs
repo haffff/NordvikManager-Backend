@@ -58,7 +58,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand
             {
-                GameId = game.Id, Player = Player(), Expression = "%v:player.Name%",
+                GameId = game.Id, Player = Player(), Expression = "%player.Name%",
                 Variables = new() { ["player"] = Player() },
             };
 
@@ -73,7 +73,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand
             {
-                GameId = game.Id, Player = Player(), Expression = "[%v:player.NoSuchField%]",
+                GameId = game.Id, Player = Player(), Expression = "[%player.NoSuchField%]",
                 Variables = new() { ["player"] = Player() },
             };
 

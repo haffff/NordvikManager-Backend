@@ -110,7 +110,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         }
 
         // Primitives come back as .NET values (so %var% and If/Calculate keep working);
-        // objects/arrays stay as JTokens, which %v:% paths, ForEach and FilterCollection understand.
+        // objects/arrays stay as JTokens, which %name.path% tokens and ForEach understand.
         private static object FromJson(JToken token) => token switch
         {
             null => null,

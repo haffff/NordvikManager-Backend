@@ -8,7 +8,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("GUID of the entity whose properties will be set. Supports %variable% substitution (e.g. %newCardId%).")]
         public string ParentId { get; set; }
 
-        [Description("One property per line as 'propertyName=value', e.g. 'item_name=%name%'. Values support %variable%, %v:% and %q:% tokens; " +
+        [Description("One property per line as 'propertyName=value', e.g. 'item_name=%name%'. Values support %variable%, %variable.field% and %q:% tokens; " +
             "they are substituted after the lines are split, so a value may safely contain line breaks or '='.")]
         [UIType("textarea")]
         public string Properties { get; set; }

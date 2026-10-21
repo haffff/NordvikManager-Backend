@@ -677,7 +677,7 @@ namespace DNDOnePlaceManager.Controllers
             public Dictionary<string, object> Variables { get; set; }
         }
 
-        /// <summary>POST addon/resolveQuery — fill in an expression's tokens (%varName%, %dto:%, %v:%, %q:%) as a running action would.</summary>
+        /// <summary>POST addon/resolveQuery — fill in an expression's tokens (%name%, %name.path%, %q:%) as a running action would.</summary>
         [Route("resolveQuery")]
         [HttpPost]
         public async Task<IActionResult> ResolveQuery([FromQuery] Guid gameId, [FromBody] ResolveQueryRequest body)

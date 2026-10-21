@@ -4,7 +4,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class MoveElementStepData
     {
-        [Description("GUID of the element (token, shape, ...) to move. E.g. %v:Data.id% in an Element hook.")]
+        [Description("GUID of the element (token, shape, ...) to move. E.g. %Data.id% in an Element hook.")]
         public string ElementId { get; set; }
 
         [Description("New horizontal position (canvas 'left') in pixels.")]

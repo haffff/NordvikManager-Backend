@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Services.Actions;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -28,7 +29,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var raw = stepData.Value ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(raw) && !string.IsNullOrWhiteSpace(stepData.DefaultValue))
-                raw = stepData.DefaultValue.Prepare(variables);
+                raw = ActionTokenResolver.ResolveVariables(stepData.DefaultValue, variables);
 
             var targetType = ActionValueTypes.Resolve(stepData.Type);
 
