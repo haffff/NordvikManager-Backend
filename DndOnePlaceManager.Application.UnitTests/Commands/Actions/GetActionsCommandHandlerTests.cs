@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+﻿using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -60,6 +60,21 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var (_, actions) = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Equal(5, actions.Count); // 15 total, page 1 (0-indexed) skips 10, takes remaining 5
+        }
+
+        // Pages only make sense in a fixed order: by prefix, then name.
+        [Fact]
+        public async Task Handle_ReturnsActionsByPrefixThenName()
+        {
+            var game = BuildGame();
+            SeedAction(game.Id, "B", prefix: "xd");
+            SeedAction(game.Id, "A", prefix: "xd");
+            SeedAction(game.Id, "Z", prefix: "dnd5e");
+            var cmd = new GetActionsCommand { GameId = game.Id, Player = Player() };
+
+            var (_, actions) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { "dnd5e/Z", "xd/A", "xd/B" }, actions.Select(a => $"{a.Prefix}/{a.Name}"));
         }
 
         [Fact]

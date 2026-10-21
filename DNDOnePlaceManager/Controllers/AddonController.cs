@@ -77,7 +77,8 @@ namespace DNDOnePlaceManager.Controllers
 
         [Route("actions")]
         [HttpGet]
-        public async Task<IActionResult> GetActions([FromQuery] Guid gameId, int page)
+        // Without a page: every action (the Actions panel lists them all).
+        public async Task<IActionResult> GetActions([FromQuery] Guid gameId, int? page)
         {
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
