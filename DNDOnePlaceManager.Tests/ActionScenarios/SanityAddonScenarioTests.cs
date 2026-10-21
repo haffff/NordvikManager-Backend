@@ -512,6 +512,19 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Contains(Chat(gm), m => m.Contains("Goblin: 15"));
         }
 
+        // Options are plain JavaScript values: a point object, a number.
+        [Fact]
+        public async Task Script_FindsNearAPointObject()
+        {
+            await RunScript(@"
+                var near = game.find('tokens', { near: { x: 150, y: 125 }, radius: 4, withCard: true });
+                game.setProperty(vars.mapId, 'near', near.map(function (t) { return t.name; }).sort().join(','));
+                return {};");
+
+            NoErrors();
+            Assert.Equal("Goblin", PropertyValue(mapId, "near"));
+        }
+
         [Fact]
         public async Task Script_RunsAnyStep_AndGetsItsOutput()
         {
