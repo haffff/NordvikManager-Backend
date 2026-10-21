@@ -1,6 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions.Find;
 using DndOnePlaceManager.Application.Commands.BattleMap;
-using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using DNDOnePlaceManager.WebSockets;
@@ -9,7 +7,6 @@ using MediatR;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -34,11 +31,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var data = step.Data.ToObject<ShowMarkerStepData>()!;
             var mapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, "ShowMarker", data.MapId);
-            var map = (await mediator.Send(new FindCommand { GameId = gameLobby.GameId, What = "maps", Id = mapId }))?.FirstOrDefault();
-            var grid = (double?)map?["gridSize"] is > 0 ? (double)map!["gridSize"]! : 50;
+            var grid = await MapShape.GridSizeAsync(mediator, gameLobby, mapId);
 
             var markerId = Guid.NewGuid().ToString();
-            var shape = Shape(data, grid);
+            var shape = MapShape.Build("ShowMarker", data.Shape, data.X, data.Y, data.Radius, data.Width, data.Height, data.Color, data.Text, grid);
             shape["previewId"] = markerId;
             shape["playerId"] = gameLobby.SystemPlayer.Id.ToString();
             shape["stayVisible"] = true;
@@ -57,7 +53,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (data.UntilActionEnds)
                 gameLobby.ActionProcessingService.AtActionEnd(hide);
             else
-                _ = Task.Delay(TimeSpan.FromSeconds(Number(data.Duration, "Duration", 10))).ContinueWith(_ => hide());
+                _ = Task.Delay(TimeSpan.FromSeconds(MapShape.Number("ShowMarker", data.Duration, "Duration", 10))).ContinueWith(_ => hide());
 
             if (!string.IsNullOrWhiteSpace(data.Output))
                 variables[data.Output] = markerId;
@@ -74,45 +70,5 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                     Data = data,
                 }, gameLobby.SystemPlayer);
         }
-
-        // The fabric object, centred on X, Y; sizes come in squares.
-        private static JObject Shape(ShowMarkerStepData data, double grid)
-        {
-            var x = Number(data.X, "X", 0);
-            var y = Number(data.Y, "Y", 0);
-            var color = string.IsNullOrWhiteSpace(data.Color) ? "rgba(255,120,0,0.35)" : data.Color.Trim();
-            var common = new JObject { ["left"] = x, ["top"] = y, ["originX"] = "center", ["originY"] = "center" };
-            switch ((data.Shape ?? "circle").Trim().ToLowerInvariant())
-            {
-                case "circle":
-                    common["type"] = "circle";
-                    common["radius"] = Number(data.Radius, "Radius", 1) * grid;
-                    common["fill"] = color;
-                    common["stroke"] = "rgba(255,255,255,0.8)";
-                    common["strokeWidth"] = 2;
-                    return common;
-                case "rect":
-                    common["type"] = "rect";
-                    common["width"] = Number(data.Width, "Width", 1) * grid;
-                    common["height"] = Number(data.Height, "Height", 1) * grid;
-                    common["fill"] = color;
-                    common["stroke"] = "rgba(255,255,255,0.8)";
-                    common["strokeWidth"] = 2;
-                    return common;
-                case "text":
-                    common["type"] = "text";
-                    common["text"] = data.Text ?? "";
-                    common["fontSize"] = grid * 0.6;
-                    common["fill"] = string.IsNullOrWhiteSpace(data.Color) ? "white" : color;
-                    common["stroke"] = "black";
-                    common["strokeWidth"] = 1;
-                    return common;
-                default:
-                    throw new ActionProcessException($"ShowMarker: 'Shape' must be circle, rect or text, not '{data.Shape}'.");
-            }
-        }
-
-        private static double Number(string? value, string argument, double fallback) =>
-            string.IsNullOrWhiteSpace(value) ? fallback : ElementStepHelper.ParseNumber("ShowMarker", argument, value);
     }
 }

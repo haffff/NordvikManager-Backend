@@ -442,6 +442,33 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.Contains(Chat(gm), m => m.Contains("potworny"));
         }
 
+        // AddElement: a shape saved on the map, added like a player's (everyone sees it, hooks fire).
+        [Fact]
+        public async Task AddElement_PutsAShapeOnTheMap()
+        {
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "wall", Prefix = "test", IsEnabled = true,
+                Content = new JArray(new JObject
+                {
+                    ["Type"] = "AddElement",
+                    ["Data"] = new JObject { ["Shape"] = "rect", ["X"] = "100", ["Y"] = "50", ["Width"] = "3", ["Height"] = "1", ["Output"] = "wallId" },
+                }).ToString(),
+            };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+
+            NoErrors();
+            using var scope = services.CreateScope();
+            var found = await scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
+                new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "elements", MapId = mapId });
+            var wall = Assert.Single(found, e => (string?)e["type"] == "rect");
+            Assert.Equal(150, (double)wall["w"]!);
+            Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
+        }
+
         [Fact]
         public async Task DamageAll_EveryTokenOnTheMapTakesTheRoll()
         {
