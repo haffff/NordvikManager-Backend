@@ -290,6 +290,11 @@ namespace DNDOnePlaceManager.Services.Implementations
                 finally
                 {
                     CurrentStepRun.Value = outerRun;
+                    foreach (var cleanup in run.AtEnd)
+                    {
+                        try { await cleanup(); }
+                        catch (Exception e) { GameLobby?.EventLog?.Log("Warning", "Action", $"Action '{action.Name}': cleaning up failed: {e.Message}"); }
+                    }
                 }
 
                 await DebugLog(mediator, DebugLogData.Finishing(action, steps, variables), entry: entry);
@@ -437,7 +442,13 @@ namespace DNDOnePlaceManager.Services.Implementations
         // The path of the step being run ("3", "3/Then/1"); a block's steps are numbered under it.
         private static readonly AsyncLocal<string> CurrentStepPath = new();
 
-        private sealed record RunContext(ActionDto Action, ActionRunEntry Entry, ActionTrace Trace, IMediator Mediator, IDbContext DbContext);
+        private sealed record RunContext(ActionDto Action, ActionRunEntry Entry, ActionTrace Trace, IMediator Mediator, IDbContext DbContext)
+        {
+            public List<Func<Task>> AtEnd { get; } = new();
+        }
+
+        public void AtActionEnd(Func<Task> cleanup) =>
+            (CurrentStepRun.Value ?? throw new InvalidOperationException("Only a running action has an end.")).AtEnd.Add(cleanup);
 
         // "Stopped from the debug console" while a block runs: ends the whole action.
         private sealed class DebugStopException : Exception { }

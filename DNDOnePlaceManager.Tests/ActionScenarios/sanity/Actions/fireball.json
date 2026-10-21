@@ -19,6 +19,18 @@
     },
     {
       "id": "74a444ae-5431-5b19-81a8-5aa57e419b89",
+      "Type": "ShowMarker",
+      "Data": {
+        "Label": "Show the blast while the GM decides",
+        "Shape": "circle",
+        "X": "%position.x%",
+        "Y": "%position.y%",
+        "Radius": "%radiusSquares%",
+        "UntilActionEnds": true
+      }
+    },
+    {
+      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
       "Type": "RollDice",
       "Data": {
         "Label": "Fire damage",
@@ -30,7 +42,7 @@
       }
     },
     {
-      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
+      "id": "811843ed-1ac6-5a91-bc33-0bcab8f7db76",
       "Type": "RunScript",
       "Data": {
         "Label": "Who was hit",
@@ -39,7 +51,7 @@
       }
     },
     {
-      "id": "811843ed-1ac6-5a91-bc33-0bcab8f7db76",
+      "id": "638037a8-6b1e-58b0-b946-6a04d270f0c1",
       "Type": "RequestUserInput",
       "Data": {
         "Label": "Ask the GM",
@@ -53,7 +65,7 @@
       }
     },
     {
-      "id": "638037a8-6b1e-58b0-b946-6a04d270f0c1",
+      "id": "229b766e-5225-5779-9995-ec2fef0d0370",
       "Type": "RunScript",
       "Data": {
         "Label": "Read the answer",
@@ -62,14 +74,14 @@
       }
     },
     {
-      "id": "229b766e-5225-5779-9995-ec2fef0d0370",
+      "id": "6e588571-361f-5f09-98d7-2b8131b46486",
       "Type": "If",
       "Data": {
         "Label": "Apply when the GM agreed",
         "Condition": "%apply% = 1",
         "Then": [
           {
-            "id": "bb6d0fe2-7f11-52d0-89bf-09bcc9142360",
+            "id": "e49b1f88-0204-5b96-99df-263a485674a3",
             "Type": "ForEach",
             "Data": {
               "Label": "Each token hit",
@@ -77,7 +89,7 @@
               "ItemName": "target",
               "Do": [
                 {
-                  "id": "6cfcb852-3176-599a-a2e1-ac2b88e37bc4",
+                  "id": "0ffed69f-74d8-5ade-94f8-eb5d066a7f7f",
                   "Type": "ExecuteAction",
                   "Data": {
                     "Label": "Damage it",
@@ -91,7 +103,7 @@
       }
     },
     {
-      "id": "6e588571-361f-5f09-98d7-2b8131b46486",
+      "id": "fbb4c3ec-02c4-5285-8bc4-bd17fe0f16e9",
       "Type": "SendChat",
       "Data": {
         "Label": "Result",

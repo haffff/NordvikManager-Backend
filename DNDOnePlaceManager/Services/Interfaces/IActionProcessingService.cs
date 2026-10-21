@@ -26,6 +26,8 @@ namespace DNDOnePlaceManager.Services.Interfaces
         Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null);
         /// <summary>Runs a block's steps (If's Then/Else, ForEach's Do) inside the running action, on its variables.</summary>
         Task RunBlockAsync(JArray steps, Dictionary<string, object> variables, string blockName);
+        /// <summary>Runs <paramref name="cleanup"/> when the running action ends, however it ends (e.g. a marker shown until then).</summary>
+        void AtActionEnd(Func<Task> cleanup);
         Task ExecActionAsync(string action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, ActionTrace trace = null);
     }
 }

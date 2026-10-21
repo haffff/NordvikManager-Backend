@@ -58,6 +58,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         private readonly PlayerDTO gm;
         private readonly PlayerDTO player;
         private readonly Guid mapId = Guid.NewGuid();
+        private readonly Guid battleMapId = Guid.NewGuid();
         private readonly Guid goblinCard = Guid.NewGuid(), orcCard = Guid.NewGuid();
         private readonly Guid goblin = Guid.NewGuid(), rat = Guid.NewGuid(), farOrc = Guid.NewGuid();
 
@@ -160,6 +161,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 },
             };
             db.Add(game);
+            db.Add(new DndOnePlaceManager.Domain.Entities.BattleMap.BattleMapModel { Id = battleMapId, Name = "Table", MapId = mapId, Game = game });
             // As the app grants them: the GM and the system own everything; the player may see the game.
             foreach (var entity in new[] { gameId, mapId, goblinCard, orcCard, goblin, rat, farOrc })
                 db.Set<PermissionModel>().AddRange(
@@ -358,6 +360,11 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
 
             NoErrors();
             Assert.Contains(sent, x => x.To == gm && x.Command.Command == "request_input");
+            // The blast is shown on the map while the GM decides, and goes away after.
+            var marker = Assert.Single(sent, x => x.To == player && x.Command.Command == "preview_start");
+            Assert.Equal(battleMapId.ToString(), marker.Command.BattleMapId);
+            Assert.Equal(200, (double)marker.Command.Data![0]!["radius"]!);
+            Assert.Contains(sent, x => x.To == player && x.Command.Command == "preview_end");
             Assert.Equal("0", PropertyValue(goblinCard, "hp"));      // 20 - 24
             Assert.Equal("0", PropertyValue(rat, "bar1_value"));      // 7 - 24
             Assert.Equal("30", PropertyValue(orcCard, "hp"));         // out of range
