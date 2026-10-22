@@ -59,9 +59,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var mapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, "RequestPoint", data.MapId);
             var grid = await MapShape.GridSizeAsync(mediator, gameLobby, mapId);
 
-            (double X, double Y, double W, double H)? from = string.IsNullOrWhiteSpace(data.From)
-                ? null
-                : await MapPlace.Parse("RequestPoint", "From", data.From).ResolveAsync(mediator, gameLobby, "RequestPoint", "From");
+            var fromPlace = string.IsNullOrWhiteSpace(data.From) ? (MapPlace?)null : MapPlace.Parse("RequestPoint", "From", data.From);
+            (double X, double Y, double W, double H)? from = fromPlace is { } place
+                ? await place.ResolveAsync(mediator, gameLobby, "RequestPoint", "From")
+                : null;
 
             JObject? area = null;
             if (!none)
@@ -101,6 +102,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 ["mapId"] = mapId.ToString(),
                 ["area"] = area,
                 ["from"] = aimed ? start : null,
+                // The token a line or cone starts from: not lit up, as Find (Near it) leaves it out.
+                ["fromId"] = aimed && fromPlace?.ElementId is Guid fromId ? fromId.ToString() : null,
                 ["snap"] = snap,
                 ["gridSize"] = grid,
                 ["range"] = range,
@@ -118,7 +121,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 variables[data.Output] = JValue.CreateNull();
                 return;
             }
-            point["from"] = start;
+            point["from"] = aimed ? start : JValue.CreateNull();
             variables[data.Output] = point;
         }
 

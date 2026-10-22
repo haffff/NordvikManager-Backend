@@ -146,6 +146,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             var vars = await Run(new { From = _tok.ToString(), MaxDistance = "2", Output = "point" });
 
             Assert.Equal(125.0, (double)_asked[0]["range"]["radius"]);
+            Assert.Equal(JTokenType.Null, ((JObject)vars["point"])["from"]!.Type); // only a line or cone has one
             Assert.Equal(220.0, (double)((JObject)vars["point"])["y"]);
         }
 
@@ -176,6 +177,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             var asked = _asked[0];
             Assert.Equal(("cone", 150.0, 60.0), ((string)asked["area"]["shape"], (double)asked["area"]["radius"], (double)asked["area"]["angle"]));
             Assert.Equal((100.0, 100.0), ((double)asked["from"]["x"], (double)asked["from"]["y"]));
+            Assert.Equal(_tok.ToString(), (string)asked["fromId"]); // the caster: not lit up, as Find leaves it out
             var point = (JObject)vars["point"];
             // The end of its axis: 150 px from (100,100) toward (130,140).
             Assert.Equal(100 + 150 * 0.6, (double)point["x"], 6);

@@ -98,6 +98,17 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
+        public async Task ASeeThroughPlayerColour_IsNoColour()
+        {
+            _player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Wizard", Color = "rgb(0,0,0,0)" };
+
+            await Run(new { Shape = "circle", At = "0,0", Radius = "1" });
+
+            var shape = (JObject)((JArray)Assert.Single(_sent, c => c.Command == "preview_start").Data)[0];
+            Assert.Equal("rgba(255,120,0,0.35)", (string)shape["fill"]);
+        }
+
+        [Fact]
         public async Task APlayerWithoutAUsableColour_GetsTheDefault()
         {
             _player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Wizard", Color = "teal-ish" };

@@ -137,7 +137,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             return null;
         }
 
-        /// <summary>A CSS colour as #rgb, #rrggbb, rgb(…) or rgba(…); null for anything else.</summary>
+        /// <summary>A CSS colour as #rgb, #rrggbb, rgb(…) or rgba(…); null for anything else, or fully see-through.</summary>
         public static (int R, int G, int B)? Rgb(string? color)
         {
             if (string.IsNullOrWhiteSpace(color))
@@ -151,9 +151,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                     h = string.Concat(h.Select(ch => $"{ch}{ch}"));
                 return (Convert.ToInt32(h[..2], 16), Convert.ToInt32(h[2..4], 16), Convert.ToInt32(h[4..], 16));
             }
-            var rgb = Regex.Match(c, @"^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(,\s*[\d.]+\s*)?\)$");
+            var rgb = Regex.Match(c, @"^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([\d.]+)\s*)?\)$");
             if (rgb.Success)
             {
+                // Fully see-through: what a player without a colour has.
+                if (rgb.Groups[4].Success && double.TryParse(rgb.Groups[4].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var alpha) && alpha == 0)
+                    return null;
                 var parts = new[] { 1, 2, 3 }.Select(i => int.Parse(rgb.Groups[i].Value, CultureInfo.InvariantCulture)).ToArray();
                 if (parts.All(v => v <= 255))
                     return (parts[0], parts[1], parts[2]);
