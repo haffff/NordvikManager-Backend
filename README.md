@@ -34,3 +34,7 @@ In-game traffic (REST calls tunneled over WebRTC, plus real-time broadcast comma
 Live playback state (which playlist is playing, its track and volume) lives in memory on the `GameLobby`; playlists, soundboards, their volumes and everything else are stored in the database.
 
 Rest of documentation in progress
+
+## License
+
+Copyright (C) 2025-2026 haffff. The GM server is licensed under the [GNU Affero General Public License v3](LICENSE) (`AGPL-3.0-only`), with an additional attribution term: see [NOTICE](NOTICE).
