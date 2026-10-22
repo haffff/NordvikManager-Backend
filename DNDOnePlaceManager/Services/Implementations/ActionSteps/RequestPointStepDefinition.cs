@@ -65,6 +65,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 ["mapId"] = mapId.ToString(),
                 ["marker"] = marker,
                 ["snap"] = snap,
+                ["gridSize"] = grid,
                 ["range"] = range,
                 ["highlight"] = data.HighlightTokens,
                 ["showToOthers"] = data.ShowToOthers,

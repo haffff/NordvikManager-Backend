@@ -92,6 +92,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.True((bool)asked["highlight"]);
             Assert.True((bool)asked["showToOthers"]);
             Assert.Equal("none", (string)asked["snap"]);
+            Assert.Equal(50.0, (double)asked["gridSize"]); // what the client snaps to, as the sizes above
         }
 
         [Fact]
