@@ -24,6 +24,9 @@ namespace DndOnePlaceManager.Infrastructure.Services.Proxy
                     var options = sp.GetRequiredService<ProxyOptions>();
                     return new SocketsHttpHandler
                     {
+                        // Through a system proxy (HTTP_PROXY, Windows settings) ConnectCallback would
+                        // only see the proxy, never the target, and the address rule would be skipped.
+                        UseProxy = false,
                         AllowAutoRedirect = options.MaxRedirects > 0,
                         MaxAutomaticRedirections = Math.Max(1, options.MaxRedirects),
                         ConnectCallback = (context, cancellationToken) => ConnectAsync(context, options, cancellationToken),
