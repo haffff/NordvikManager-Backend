@@ -22,9 +22,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "AddElement";
         public IReadOnlyList<string> Keywords => new[] { "draw", "shape", "circle", "wall", "area", "zone", "text on map", "add to map" };
         public string Category => "Map";
-        public string Description => "Adds a circle, rectangle or text to a map, saved like one a player drew (e.g. a wall of fire). " +
+        public string Description => "Adds a circle, rectangle, line, cone or text to a map, saved like one a player drew (e.g. a wall of fire). " +
             "For a shape that only shows for a while, use Show Marker.";
-        public string? Summary => "Add a {Shape} at {X}, {Y}[ → {Output}]";
+        public string? Summary => "Add a {Shape} at {At}[ toward {Toward}][ → {Output}]";
         public Type DataType => typeof(AddElementStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -32,7 +32,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var data = step.Data.ToObject<AddElementStepData>()!;
             var mapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, "AddElement", data.MapId);
             var grid = await MapShape.GridSizeAsync(mediator, gameLobby, mapId);
-            var shape = MapShape.Build("AddElement", data.Shape, data.X, data.Y, data.Radius, data.Width, data.Height, data.Color, data.Text, grid);
+            var shape = await MapShape.BuildAsync(mediator, gameLobby, variables, "AddElement",
+                new MapShape.Spec(data.Shape, data.At, data.Toward, data.Radius, data.Width, data.Height, data.Angle, data.Color, data.Text), grid);
 
             var command = new WebSocketCommand
             {

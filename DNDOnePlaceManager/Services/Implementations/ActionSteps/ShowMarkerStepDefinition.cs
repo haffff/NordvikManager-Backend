@@ -23,8 +23,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public string Value => "ShowMarker";
         public IReadOnlyList<string> Keywords => new[] { "marker", "area", "circle", "template", "highlight", "show on map", "effect" };
         public string Category => "Map";
-        public string Description => "Shows a circle, rectangle or text on the map to everyone for a while (e.g. where a Fireball goes off). It is never saved.";
-        public string? Summary => "Show a {Shape}[ of radius {Radius}] at {X}, {Y}[ → {Output}]";
+        public string Description => "Shows a circle, rectangle, line, cone or text on the map to everyone for a while (e.g. where a Fireball goes off). " +
+            "It is never saved.";
+        public string? Summary => "Show a {Shape}[ of {Radius}] at {At}[ toward {Toward}][ → {Output}]";
         public Type DataType => typeof(ShowMarkerStepData);
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
@@ -34,7 +35,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var grid = await MapShape.GridSizeAsync(mediator, gameLobby, mapId);
 
             var markerId = Guid.NewGuid().ToString();
-            var shape = MapShape.Build("ShowMarker", data.Shape, data.X, data.Y, data.Radius, data.Width, data.Height, data.Color, data.Text, grid);
+            var shape = await MapShape.BuildAsync(mediator, gameLobby, variables, "ShowMarker",
+                new MapShape.Spec(data.Shape, data.At, data.Toward, data.Radius, data.Width, data.Height, data.Angle, data.Color, data.Text), grid);
             shape["previewId"] = markerId;
             shape["playerId"] = gameLobby.SystemPlayer.Id.ToString();
             shape["stayVisible"] = true;

@@ -30,14 +30,17 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         private readonly ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>> _inputs = new();
         private readonly List<JObject> _asked = new();
         private readonly Guid _mapId = Guid.NewGuid();
+        private readonly Guid _tok = Guid.NewGuid();
         private JToken _answer;
 
         public RequestPointStepDefinitionTests()
         {
             _mediator.Setup(m => m.Send(It.Is<FindCommand>(c => c.What == "maps"), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<JObject> { new() { ["id"] = _mapId.ToString(), ["gridSize"] = 50 } });
-            _mediator.Setup(m => m.Send(It.Is<FindCommand>(c => c.What == "tokens"), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new List<JObject> { new() { ["id"] = "tok", ["x"] = 100, ["y"] = 100, ["w"] = 50, ["h"] = 50 } });
+            _mediator.Setup(m => m.Send(It.Is<FindCommand>(c => c.What == "elements"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IRequest<List<JObject>> c, CancellationToken _) => ((FindCommand)c).Id == _tok
+                    ? new List<JObject> { new() { ["id"] = _tok.ToString(), ["x"] = 100, ["y"] = 100, ["w"] = 50, ["h"] = 50 } }
+                    : new List<JObject>());
 
             var service = new Mock<IActionProcessingService>();
             service.Setup(s => s.InputHandler).Returns(_inputs);
@@ -87,8 +90,9 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             var asked = Assert.Single(_asked);
             Assert.Equal("Where does it go off?", (string)asked["message"]);
             Assert.Equal(_mapId.ToString(), (string)asked["mapId"]);
-            Assert.Equal("circle", (string)asked["marker"]["type"]);
-            Assert.Equal(200.0, (double)asked["marker"]["radius"]);
+            Assert.Equal("circle", (string)asked["area"]["shape"]);
+            Assert.Equal(200.0, (double)asked["area"]["radius"]);
+            Assert.Equal(JTokenType.Null, asked["area"]["fill"]!.Type); // the player has no colour: the map's own
             Assert.True((bool)asked["highlight"]);
             Assert.True((bool)asked["showToOthers"]);
             Assert.Equal("none", (string)asked["snap"]);
@@ -102,7 +106,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
 
             await Run(new { Shape = "none", Output = "point" });
 
-            Assert.Equal(JTokenType.Null, _asked[0]["marker"]!.Type);
+            Assert.Equal(JTokenType.Null, _asked[0]["area"]!.Type);
         }
 
         [Theory]
@@ -139,7 +143,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         {
             _answer = At(100, 220);
 
-            var vars = await Run(new { From = "tok", MaxDistance = "2", Output = "point" });
+            var vars = await Run(new { From = _tok.ToString(), MaxDistance = "2", Output = "point" });
 
             Assert.Equal(125.0, (double)_asked[0]["range"]["radius"]);
             Assert.Equal(220.0, (double)((JObject)vars["point"])["y"]);
@@ -150,7 +154,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         {
             _answer = At(100, 100);
 
-            await Run(new { From = "{\"id\":\"tok\",\"name\":\"Wizard\"}", MaxDistance = "1", Output = "point" });
+            await Run(new { From = $"{{\"id\":\"{_tok}\",\"name\":\"Wizard\"}}", MaxDistance = "1", Output = "point" });
 
             Assert.Equal(100.0, (double)_asked[0]["range"]["x"]);
         }
@@ -158,7 +162,65 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task AnUnknownToken_IsAnError()
         {
-            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { From = "nope", MaxDistance = "1", Output = "point" }));
+            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { From = Guid.NewGuid().ToString(), MaxDistance = "1", Output = "point" }));
+        }
+
+        // A cone or line starts at From (the caster) and is Radius long: the player only aims it.
+        [Fact]
+        public async Task ACone_StartsAtFrom_AndThePlayerAimsIt()
+        {
+            _answer = At(130, 140); // up-right… any point: only the direction counts
+
+            var vars = await Run(new { Shape = "cone", From = _tok.ToString(), Radius = "3", Angle = "60", Output = "point" });
+
+            var asked = _asked[0];
+            Assert.Equal(("cone", 150.0, 60.0), ((string)asked["area"]["shape"], (double)asked["area"]["radius"], (double)asked["area"]["angle"]));
+            Assert.Equal((100.0, 100.0), ((double)asked["from"]["x"], (double)asked["from"]["y"]));
+            var point = (JObject)vars["point"];
+            // The end of its axis: 150 px from (100,100) toward (130,140).
+            Assert.Equal(100 + 150 * 0.6, (double)point["x"], 6);
+            Assert.Equal(100 + 150 * 0.8, (double)point["y"], 6);
+            Assert.Equal((100.0, 100.0), ((double)point["from"]["x"], (double)point["from"]["y"]));
+        }
+
+        [Fact]
+        public async Task ALine_HasItsWidth()
+        {
+            _answer = At(300, 100);
+
+            await Run(new { Shape = "line", From = _tok.ToString(), Radius = "6", Width = "2", Output = "point" });
+
+            Assert.Equal((300.0, 100.0), ((double)_asked[0]["area"]["radius"], (double)_asked[0]["area"]["width"]));
+        }
+
+        [Fact]
+        public async Task ACone_NeedsFrom()
+        {
+            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { Shape = "cone", Radius = "3", Output = "point" }));
+        }
+
+        [Fact]
+        public async Task ACone_HasNoMaxDistance()
+        {
+            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { Shape = "cone", From = _tok.ToString(), Radius = "3", MaxDistance = "6", Output = "point" }));
+        }
+
+        [Fact]
+        public async Task ACone_AimedAtItsOwnStart_CountsAsCancelled()
+        {
+            _answer = At(100, 100);
+
+            await Assert.ThrowsAsync<ActionExitException>(() => Run(new { Shape = "cone", From = _tok.ToString(), Radius = "3", Output = "point" }));
+        }
+
+        [Fact]
+        public async Task ACircle_HasNoFrom_InItsPoint()
+        {
+            _answer = At(1, 2);
+
+            var vars = await Run(new { Output = "point" });
+
+            Assert.Equal(JTokenType.Null, ((JObject)vars["point"])["from"]!.Type);
         }
 
         [Fact]

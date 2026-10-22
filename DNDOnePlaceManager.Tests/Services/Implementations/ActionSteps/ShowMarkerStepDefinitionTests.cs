@@ -57,9 +57,11 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             _lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Wizard" }] = new List<IPlayerConnection> { connection.Object };
         }
 
+        private PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "Wizard", Color = "#3366ff" };
+
         private async Task<Dictionary<string, object>> Run(object data)
         {
-            var variables = new Dictionary<string, object> { ["mapId"] = _map.ToString() };
+            var variables = new Dictionary<string, object> { ["mapId"] = _map.ToString(), ["Player"] = _player };
             await new ShowMarkerStepDefinition().Execute(_mediator.Object, variables, _lobby,
                 new ActionStep { Type = "ShowMarker", Data = JObject.FromObject(data) });
             return variables;
@@ -68,7 +70,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task ACircle_ToTheViewsShowingTheMap_SizedInSquares()
         {
-            var vars = await Run(new { Shape = "circle", X = "150", Y = "125.5", Radius = "4", Color = "rgba(255,80,0,0.4)", Output = "marker" });
+            var vars = await Run(new { Shape = "circle", At = "{\"x\": 150, \"y\": 125.5}", Radius = "4", Color = "rgba(255,80,0,0.4)", Output = "marker" });
 
             var start = Assert.Single(_sent, c => c.Command == "preview_start");
             Assert.Equal(_view.ToString(), start.BattleMapId);
@@ -80,12 +82,75 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal("center", (string)shape["originX"]);
             Assert.Equal(_lobby.SystemPlayer.Id.ToString(), (string)shape["playerId"]);
             Assert.Equal((string)shape["previewId"], vars["marker"]);
+            Assert.Equal("rgba(255,80,0,0.4)", (string)shape["fill"]); // the action's colour wins
+        }
+
+        // Without a colour of its own, a marker takes the colour of the player whose action it
+        // is — as their measuring does — see-through inside.
+        [Fact]
+        public async Task WithoutAColour_TakesThePlayersColour()
+        {
+            await Run(new { Shape = "circle", At = "0,0", Radius = "1" });
+
+            var shape = (JObject)((JArray)Assert.Single(_sent, c => c.Command == "preview_start").Data)[0];
+            Assert.Equal("rgba(51,102,255,0.25)", (string)shape["fill"]);
+            Assert.Equal("rgb(51,102,255)", (string)shape["stroke"]);
+        }
+
+        [Fact]
+        public async Task APlayerWithoutAUsableColour_GetsTheDefault()
+        {
+            _player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Wizard", Color = "teal-ish" };
+
+            await Run(new { Shape = "circle", At = "0,0", Radius = "1" });
+
+            var shape = (JObject)((JArray)Assert.Single(_sent, c => c.Command == "preview_start").Data)[0];
+            Assert.Equal("rgba(255,120,0,0.35)", (string)shape["fill"]);
+        }
+
+        // A cone or line is drawn as the area Find uses (AreaShape): the same corners.
+        [Fact]
+        public async Task ACone_FromAPointTowardAnother_IsTheTriangleFindUses()
+        {
+            await Run(new { Shape = "cone", At = "100,100", Toward = "{\"x\": 200, \"y\": 100}", Radius = "3", Angle = "90" });
+
+            var shape = (JObject)((JArray)Assert.Single(_sent, c => c.Command == "preview_start").Data)[0];
+            Assert.Equal("polygon", (string)shape["type"]);
+            var points = ((JArray)shape["points"]).Select(p => ((double)p["x"], (double)p["y"])).ToList();
+            Assert.Equal(3, points.Count);
+            Assert.Equal((100.0, 100.0), points[0]);
+            Assert.Equal(100 + 150 * Math.Cos(Math.PI / 4), points[1].Item1, 6);
+            Assert.Equal(100 - 150 * Math.Sin(Math.PI / 4), points[1].Item2, 6);
+        }
+
+        [Fact]
+        public async Task ALine_IsFourCornersWideAsItsWidth()
+        {
+            await Run(new { Shape = "line", At = "0,0", Toward = "10,0", Radius = "4", Width = "1" });
+
+            var shape = (JObject)((JArray)Assert.Single(_sent, c => c.Command == "preview_start").Data)[0];
+            var points = ((JArray)shape["points"]).Select(p => ((double)p["x"], (double)p["y"])).ToList();
+            Assert.Equal(new[] { (0.0, 25.0), (200.0, 25.0), (200.0, -25.0), (0.0, -25.0) }, points.Select(p => (Math.Round(p.Item1, 6), Math.Round(p.Item2, 6))));
+        }
+
+        [Fact]
+        public async Task ALineOrCone_NeedsToward()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { Shape = "cone", At = "0,0", Radius = "3" }));
+        }
+
+        [Fact]
+        public async Task At_IsRequired()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { Shape = "circle", Radius = "3" }));
         }
 
         [Fact]
         public async Task GoesAwayAfterItsDuration()
         {
-            await Run(new { Shape = "rect", X = "0", Y = "0", Width = "2", Height = "1", Duration = "0.05" });
+            await Run(new { Shape = "rect", At = "0,0", Width = "2", Height = "1", Duration = "0.05" });
 
             await Task.Delay(400);
             var end = Assert.Single(_sent, c => c.Command == "preview_end");
@@ -95,7 +160,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task UntilActionEnds_GoesAwayWithTheAction()
         {
-            await Run(new { Shape = "text", X = "0", Y = "0", Text = "Boom", UntilActionEnds = true });
+            await Run(new { Shape = "text", At = "0,0", Text = "Boom", UntilActionEnds = true });
 
             Assert.DoesNotContain(_sent, c => c.Command == "preview_end");
             await _atEnd();

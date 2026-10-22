@@ -13,19 +13,23 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("What the player is told, e.g. 'Where does the Fireball go off?'.")]
         public string? Message { get; set; }
 
-        [Description("The marker that follows the cursor: circle, rect, text or none (just a point). Default circle.")]
+        [Description("The area that follows the cursor: circle (default), rect, line, cone, text or none (just a point). " +
+            "A line or cone starts at From and the player only aims it.")]
         public string? Shape { get; set; }
 
-        [Description("Circle: its radius, in squares (e.g. 4 for a 20 ft Fireball on a 5 ft grid).")]
+        [Description("Circle: its radius, in squares (e.g. 4 for a 20 ft Fireball on a 5 ft grid); line, cone: its length.")]
         public string? Radius { get; set; }
 
-        [Description("Rect: its width, in squares.")]
+        [Description("Rect: its width, in squares; line: its width (default 1).")]
         public string? Width { get; set; }
 
         [Description("Rect: its height, in squares.")]
         public string? Height { get; set; }
 
-        [Description("Fill colour, e.g. rgba(255,80,0,0.35). Text: its colour.")]
+        [Description("Cone: how wide it spreads, in degrees (default 53).")]
+        public string? Angle { get; set; }
+
+        [Description("Fill colour, e.g. rgba(255,80,0,0.35); text: its colour. Empty: the colour of the player who points.")]
         public string? Color { get; set; }
 
         [Description("Text to show (text shape).")]
@@ -34,11 +38,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("none (default), center (the middle of a square) or corner (where grid lines cross).")]
         public string? SnapToGrid { get; set; }
 
-        [Description("Where the range counts from: a token (its id, or a token from Find / Request Targets) or a point ({x, y}, e.g. %position%). " +
-            "From a token it counts from its edge, like Find's Near.")]
+        [Description("Line, cone: where it starts (the caster's token: its id, or a token from Find / Request Targets; or a point, e.g. %position%). " +
+            "Circle, rect: where MaxDistance counts from; from a token it counts from its edge, like Find's Near.")]
         public string? From { get; set; }
 
-        [Description("How far from From the point may be, in squares (e.g. 30 for 150 ft). Empty: anywhere.")]
+        [Description("Circle, rect: how far from From the point may be, in squares (e.g. 30 for 150 ft). Empty: anywhere.")]
         public string? MaxDistance { get; set; }
 
         [DefaultValue(true)]
@@ -59,8 +63,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Stop the action when the player cancels, doesn't answer or isn't connected. Off: carry on with an empty Output.")]
         public bool StopIfCancelled { get; set; } = true;
 
-        [VariableOutput("object", "x", "y", "mapId")]
-        [Description("Variable for the point, in map pixels: { x, y, mapId }.")]
+        [VariableOutput("object", "x", "y", "mapId", "from")]
+        [Description("Variable for the point, in map pixels: { x, y, mapId, from }. A line or cone: x, y is the end of its axis and from its start (else from is empty).")]
         public string? Output { get; set; }
     }
 }

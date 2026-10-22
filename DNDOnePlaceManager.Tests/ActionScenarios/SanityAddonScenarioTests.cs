@@ -376,7 +376,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             NoErrors();
             // The player aims with the blast following the cursor, snapped to grid corners.
             var aim = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_point");
-            Assert.Equal(200, (double)aim.Command.Data!["marker"]!["radius"]!);
+            Assert.Equal(200, (double)aim.Command.Data!["area"]!["radius"]!);
             Assert.Equal("corner", (string?)aim.Command.Data!["snap"]);
             Assert.Contains(sent, x => x.To == gm && x.Command.Command == "request_input");
             // The blast is shown on the map while the GM decides, and goes away after.
@@ -495,7 +495,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 Content = new JArray(new JObject
                 {
                     ["Type"] = "AddElement",
-                    ["Data"] = new JObject { ["Shape"] = "rect", ["X"] = "100", ["Y"] = "50", ["Width"] = "3", ["Height"] = "1", ["Output"] = "wallId" },
+                    ["Data"] = new JObject { ["Shape"] = "rect", ["At"] = "100,50", ["Width"] = "3", ["Height"] = "1", ["Output"] = "wallId" },
                 }).ToString(),
             };
 
@@ -508,8 +508,36 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             var found = await scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
                 new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "elements", MapId = mapId });
             var wall = Assert.Single(found, e => (string?)e["type"] == "rect");
-            Assert.Equal(150, (double)wall["w"]!);
+            Assert.Equal(152, (double)wall["w"]!); // 3 squares and its outline, as the map measures it
             Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
+        }
+
+        // A cone saved on the map is the triangle Find uses, and Find knows where it is.
+        [Fact]
+        public async Task AddElement_ACone_IsSavedWhereItIs()
+        {
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "cone", Prefix = "test", IsEnabled = true,
+                Content = new JArray(new JObject
+                {
+                    ["Type"] = "AddElement",
+                    ["Data"] = new JObject { ["Shape"] = "cone", ["At"] = "100,100", ["Toward"] = "200,100", ["Radius"] = "3" },
+                }).ToString(),
+            };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+
+            NoErrors();
+            using var scope = services.CreateScope();
+            var found = await scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
+                new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "elements", MapId = mapId });
+            var cone = Assert.Single(found, e => (string?)e["type"] == "polygon");
+            // Corners (100,100), (234.2,33.1), (234.2,166.9): its box is centred on (167.1, 100).
+            Assert.Equal(167.1, (double)cone["x"]!, 1);
+            Assert.Equal(100, (double)cone["y"]!, 1);
         }
 
         // ── RunScript's game API: the steps, from a script ─────────────────────────

@@ -100,6 +100,52 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal(20, _finds[2].NearY);
         }
 
+        // A token from Find or Request Targets (%target%) is a place too: its id is taken.
+        [Fact]
+        public async Task Near_TakesATokenObject()
+        {
+            var token = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = $"{{\"id\":\"{token}\",\"name\":\"Wizard\",\"x\":1,\"y\":2}}", Radius = "2", Output = "t" });
+
+            Assert.Equal(token, _finds[0].NearElementId);
+        }
+
+        // The same area arguments as the markers: a cone from the caster toward a point or a token.
+        [Fact]
+        public async Task ACone_TowardAPointOrAToken()
+        {
+            var caster = Guid.NewGuid();
+            var target = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = caster.ToString(), Shape = "cone", Radius = "3", Angle = "60", Toward = "{\"x\": 300, \"y\": 100}", Output = "t" });
+            await Run(new { What = "tokens", Near = caster.ToString(), Shape = "Line", Radius = "6", Width = "2", Toward = target.ToString(), Output = "t" });
+
+            Assert.Equal(("cone", 3.0, 60.0, 300.0, 100.0), (_finds[0].Shape, _finds[0].Radius!.Value, _finds[0].Angle!.Value, _finds[0].TowardX!.Value, _finds[0].TowardY!.Value));
+            Assert.Equal(("line", 2.0, target), (_finds[1].Shape, _finds[1].Width!.Value, _finds[1].TowardElementId!.Value));
+        }
+
+        [Fact]
+        public async Task ALineOrCone_NeedsToward()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = "1,2", Shape = "cone", Radius = "3", Output = "t" }));
+        }
+
+        [Fact]
+        public async Task AnAreaShape_NeedsNear()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Shape = "rect", Width = "3", Height = "3", Output = "t" }));
+        }
+
+        [Fact]
+        public async Task AnUnknownShape_IsAnError()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = "1,2", Shape = "hex", Radius = "3", Output = "t" }));
+        }
+
         [Fact]
         public async Task Output_IsTheList_OrWithFirstOneItem()
         {

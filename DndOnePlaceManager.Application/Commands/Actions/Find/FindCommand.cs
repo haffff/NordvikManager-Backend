@@ -32,8 +32,30 @@ namespace DndOnePlaceManager.Application.Commands.Actions.Find
         /// <summary>…or of this element (which isn't included itself).</summary>
         public Guid? NearElementId { get; set; }
 
-        /// <summary>In squares of the element's map; counted to the edge of a token, not its centre.</summary>
+        /// <summary>
+        /// The area's shape (see <see cref="AreaShape"/>): circle (default), rect, line or cone, with Near as its
+        /// centre (circle, rect) or start (line, cone). A token counts when it touches the area.
+        /// </summary>
+        public string? Shape { get; set; }
+
+        /// <summary>In squares of the element's map: a circle's radius, or a line's or cone's length.</summary>
         public double? Radius { get; set; }
+
+        /// <summary>In squares: a rect's width, or a line's (default 1).</summary>
+        public double? Width { get; set; }
+
+        /// <summary>In squares: a rect's height.</summary>
+        public double? Height { get; set; }
+
+        /// <summary>A cone's spread in degrees (default 53).</summary>
+        public double? Angle { get; set; }
+
+        /// <summary>Line and cone: the point it points at…</summary>
+        public double? TowardX { get; set; }
+        public double? TowardY { get; set; }
+
+        /// <summary>…or the element it points at.</summary>
+        public Guid? TowardElementId { get; set; }
 
         /// <summary>Cards: templates are left out unless this is set.</summary>
         public bool IncludeTemplates { get; set; }

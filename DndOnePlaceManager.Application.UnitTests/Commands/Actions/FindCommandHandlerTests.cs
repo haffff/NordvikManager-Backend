@@ -136,6 +136,40 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             Assert.Equal(new[] { "Rat" }, Names(found));
         }
 
+        // The same areas as markers (AreaShape): a cone from the goblin toward the rat, 2 squares long.
+        [Fact]
+        public async Task Tokens_InACone_FromATokenTowardAnother()
+        {
+            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearElementId = goblin, Shape = "cone", Radius = 2, TowardElementId = rat });
+
+            Assert.Equal(new[] { "Rat" }, Names(found));
+        }
+
+        [Fact]
+        public async Task Tokens_InACone_PointingAway_FindNothing()
+        {
+            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearElementId = goblin, Shape = "cone", Radius = 2, TowardX = 0, TowardY = 125 });
+
+            Assert.Empty(found);
+        }
+
+        [Fact]
+        public async Task Tokens_OnALine_OfTheGivenWidth()
+        {
+            // From (0,125) east, 3 squares long and 1 wide: the goblin (centre 125) is on it, the rat (175) past its end.
+            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearX = 0, NearY = 125, Shape = "line", Radius = 2.5, Width = 1, TowardX = 100, TowardY = 125 });
+
+            Assert.Equal(new[] { "Goblin" }, Names(found));
+        }
+
+        [Fact]
+        public async Task Tokens_InARect()
+        {
+            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearX = 100, NearY = 125, Shape = "rect", Width = 0.2, Height = 0.2 });
+
+            Assert.Equal(new[] { "Goblin" }, Names(found));
+        }
+
         [Fact]
         public async Task Tokens_WithoutAMap_AreThoseOfTheWholeGame_NeverAnotherGames()
         {

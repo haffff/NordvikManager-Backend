@@ -35,8 +35,7 @@
       "Data": {
         "Label": "Show the blast while the GM decides",
         "Shape": "circle",
-        "X": "%point.x%",
-        "Y": "%point.y%",
+        "At": "%point%",
         "Radius": "%radiusSquares%",
         "UntilActionEnds": true
       }
