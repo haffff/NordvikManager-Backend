@@ -10,6 +10,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Who picks. Empty: the player who ran the action.")]
         public string? Player { get; set; }
 
+        [Description("What can be picked: token (default) or element (any element on the map: a shape, a picture, a token).")]
+        public string? Target { get; set; }
+
         [Description("What the player is told, e.g. 'Pick up to 3 creatures to bless'.")]
         public string? Message { get; set; }
 
@@ -30,7 +33,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         public bool StopIfCancelled { get; set; } = true;
 
         [VariableOutput("list", "id", "name", "x", "y", "w", "h", "cardId", "mapId")]
-        [Description("Variable for the picked tokens, in the order they were picked.")]
+        [Description("Variable for the picked tokens (or elements), in the order they were picked.")]
         public string? Output { get; set; }
     }
 }

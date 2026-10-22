@@ -7,24 +7,6 @@
   "isEnabled": true,
   "content": [
     {
-      "id": "c28099eb-7077-50c9-9a64-8709217635ce",
-      "Type": "AddMapTool",
-      "Data": {
-        "Label": "Tool: Fireball",
-        "Name": "sanity_fireball",
-        "UiName": "Fireball",
-        "Action": "sanity/fireball",
-        "Target": "point",
-        "StayActive": false,
-        "OnlyTriggeringPlayer": true,
-        "Hint": "Click where the Fireball explodes (20 ft radius).",
-        "ActionArgs": {
-          "radiusSquares": "4",
-          "dice": "8d6"
-        }
-      }
-    },
-    {
       "id": "f3283248-7ed3-5385-ae83-ad4d662c86f5",
       "Type": "AddToolbarButton",
       "Data": {
@@ -46,6 +28,22 @@
         "Action": "sanity/bless",
         "Location": "sanity_menu",
         "OnlyTriggeringPlayer": true
+      }
+    },
+    {
+      "id": "c28099eb-7077-50c9-9a64-8709217635ce",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu: Fireball",
+        "Name": "sanity_fireball",
+        "UiName": "Fireball (aim on the map)",
+        "Action": "sanity/fireball",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "ActionArgs": {
+          "radiusSquares": "4",
+          "dice": "8d6"
+        }
       }
     },
     {

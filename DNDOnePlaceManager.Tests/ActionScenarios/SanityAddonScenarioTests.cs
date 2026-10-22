@@ -53,6 +53,8 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         private string gmAnswer = "yes";
         // What the player picks when asked for targets; null cancels.
         private JArray? targetsAnswer;
+        // Where the player points when asked for a point; null cancels.
+        private JObject? pointAnswer;
 
         private readonly Guid gameId = Guid.NewGuid();
         private readonly PlayerDTO gm;
@@ -236,6 +238,12 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                             if (lobby.ActionProcessingService.InputHandler.TryRemove(picking, out var answer))
                                 answer.TrySetResult(new WebSocketCommand { Data = (JToken?)targetsAnswer ?? new JObject { ["cancelled"] = true } });
                         });
+                    if (command.Command == "request_point" && command.InputToken is Guid aiming)
+                        _ = Task.Run(() =>
+                        {
+                            if (lobby.ActionProcessingService.InputHandler.TryRemove(aiming, out var answer))
+                                answer.TrySetResult(new WebSocketCommand { Data = (JToken?)pointAnswer ?? new JObject { ["cancelled"] = true } });
+                        });
                     if (command.Command == "request_input" && command.InputToken is Guid token)
                         _ = Task.Run(() =>
                         {
@@ -289,7 +297,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             await Run("sanity/setup", player);
 
             NoErrors();
-            Assert.Equal(new[] { "sanity_fireball", "sanity_menu", "sanity_bless" }, Added(player));
+            Assert.Equal(new[] { "sanity_menu", "sanity_bless", "sanity_fireball" }, Added(player));
             Assert.Empty(Added(gm));
         }
 
@@ -353,12 +361,23 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.DoesNotContain(Chat(gm), m => m.Contains("Bless on"));
         }
 
+        // As the Sanity menu's Fireball item runs it; the player then points at (150,125).
+        private Task Fireball()
+        {
+            pointAnswer ??= new JObject { ["x"] = 150, ["y"] = 125, ["mapId"] = mapId.ToString() };
+            return Run("sanity/fireball", player, new { mapId = mapId.ToString(), radiusSquares = "4", dice = "8d6" });
+        }
+
         [Fact]
         public async Task Fireball_GmSaysYes_DamagesTheTokensInRange()
         {
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
+            // The player aims with the blast following the cursor, snapped to grid corners.
+            var aim = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_point");
+            Assert.Equal(200, (double)aim.Command.Data!["marker"]!["radius"]!);
+            Assert.Equal("corner", (string?)aim.Command.Data!["snap"]);
             Assert.Contains(sent, x => x.To == gm && x.Command.Command == "request_input");
             // The blast is shown on the map while the GM decides, and goes away after.
             var marker = Assert.Single(sent, x => x.To == player && x.Command.Command == "preview_start");
@@ -377,7 +396,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         public async Task Fireball_GmSaysHalf_AppliesHalf()
         {
             gmAnswer = "half";
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("8", PropertyValue(goblinCard, "hp")); // 20 - 12
@@ -387,11 +406,23 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         public async Task Fireball_GmSaysNo_ChangesNothing()
         {
             gmAnswer = "no";
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
             Assert.Contains(Chat(player), m => m.Contains("didn't apply"));
+        }
+
+        [Fact]
+        public async Task Fireball_PlayerStopsAiming_NothingHappens()
+        {
+            pointAnswer = new JObject { ["cancelled"] = true };
+
+            await Fireball();
+
+            NoErrors();
+            Assert.DoesNotContain(sent, x => x.Command.Command == "request_input");
+            Assert.Equal("20", PropertyValue(goblinCard, "hp"));
         }
 
         // RequestUserInput skips a player who isn't connected; the answer then stays unset.
@@ -400,7 +431,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         {
             lobby.ConnectedPlayers.Remove(gm);
 
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
