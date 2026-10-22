@@ -5,7 +5,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class SendRequestStepData
     {
-        [Description("The URL to send the request to.")]
+        [Description("The URL to send the request to. Private or local addresses (localhost, 192.168.x.x) work only when the server's owner allows the host in Security:ProxyAllowedPrivateHosts.")]
         public string TargetUrl { get; set; }
 
         [Description("HTTP method to use: GET, POST, PUT, PATCH, DELETE. Defaults to POST.")]
