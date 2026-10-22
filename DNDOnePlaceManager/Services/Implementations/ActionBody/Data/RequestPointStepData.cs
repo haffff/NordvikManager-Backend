@@ -13,25 +13,31 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("What the player is told, e.g. 'Where does the Fireball go off?'.")]
         public string? Message { get; set; }
 
+        [DefaultValue("circle")]
         [Description("The area that follows the cursor: circle (default), rect, line, cone, text or none (just a point). " +
             "A line or cone starts at From and the player only aims it.")]
         public string? Shape { get; set; }
 
+        [ShowIf("Shape", "circle|line|cone")]
         [Description("Circle: its radius, in squares (e.g. 4 for a 20 ft Fireball on a 5 ft grid); line, cone: its length.")]
         public string? Radius { get; set; }
 
+        [ShowIf("Shape", "rect|line")]
         [Description("Rect: its width, in squares; line: its width (default 1).")]
         public string? Width { get; set; }
 
+        [ShowIf("Shape", "rect")]
         [Description("Rect: its height, in squares.")]
         public string? Height { get; set; }
 
+        [ShowIf("Shape", "cone")]
         [Description("Cone: how wide it spreads, in degrees (default 53).")]
         public string? Angle { get; set; }
 
         [Description("Fill colour, e.g. rgba(255,80,0,0.35); text: its colour. Empty: the colour of the player who points.")]
         public string? Color { get; set; }
 
+        [ShowIf("Shape", "text")]
         [Description("Text to show (text shape).")]
         public string? Text { get; set; }
 
@@ -42,9 +48,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
             "Circle, rect: where MaxDistance counts from; from a token it counts from its edge, like Find's Near.")]
         public string? From { get; set; }
 
+        [ShowIf("Shape", "circle|rect|text|none")]
         [Description("Circle, rect: how far from From the point may be, in squares (e.g. 30 for 150 ft). Empty: anywhere.")]
         public string? MaxDistance { get; set; }
 
+        [ShowIf("Shape", "circle|rect|line|cone")]
         [DefaultValue(true)]
         [Description("Tokens the marker covers glow while the player aims (the ones Find with Near and Radius would give).")]
         public bool HighlightTokens { get; set; } = true;

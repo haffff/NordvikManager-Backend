@@ -31,21 +31,27 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
             "its centre (circle, rect) or start (line, cone)…")]
         public string? Near { get; set; }
 
+        [DefaultValue("circle")]
         [Description("…of this shape: circle (default), rect, line or cone. A token counts when it touches the area.")]
         public string? Shape { get; set; }
 
+        [ShowIf("Shape", "circle|line|cone")]
         [Description("Circle: its radius, in squares; line, cone: its length.")]
         public string? Radius { get; set; }
 
+        [ShowIf("Shape", "rect|line")]
         [Description("Rect: its width, in squares; line: its width (default 1).")]
         public string? Width { get; set; }
 
+        [ShowIf("Shape", "rect")]
         [Description("Rect: its height, in squares.")]
         public string? Height { get; set; }
 
+        [ShowIf("Shape", "cone")]
         [Description("Cone: how wide it spreads, in degrees (default 53).")]
         public string? Angle { get; set; }
 
+        [ShowIf("Shape", "line|cone")]
         [Description("Line, cone: the point or token it points at, e.g. %point%.")]
         public string? Toward { get; set; }
 
