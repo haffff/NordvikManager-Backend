@@ -228,6 +228,17 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Theory]
+        [InlineData("Find", "Shape", "areashape")]
+        [InlineData("ShowMarker", "Shape", "markershape")]
+        [InlineData("AddElement", "Shape", "markershape")]
+        [InlineData("RequestPoint", "Shape", "pointshape")]
+        [InlineData("RequestPoint", "SnapToGrid", "gridsnap")]
+        public void FixedChoiceArguments_ArePickers(string step, string arg, string type)
+        {
+            Assert.Equal(type, Arg(step, arg).Arg.Type);
+        }
+
+        [Theory]
         [InlineData("GetData")]
         [InlineData("GetDetail")]
         [InlineData("SetDetail")]

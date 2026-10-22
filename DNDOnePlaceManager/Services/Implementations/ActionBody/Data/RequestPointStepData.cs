@@ -13,6 +13,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("What the player is told, e.g. 'Where does the Fireball go off?'.")]
         public string? Message { get; set; }
 
+        [UIType("pointshape")]
         [DefaultValue("circle")]
         [Description("The area that follows the cursor: circle (default), rect, line, cone, text or none (just a point). " +
             "A line or cone starts at From and the player only aims it.")]
@@ -41,6 +42,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Text to show (text shape).")]
         public string? Text { get; set; }
 
+        [UIType("gridsnap")]
         [Description("none (default), center (the middle of a square) or corner (where grid lines cross).")]
         public string? SnapToGrid { get; set; }
 

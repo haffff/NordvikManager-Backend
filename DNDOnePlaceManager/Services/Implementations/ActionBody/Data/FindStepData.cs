@@ -31,6 +31,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
             "its centre (circle, rect) or start (line, cone)…")]
         public string? Near { get; set; }
 
+        [UIType("areashape")]
         [DefaultValue("circle")]
         [Description("…of this shape: circle (default), rect, line or cone. A token counts when it touches the area.")]
         public string? Shape { get; set; }

@@ -5,6 +5,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class AddElementStepData
     {
+        [UIType("markershape")]
         [DefaultValue("circle")]
         [Description("circle (default), rect, line, cone or text.")]
         public string? Shape { get; set; }
