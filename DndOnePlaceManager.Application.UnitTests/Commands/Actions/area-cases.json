@@ -1,0 +1,28 @@
+{
+  "about": "Shared with the client (NordvikManagerFrontEnd src/components/BattleMap/Helpers/area-cases.json): the same cases decide what an area covers on the server (Find, RequestPoint) and on the map (highlighting). A token counts when the circle inside it (radius = half its shorter side) touches the shape. Map pixels; x, y of a token is its centre. Keep both copies the same.",
+  "cases": [
+    { "name": "circle: a token reaching the edge", "area": { "shape": "circle", "x": 0, "y": 0, "radius": 100 }, "token": { "x": 120, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "circle: a token just outside", "area": { "shape": "circle", "x": 0, "y": 0, "radius": 100 }, "token": { "x": 130, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "circle: a 2x2 token counts by its shorter side", "area": { "shape": "circle", "x": 0, "y": 0, "radius": 100 }, "token": { "x": 145, "y": 0, "w": 100, "h": 90 }, "touches": true },
+    { "name": "rect: a token reaching a side", "area": { "shape": "rect", "x": 0, "y": 0, "width": 100, "height": 50 }, "token": { "x": 70, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "rect: a token beside a side", "area": { "shape": "rect", "x": 0, "y": 0, "width": 100, "height": 50 }, "token": { "x": 80, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "rect: a token near a corner", "area": { "shape": "rect", "x": 0, "y": 0, "width": 100, "height": 50 }, "token": { "x": 60, "y": 40, "w": 50, "h": 50 }, "touches": true },
+    { "name": "rect: a token off a corner", "area": { "shape": "rect", "x": 0, "y": 0, "width": 100, "height": 50 }, "token": { "x": 70, "y": 45, "w": 50, "h": 50 }, "touches": false },
+    { "name": "line: beside it, within reach", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 100, "y": 0 } }, "token": { "x": 150, "y": 40, "w": 50, "h": 50 }, "touches": true },
+    { "name": "line: beside it, too far", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 100, "y": 0 } }, "token": { "x": 150, "y": 60, "w": 50, "h": 50 }, "touches": false },
+    { "name": "line: past its end, within reach", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 100, "y": 0 } }, "token": { "x": 220, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "line: past its end, too far", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 100, "y": 0 } }, "token": { "x": 240, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "line: behind its start, too far", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 100, "y": 0 } }, "token": { "x": -30, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "line: pointing down", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 0, "y": 100 } }, "token": { "x": 40, "y": 150, "w": 50, "h": 50 }, "touches": true },
+    { "name": "line: pointing down, too far aside", "area": { "shape": "line", "x": 0, "y": 0, "radius": 200, "width": 50, "toward": { "x": 0, "y": 100 } }, "token": { "x": 60, "y": 150, "w": 50, "h": 50 }, "touches": false },
+    { "name": "cone: on its axis", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": 200, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "cone: beside an edge, too far", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": 100, "y": 80, "w": 50, "h": 50 }, "touches": false },
+    { "name": "cone: beside an edge, a bigger token reaches", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": 100, "y": 80, "w": 60, "h": 60 }, "touches": true },
+    { "name": "cone: behind its apex, within reach", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": -20, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "cone: behind its apex, too far", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": -30, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "cone: past its far side, within reach", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": 290, "y": 0, "w": 50, "h": 50 }, "touches": true },
+    { "name": "cone: past its far side, too far", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": 100, "y": 0 } }, "token": { "x": 300, "y": 0, "w": 50, "h": 50 }, "touches": false },
+    { "name": "cone: pointing up-left", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": -100, "y": -100 } }, "token": { "x": -150, "y": -150, "w": 50, "h": 50 }, "touches": true },
+    { "name": "cone: pointing up-left, a token the other way", "area": { "shape": "cone", "x": 0, "y": 0, "radius": 300, "angle": 53, "toward": { "x": -100, "y": -100 } }, "token": { "x": 150, "y": 150, "w": 50, "h": 50 }, "touches": false }
+  ]
+}

@@ -135,6 +135,52 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
+        public async Task PicksTokens_ByDefault()
+        {
+            _answer = new JArray("a");
+
+            await Run(new { Output = "targets" });
+
+            Assert.Equal("token", (string)_asked[0]["target"]);
+            _mediator.Verify(m => m.Send(It.Is<FindCommand>(c => c.What == "tokens"), It.IsAny<CancellationToken>()));
+        }
+
+        // Target element: any element on the map (a shape, a picture, a token), in the same
+        // shape as picked tokens.
+        [Fact]
+        public async Task TargetElement_PicksAnyElement_InTheSameShape()
+        {
+            var wall = new JObject { ["id"] = "w", ["name"] = "Wall", ["type"] = "rect", ["isToken"] = false, ["x"] = 5, ["y"] = 6, ["w"] = 10, ["h"] = 20,
+                ["cardId"] = null, ["mapId"] = "m", ["object"] = new JObject() };
+            _mediator.Setup(m => m.Send(It.Is<FindCommand>(c => c.What == "elements"), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<JObject> { wall });
+            _answer = new JArray("w");
+
+            var vars = await Run(new { Target = "element", Output = "targets" });
+
+            Assert.Equal("element", (string)_asked[0]["target"]);
+            var picked = (JObject)Assert.Single((JArray)vars["targets"]);
+            Assert.Equal(new[] { "id", "name", "x", "y", "w", "h", "cardId", "mapId" }, picked.Properties().Select(p => p.Name));
+            Assert.Equal("Wall", (string)picked["name"]);
+        }
+
+        [Fact]
+        public async Task TargetToken_DropsAnElementThatIsNotAToken()
+        {
+            _answer = new JArray("w", "a");
+
+            var vars = await Run(new { Max = "2", Output = "targets" });
+
+            Assert.Equal(new[] { "a" }, ((JArray)vars["targets"]).Select(t => (string)t["id"]));
+        }
+
+        [Fact]
+        public async Task AnUnknownTarget_IsAnError()
+        {
+            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { Target = "point", Output = "targets" }));
+        }
+
+        [Fact]
         public async Task APlayerWhoIsNotConnected_CountsAsCancelled()
         {
             _lobby.ConnectedPlayers.Clear();

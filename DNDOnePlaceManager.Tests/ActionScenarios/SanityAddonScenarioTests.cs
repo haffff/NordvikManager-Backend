@@ -53,6 +53,8 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         private string gmAnswer = "yes";
         // What the player picks when asked for targets; null cancels.
         private JArray? targetsAnswer;
+        // Where the player points when asked for a point; null cancels.
+        private JObject? pointAnswer;
 
         private readonly Guid gameId = Guid.NewGuid();
         private readonly PlayerDTO gm;
@@ -236,6 +238,12 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                             if (lobby.ActionProcessingService.InputHandler.TryRemove(picking, out var answer))
                                 answer.TrySetResult(new WebSocketCommand { Data = (JToken?)targetsAnswer ?? new JObject { ["cancelled"] = true } });
                         });
+                    if (command.Command == "request_point" && command.InputToken is Guid aiming)
+                        _ = Task.Run(() =>
+                        {
+                            if (lobby.ActionProcessingService.InputHandler.TryRemove(aiming, out var answer))
+                                answer.TrySetResult(new WebSocketCommand { Data = (JToken?)pointAnswer ?? new JObject { ["cancelled"] = true } });
+                        });
                     if (command.Command == "request_input" && command.InputToken is Guid token)
                         _ = Task.Run(() =>
                         {
@@ -289,7 +297,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             await Run("sanity/setup", player);
 
             NoErrors();
-            Assert.Equal(new[] { "sanity_fireball", "sanity_menu", "sanity_bless" }, Added(player));
+            Assert.Equal(new[] { "sanity_menu", "sanity_bless", "sanity_fireball", "sanity_burning_hands" }, Added(player));
             Assert.Empty(Added(gm));
         }
 
@@ -353,12 +361,23 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.DoesNotContain(Chat(gm), m => m.Contains("Bless on"));
         }
 
+        // As the Sanity menu's Fireball item runs it; the player then points at (150,125).
+        private Task Fireball()
+        {
+            pointAnswer ??= new JObject { ["x"] = 150, ["y"] = 125, ["mapId"] = mapId.ToString() };
+            return Run("sanity/fireball", player, new { mapId = mapId.ToString(), radiusSquares = "4", dice = "8d6" });
+        }
+
         [Fact]
         public async Task Fireball_GmSaysYes_DamagesTheTokensInRange()
         {
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
+            // The player aims with the blast following the cursor, snapped to grid corners.
+            var aim = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_point");
+            Assert.Equal(200, (double)aim.Command.Data!["area"]!["radius"]!);
+            Assert.Equal("corner", (string?)aim.Command.Data!["snap"]);
             Assert.Contains(sent, x => x.To == gm && x.Command.Command == "request_input");
             // The blast is shown on the map while the GM decides, and goes away after.
             var marker = Assert.Single(sent, x => x.To == player && x.Command.Command == "preview_start");
@@ -377,7 +396,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         public async Task Fireball_GmSaysHalf_AppliesHalf()
         {
             gmAnswer = "half";
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("8", PropertyValue(goblinCard, "hp")); // 20 - 12
@@ -387,11 +406,44 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         public async Task Fireball_GmSaysNo_ChangesNothing()
         {
             gmAnswer = "no";
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
             Assert.Contains(Chat(player), m => m.Contains("didn't apply"));
+        }
+
+        // Burning Hands: the player picks their character and aims a 15 ft cone from it.
+        [Fact]
+        public async Task BurningHands_AConeFromTheCaster_HitsWhatItCovers_NotTheCaster()
+        {
+            targetsAnswer = new JArray(goblin.ToString());
+            pointAnswer = new JObject { ["x"] = 400, ["y"] = 125, ["mapId"] = mapId.ToString() }; // east, toward the rat
+
+            await Run("sanity/burning_hands", player, new { mapId = mapId.ToString(), lengthSquares = "3", dice = "3d6" });
+
+            NoErrors();
+            var aim = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_point");
+            Assert.Equal("cone", (string?)aim.Command.Data!["area"]!["shape"]);
+            Assert.Equal(125, (double)aim.Command.Data!["from"]!["x"]!);
+            // The cone shown while the GM decides starts at the caster.
+            var shown = (JObject)((JArray)Assert.Single(sent, x => x.To == player && x.Command.Command == "preview_start").Command.Data!)[0]!;
+            Assert.Equal("polygon", (string?)shown["type"]);
+            Assert.Equal("0", PropertyValue(rat, "bar1_value"));  // 7 - 9
+            Assert.Equal("20", PropertyValue(goblinCard, "hp"));  // the caster
+            Assert.Equal("30", PropertyValue(orcCard, "hp"));     // far away
+        }
+
+        [Fact]
+        public async Task Fireball_PlayerStopsAiming_NothingHappens()
+        {
+            pointAnswer = new JObject { ["cancelled"] = true };
+
+            await Fireball();
+
+            NoErrors();
+            Assert.DoesNotContain(sent, x => x.Command.Command == "request_input");
+            Assert.Equal("20", PropertyValue(goblinCard, "hp"));
         }
 
         // RequestUserInput skips a player who isn't connected; the answer then stays unset.
@@ -400,7 +452,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
         {
             lobby.ConnectedPlayers.Remove(gm);
 
-            await Run("sanity/fireball", player, new { mapId = mapId.ToString(), position = At(150, 125), radiusSquares = "4", dice = "8d6" });
+            await Fireball();
 
             NoErrors();
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
@@ -464,7 +516,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
                 Content = new JArray(new JObject
                 {
                     ["Type"] = "AddElement",
-                    ["Data"] = new JObject { ["Shape"] = "rect", ["X"] = "100", ["Y"] = "50", ["Width"] = "3", ["Height"] = "1", ["Output"] = "wallId" },
+                    ["Data"] = new JObject { ["Shape"] = "rect", ["At"] = "100,50", ["Width"] = "3", ["Height"] = "1", ["Output"] = "wallId" },
                 }).ToString(),
             };
 
@@ -477,8 +529,36 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             var found = await scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
                 new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "elements", MapId = mapId });
             var wall = Assert.Single(found, e => (string?)e["type"] == "rect");
-            Assert.Equal(150, (double)wall["w"]!);
+            Assert.Equal(152, (double)wall["w"]!); // 3 squares and its outline, as the map measures it
             Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
+        }
+
+        // A cone saved on the map is the triangle Find uses, and Find knows where it is.
+        [Fact]
+        public async Task AddElement_ACone_IsSavedWhereItIs()
+        {
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "cone", Prefix = "test", IsEnabled = true,
+                Content = new JArray(new JObject
+                {
+                    ["Type"] = "AddElement",
+                    ["Data"] = new JObject { ["Shape"] = "cone", ["At"] = "100,100", ["Toward"] = "200,100", ["Radius"] = "3" },
+                }).ToString(),
+            };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+
+            NoErrors();
+            using var scope = services.CreateScope();
+            var found = await scope.ServiceProvider.GetRequiredService<MediatR.IMediator>().Send(
+                new DndOnePlaceManager.Application.Commands.Actions.Find.FindCommand { GameId = gameId, What = "elements", MapId = mapId });
+            var cone = Assert.Single(found, e => (string?)e["type"] == "polygon");
+            // Corners (100,100), (234.2,33.1), (234.2,166.9): its box is centred on (167.1, 100).
+            Assert.Equal(167.1, (double)cone["x"]!, 1);
+            Assert.Equal(100, (double)cone["y"]!, 1);
         }
 
         // ── RunScript's game API: the steps, from a script ─────────────────────────

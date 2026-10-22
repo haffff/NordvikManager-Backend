@@ -27,11 +27,34 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Tokens: only those linked to a card.")]
         public bool WithCard { get; set; }
 
-        [Description("Tokens and elements: only those near this point ({x, y}, e.g. %position%) or token (its id)…")]
+        [Description("Tokens and elements: only those in an area at this point ({x, y}, e.g. %point%) or token (its id, or %target%): " +
+            "its centre (circle, rect) or start (line, cone)…")]
         public string? Near { get; set; }
 
-        [Description("…within this many squares (counted to the token's edge).")]
+        [UIType("areashape")]
+        [DefaultValue("circle")]
+        [Description("…of this shape: circle (default), rect, line or cone. A token counts when it touches the area.")]
+        public string? Shape { get; set; }
+
+        [ShowIf("Shape", "circle|line|cone")]
+        [Description("Circle: its radius, in squares; line, cone: its length.")]
         public string? Radius { get; set; }
+
+        [ShowIf("Shape", "rect|line")]
+        [Description("Rect: its width, in squares; line: its width (default 1).")]
+        public string? Width { get; set; }
+
+        [ShowIf("Shape", "rect")]
+        [Description("Rect: its height, in squares.")]
+        public string? Height { get; set; }
+
+        [ShowIf("Shape", "cone")]
+        [Description("Cone: how wide it spreads, in degrees (default 53).")]
+        public string? Angle { get; set; }
+
+        [ShowIf("Shape", "line|cone")]
+        [Description("Line, cone: the point or token it points at, e.g. %point%.")]
+        public string? Toward { get; set; }
 
         [Description("Cards: include templates too.")]
         public bool IncludeTemplates { get; set; }

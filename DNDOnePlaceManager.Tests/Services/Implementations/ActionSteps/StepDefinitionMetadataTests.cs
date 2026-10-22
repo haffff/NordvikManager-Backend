@@ -30,6 +30,34 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
 
         private record ActionDefinitionArgumentLookup(DNDOnePlaceManager.Models.ActionDefinitionResponse Step, DNDOnePlaceManager.Models.ActionDefinitionArgument Arg);
 
+        // ── Area arguments show only for the shapes they apply to (an empty Shape is a circle) ──
+
+        [Theory]
+        [InlineData("Find", "Radius", "circle|line|cone")]
+        [InlineData("Find", "Width", "rect|line")]
+        [InlineData("Find", "Height", "rect")]
+        [InlineData("Find", "Angle", "cone")]
+        [InlineData("Find", "Toward", "line|cone")]
+        [InlineData("ShowMarker", "Radius", "circle|line|cone")]
+        [InlineData("ShowMarker", "Height", "rect")]
+        [InlineData("ShowMarker", "Angle", "cone")]
+        [InlineData("ShowMarker", "Toward", "line|cone")]
+        [InlineData("ShowMarker", "Text", "text")]
+        [InlineData("AddElement", "Width", "rect|line")]
+        [InlineData("AddElement", "Text", "text")]
+        [InlineData("RequestPoint", "Radius", "circle|line|cone")]
+        [InlineData("RequestPoint", "Angle", "cone")]
+        [InlineData("RequestPoint", "Text", "text")]
+        [InlineData("RequestPoint", "MaxDistance", "circle|rect|text|none")]
+        [InlineData("RequestPoint", "HighlightTokens", "circle|rect|line|cone")]
+        public void AreaArguments_ShowForTheirShapes(string step, string argument, string shapes)
+        {
+            var arg = Arg(step, argument).Arg;
+
+            Assert.Equal(("Shape", shapes), (arg.ConditionField, arg.ConditionValue));
+            Assert.Equal("circle", Arg(step, "Shape").Arg.Default);
+        }
+
         // ── What a step gives back: the editor shows it under the step and in the variables panel ──
 
         [Fact]
@@ -197,6 +225,17 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         public void Find_What_IsAKindPicker()
         {
             Assert.Equal("findkind", Arg("Find", "What").Arg.Type);
+        }
+
+        [Theory]
+        [InlineData("Find", "Shape", "areashape")]
+        [InlineData("ShowMarker", "Shape", "markershape")]
+        [InlineData("AddElement", "Shape", "markershape")]
+        [InlineData("RequestPoint", "Shape", "pointshape")]
+        [InlineData("RequestPoint", "SnapToGrid", "gridsnap")]
+        public void FixedChoiceArguments_ArePickers(string step, string arg, string type)
+        {
+            Assert.Equal(type, Arg(step, arg).Arg.Type);
         }
 
         [Theory]

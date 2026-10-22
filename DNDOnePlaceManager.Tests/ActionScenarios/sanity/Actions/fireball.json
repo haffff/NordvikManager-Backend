@@ -2,17 +2,29 @@
   "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
   "name": "fireball",
   "prefix": "sanity",
-  "description": "Map tool: rolls Fireball where the map was clicked; asks the GM before damaging the tokens in range.",
+  "description": "Menu item: the player aims Fireball with its area following the cursor (Request Point); asks the GM before damaging the tokens in it.",
   "hook": 0,
   "isEnabled": false,
   "content": [
+    {
+      "id": "71fe0130-1d2a-550f-bd2b-6a1e0508eb82",
+      "Type": "RequestPoint",
+      "Data": {
+        "Label": "Aim",
+        "Message": "Where does the Fireball go off? (20 ft radius)",
+        "Shape": "circle",
+        "Radius": "%radiusSquares%",
+        "SnapToGrid": "corner",
+        "Output": "point"
+      }
+    },
     {
       "id": "a822e2fb-5a41-58eb-ae8d-ecb7774cdfdc",
       "Type": "Find",
       "Data": {
         "Label": "Tokens in the blast",
         "What": "tokens",
-        "Near": "%position%",
+        "Near": "%point%",
         "Radius": "%radiusSquares%",
         "Output": "hit"
       }
@@ -23,8 +35,7 @@
       "Data": {
         "Label": "Show the blast while the GM decides",
         "Shape": "circle",
-        "X": "%position.x%",
-        "Y": "%position.y%",
+        "At": "%point%",
         "Radius": "%radiusSquares%",
         "UntilActionEnds": true
       }

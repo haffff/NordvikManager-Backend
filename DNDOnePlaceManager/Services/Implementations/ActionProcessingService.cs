@@ -451,7 +451,7 @@ namespace DNDOnePlaceManager.Services.Implementations
         // Steps a script can't run: they wait for a player, or run steps of their own.
         private static readonly HashSet<string> NotFromScripts = new(StringComparer.OrdinalIgnoreCase)
         {
-            "RequestUserInput", "RequestTargets", "If", "ForEach", "ExecuteAction", "RunScript", "Exit", "Delay",
+            "RequestUserInput", "RequestTargets", "RequestPoint", "If", "ForEach", "ExecuteAction", "RunScript", "Exit", "Delay",
         };
 
         public async Task<Dictionary<string, object>> RunStepAsync(string type, JObject data, Dictionary<string, object> variables)

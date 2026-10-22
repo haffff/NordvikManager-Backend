@@ -112,28 +112,35 @@ namespace DndOnePlaceManager.Application.Commands.Actions.Find
             if (!string.IsNullOrWhiteSpace(request.Name))
                 found = found.Where(x => x.Name == request.Name).ToList();
 
-            if (request.Radius is double radius && (request.NearElementId != null || (request.NearX != null && request.NearY != null)))
+            if ((request.Radius != null || request.Shape != null) && (request.NearElementId != null || (request.NearX != null && request.NearY != null)))
             {
                 double cx, cy;
                 if (request.NearElementId is Guid near)
                 {
-                    var centre = dbContext.Elements.Include(e => e.Details).Include(e => e.Map)
-                        .Where(e => e.Id == near && e.Map!.Game.Id == request.GameId).AsEnumerable()
-                        .Select(e => Describe(e)).FirstOrDefault();
+                    var centre = CentreOf(request, near);
                     if (centre == null)
                         return new List<JObject>();
-                    (cx, cy) = (centre.Value.X, centre.Value.Y);
-                    found = found.Where(x => x.Id != near).ToList();
+                    (cx, cy) = centre.Value;
+                    found = found.Where(f => f.Id != near).ToList();
                 }
                 else
                     (cx, cy) = (request.NearX!.Value, request.NearY!.Value);
 
-                found = found.Where(x =>
+                double? tx = request.TowardX, ty = request.TowardY;
+                if (request.TowardElementId is Guid toward)
                 {
-                    var dx = x.X - cx;
-                    var dy = x.Y - cy;
-                    return Math.Sqrt(dx * dx + dy * dy) <= radius * x.GridSize + Math.Min(x.W, x.H) / 2;
-                }).ToList();
+                    var target = CentreOf(request, toward);
+                    if (target == null)
+                        return new List<JObject>();
+                    (tx, ty) = target.Value;
+                }
+
+                var shape = (request.Shape ?? "circle").Trim().ToLowerInvariant();
+                found = found.Where(f => AreaShape.TouchesToken(
+                    new Area(shape, cx, cy, (request.Radius ?? 0) * f.GridSize,
+                        (request.Width ?? (shape == "line" ? 1 : 0)) * f.GridSize, (request.Height ?? 0) * f.GridSize,
+                        request.Angle ?? 53, tx, ty),
+                    f.X, f.Y, f.W, f.H)).ToList();
             }
 
             return found.Select(x => tokensOnly
@@ -141,6 +148,15 @@ namespace DndOnePlaceManager.Application.Commands.Actions.Find
                     : Shape(("id", x.Id), ("name", x.Name), ("type", x.Type), ("isToken", x.IsToken), ("x", x.X), ("y", x.Y), ("w", x.W), ("h", x.H),
                         ("cardId", x.CardId), ("mapId", x.MapId), ("object", x.Object)))
                 .ToList();
+        }
+
+        // The centre of one of this game's elements, on the map; null when there is none.
+        private (double X, double Y)? CentreOf(FindCommand request, Guid id)
+        {
+            var element = dbContext.Elements.Include(e => e.Details).Include(e => e.Map)
+                .Where(e => e.Id == id && e.Map!.Game.Id == request.GameId).AsEnumerable()
+                .Select(e => Describe(e)).FirstOrDefault();
+            return element == null ? null : (element.Value.X, element.Value.Y);
         }
 
         private readonly record struct Described(Guid Id, Guid MapId, int GridSize, string? Name, string? Type, bool IsToken,
@@ -157,8 +173,10 @@ namespace DndOnePlaceManager.Application.Commands.Actions.Find
             catch (Newtonsoft.Json.JsonException) { return null; }
 
             double Num(string key, double fallback) => o[key]?.Type is JTokenType.Integer or JTokenType.Float ? (double)o[key]! : fallback;
-            var w = Num("width", 0) * Num("scaleX", 1);
-            var h = Num("height", 0) * Num("scaleY", 1);
+            // As fabric measures it: the outline is part of the box (a token has none).
+            var stroke = o["stroke"]?.Type == JTokenType.String ? Num("strokeWidth", 0) : 0;
+            var w = (Num("width", 0) + stroke) * Num("scaleX", 1);
+            var h = (Num("height", 0) + stroke) * Num("scaleY", 1);
             var left = Num("left", 0);
             var top = Num("top", 0);
             var x = (string?)o["originX"] == "center" ? left : left + w / 2;

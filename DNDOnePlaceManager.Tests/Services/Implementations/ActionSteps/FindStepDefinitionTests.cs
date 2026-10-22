@@ -1,6 +1,7 @@
 using DndOnePlaceManager.Application.Commands.Actions.Find;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
@@ -56,6 +57,32 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             return variables;
         }
 
+        // Near a card's id (%cardId%) finds nothing, as the card isn't on the map: say so instead.
+        [Fact]
+        public async Task NearACard_SaysToUseItsToken()
+        {
+            var card = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<FindCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IRequest<List<JObject>> c, CancellationToken _) => ((FindCommand)c) is { What: "cards", Id: var id } && id == card
+                    ? new List<JObject> { new() { ["id"] = card.ToString(), ["name"] = "Wizard" } }
+                    : new List<JObject>());
+
+            var e = await Assert.ThrowsAsync<ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = card.ToString(), Radius = "2", Output = "t" }, new Dictionary<string, object> { ["mapId"] = Guid.NewGuid().ToString() }));
+
+            Assert.Contains("is a card", e.Message);
+        }
+
+        [Fact]
+        public async Task NearAToken_FindingNothing_IsNoError()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<FindCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<JObject>());
+
+            var vars = await Run(new { What = "tokens", Near = Guid.NewGuid().ToString(), Radius = "2", Output = "t" }, new Dictionary<string, object> { ["mapId"] = Guid.NewGuid().ToString() });
+
+            Assert.Empty((JArray)vars["t"]);
+        }
+
         [Fact]
         public async Task Tokens_DefaultToTheMapThePlayerIsLookingAt()
         {
@@ -98,6 +125,63 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             await Run(new { What = "tokens", Near = "10, 20", Radius = "1", Output = "t" });
             Assert.Equal(10, _finds[2].NearX);
             Assert.Equal(20, _finds[2].NearY);
+        }
+
+        // A token from Find or Request Targets (%target%) is a place too: its id is taken.
+        [Fact]
+        public async Task Near_TakesATokenObject()
+        {
+            var token = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = $"{{\"id\":\"{token}\",\"name\":\"Wizard\",\"x\":1,\"y\":2}}", Radius = "2", Output = "t" });
+
+            Assert.Equal(token, _finds[0].NearElementId);
+        }
+
+        // Request Targets with Max 1 gives a list of one: that token is the place.
+        [Fact]
+        public async Task Near_TakesAListOfOneToken()
+        {
+            var token = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = $"[{{\"id\":\"{token}\",\"name\":\"Wizard\"}}]", Radius = "2", Output = "t" });
+
+            Assert.Equal(token, _finds[0].NearElementId);
+        }
+
+        // The same area arguments as the markers: a cone from the caster toward a point or a token.
+        [Fact]
+        public async Task ACone_TowardAPointOrAToken()
+        {
+            var caster = Guid.NewGuid();
+            var target = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = caster.ToString(), Shape = "cone", Radius = "3", Angle = "60", Toward = "{\"x\": 300, \"y\": 100}", Output = "t" });
+            await Run(new { What = "tokens", Near = caster.ToString(), Shape = "Line", Radius = "6", Width = "2", Toward = target.ToString(), Output = "t" });
+
+            Assert.Equal(("cone", 3.0, 60.0, 300.0, 100.0), (_finds[0].Shape, _finds[0].Radius!.Value, _finds[0].Angle!.Value, _finds[0].TowardX!.Value, _finds[0].TowardY!.Value));
+            Assert.Equal(("line", 2.0, target), (_finds[1].Shape, _finds[1].Width!.Value, _finds[1].TowardElementId!.Value));
+        }
+
+        [Fact]
+        public async Task ALineOrCone_NeedsToward()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = "1,2", Shape = "cone", Radius = "3", Output = "t" }));
+        }
+
+        [Fact]
+        public async Task AnAreaShape_NeedsNear()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Shape = "rect", Width = "3", Height = "3", Output = "t" }));
+        }
+
+        [Fact]
+        public async Task AnUnknownShape_IsAnError()
+        {
+            await Assert.ThrowsAsync<DndOnePlaceManager.Application.Exceptions.ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = "1,2", Shape = "hex", Radius = "3", Output = "t" }));
         }
 
         [Fact]
