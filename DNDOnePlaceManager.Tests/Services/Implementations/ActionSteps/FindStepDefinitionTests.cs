@@ -111,6 +111,17 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal(token, _finds[0].NearElementId);
         }
 
+        // Request Targets with Max 1 gives a list of one: that token is the place.
+        [Fact]
+        public async Task Near_TakesAListOfOneToken()
+        {
+            var token = Guid.NewGuid();
+
+            await Run(new { What = "tokens", Near = $"[{{\"id\":\"{token}\",\"name\":\"Wizard\"}}]", Radius = "2", Output = "t" });
+
+            Assert.Equal(token, _finds[0].NearElementId);
+        }
+
         // The same area arguments as the markers: a cone from the caster toward a point or a token.
         [Fact]
         public async Task ACone_TowardAPointOrAToken()

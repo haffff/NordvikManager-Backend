@@ -297,7 +297,7 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             await Run("sanity/setup", player);
 
             NoErrors();
-            Assert.Equal(new[] { "sanity_menu", "sanity_bless", "sanity_fireball" }, Added(player));
+            Assert.Equal(new[] { "sanity_menu", "sanity_bless", "sanity_fireball", "sanity_burning_hands" }, Added(player));
             Assert.Empty(Added(gm));
         }
 
@@ -411,6 +411,27 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             NoErrors();
             Assert.Equal("20", PropertyValue(goblinCard, "hp"));
             Assert.Contains(Chat(player), m => m.Contains("didn't apply"));
+        }
+
+        // Burning Hands: the player picks their character and aims a 15 ft cone from it.
+        [Fact]
+        public async Task BurningHands_AConeFromTheCaster_HitsWhatItCovers_NotTheCaster()
+        {
+            targetsAnswer = new JArray(goblin.ToString());
+            pointAnswer = new JObject { ["x"] = 400, ["y"] = 125, ["mapId"] = mapId.ToString() }; // east, toward the rat
+
+            await Run("sanity/burning_hands", player, new { mapId = mapId.ToString(), lengthSquares = "3", dice = "3d6" });
+
+            NoErrors();
+            var aim = Assert.Single(sent, x => x.To == player && x.Command.Command == "request_point");
+            Assert.Equal("cone", (string?)aim.Command.Data!["area"]!["shape"]);
+            Assert.Equal(125, (double)aim.Command.Data!["from"]!["x"]!);
+            // The cone shown while the GM decides starts at the caster.
+            var shown = (JObject)((JArray)Assert.Single(sent, x => x.To == player && x.Command.Command == "preview_start").Command.Data!)[0]!;
+            Assert.Equal("polygon", (string?)shown["type"]);
+            Assert.Equal("0", PropertyValue(rat, "bar1_value"));  // 7 - 9
+            Assert.Equal("20", PropertyValue(goblinCard, "hp"));  // the caster
+            Assert.Equal("30", PropertyValue(orcCard, "hp"));     // far away
         }
 
         [Fact]

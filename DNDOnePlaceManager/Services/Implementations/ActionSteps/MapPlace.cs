@@ -14,13 +14,23 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     /// A place on a map, as the steps take it (Find's Near and Toward, the markers' At and
     /// Toward, RequestPoint's From): a point ({"x":1,"y":2}, what %position% or %point% gives,
     /// or "x,y"), or a token or element — its id, or the object Find or RequestTargets gives
-    /// (%target%), whose id is taken.
+    /// (%target%), whose id is taken; or a list of one such (Request Targets with Max 1).
     /// </summary>
     public readonly record struct MapPlace(Guid? ElementId, double? X, double? Y)
     {
         public static MapPlace Parse(string step, string argument, string value)
         {
             var text = value.Trim();
+            // A list of one (Request Targets with Max 1): that one.
+            if (text.StartsWith("["))
+            {
+                try
+                {
+                    if (JArray.Parse(text) is { Count: 1 } one)
+                        text = one[0].Type == JTokenType.Object ? one[0].ToString(Newtonsoft.Json.Formatting.None) : one[0].ToString();
+                }
+                catch (Newtonsoft.Json.JsonException) { }
+            }
             if (Guid.TryParse(text, out var id))
                 return new MapPlace(id, null, null);
             if (text.StartsWith("{"))

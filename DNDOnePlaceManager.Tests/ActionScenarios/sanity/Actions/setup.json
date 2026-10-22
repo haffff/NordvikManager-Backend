@@ -47,6 +47,22 @@
       }
     },
     {
+      "id": "1ac73352-a80a-5a2b-8d15-0cd1bb1fb071",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu: Burning Hands",
+        "Name": "sanity_burning_hands",
+        "UiName": "Burning Hands (15 ft cone)",
+        "Action": "sanity/burning_hands",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "ActionArgs": {
+          "lengthSquares": "3",
+          "dice": "3d6"
+        }
+      }
+    },
+    {
       "id": "27adfe46-b403-5b58-9e57-c03f74bca10c",
       "Type": "AddMenuItem",
       "Data": {
