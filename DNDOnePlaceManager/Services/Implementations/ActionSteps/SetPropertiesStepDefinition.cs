@@ -1,4 +1,5 @@
 using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Services.Actions;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
@@ -26,6 +27,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Set Properties";
         public string Value => "SetProperties";
+        public IReadOnlyList<string> Keywords => new[] { "write", "change", "several values", "properties" };
         public string Category => "Data";
         public string Description => "Creates or updates several properties on one entity. Each line in Properties is 'propertyName=value'.";
         public string? Summary => "Set on {ParentId}: {Properties}";
@@ -40,10 +42,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<SetPropertiesStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ParentId))
-                throw new ActionProcessException("SetProperties: 'ParentId' is required.");
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
-                throw new ActionProcessException($"SetProperties: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "SetProperties", stepData.Of, stepData.ParentId);
 
             var assignments = ParseLines(stepData.Properties);
             if (assignments.Count == 0)
@@ -55,10 +54,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var entityName = await SetPropertyStepDefinition.DetectEntityNameAsync(dbContext, parentGuid, gameLobby.GameId)
                 ?? throw new ActionProcessException($"SetProperties: no entity with ID '{parentGuid}' found in the current game.");
 
-            var resolver = new ActionPropertyQueryResolver(dbContext, gameLobby.GameId);
+            var resolver = new ActionTokenResolver(dbContext, gameLobby.GameId);
             foreach (var (name, rawValue) in assignments)
             {
-                var value = (await resolver.PreResolveQueriesAsync(rawValue, variables)).Prepare(variables);
+                var value = await resolver.ResolveAsync(rawValue, variables);
                 await SetPropertyStepDefinition.SetAsync(mediator, gameLobby, parentGuid, entityName, name, value);
             }
         }

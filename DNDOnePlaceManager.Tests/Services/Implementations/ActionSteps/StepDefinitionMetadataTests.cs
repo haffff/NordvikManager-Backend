@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Enums;
+using DNDOnePlaceManager.Enums;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
 using System;
 using System.Linq;
@@ -30,6 +30,71 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
 
         private record ActionDefinitionArgumentLookup(DNDOnePlaceManager.Models.ActionDefinitionResponse Step, DNDOnePlaceManager.Models.ActionDefinitionArgument Arg);
 
+        // ── What a step gives back: the editor shows it under the step and in the variables panel ──
+
+        [Fact]
+        public void EveryOutputArgument_DeclaresWhatItHolds()
+        {
+            var missing = AllSteps()
+                .SelectMany(s => StepDefinitionMetadata.Build(s).Arguments.Where(a => a.IsOutput && a.Output == null).Select(a => $"{s.Value}.{a.Name}"))
+                .ToList();
+
+            Assert.Empty(missing);
+        }
+
+        [Fact]
+        public void Find_ListsItsFieldsPerKind_AndFirstGivesOne()
+        {
+            var output = Arg("Find", "Output").Arg.Output;
+
+            Assert.Equal("list", output.Kind);
+            Assert.Equal("What", output.FieldsBy);
+            Assert.Contains("cardId", output.FieldsByValue["tokens"]);
+            Assert.Contains("isTemplate", output.FieldsByValue["cards"]);
+            Assert.Equal("First", output.SingleWhen);
+        }
+
+        [Fact]
+        public void RollDice_IsAnObject_OrAValueWithSimpleOutput()
+        {
+            var output = Arg("RollDice", "OutputVariable").Arg.Output;
+
+            Assert.Equal("object", output.Kind);
+            Assert.Contains("result", output.Fields);
+            Assert.Equal("SimpleOutput", output.ValueWhen);
+        }
+
+        [Theory]
+        [InlineData("RunScript", "Output", "script")]
+        [InlineData("ForEach", "ItemName", "item")]
+        [InlineData("GetPropertyValue", "Output", "value")]
+        [InlineData("SendRequest", "Output", "object")]
+        public void OutputKinds(string step, string arg, string kind)
+        {
+            Assert.Equal(kind, Arg(step, arg).Arg.Output.Kind);
+        }
+
+        // A switch that is on unless turned off shows as on in the editor.
+        [Fact]
+        public void Defaults_AreSent()
+        {
+            Assert.Equal(true, Arg("RequestTargets", "StopIfCancelled").Arg.Default);
+            Assert.Equal(true, Arg("RequestUserInput", "StopIfCancelled").Arg.Default);
+            Assert.Null(Arg("RequestUserInput", "ShowDialog").Arg.Default);
+        }
+
+        // The step picker finds a step by what you want to do, e.g. "monsters" finds Find.
+        [Theory]
+        [InlineData("Find", "tokens")]
+        [InlineData("Find", "monsters")]
+        [InlineData("RollDice", "random")]
+        [InlineData("GetPropertyValue", "hp")]
+        [InlineData("RequestUserInput", "ask")]
+        public void Keywords_SayWhatAStepIsFor(string step, string keyword)
+        {
+            Assert.Contains(keyword, StepDefinitionMetadata.Build(AllSteps().Single(s => s.Value == step)).Keywords);
+        }
+
         [Fact]
         public void EverySummaryPlaceholder_IsAnArgumentOfThatStep()
         {
@@ -49,9 +114,6 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         public void EveryStepAndArgument_HasADescription()
         {
             var problems = AllSteps()
-                // Send Command passes a raw WebSocketCommand through — an advanced escape hatch,
-                // its fields are the wire format rather than step arguments.
-                .Where(s => s.Value != "SendCommand")
                 .Select(StepDefinitionMetadata.Build)
                 .SelectMany(d => (string.IsNullOrWhiteSpace(d.Description) ? new[] { $"{d.Value}: step description" } : Array.Empty<string>())
                     .Concat(d.Arguments.Where(a => string.IsNullOrWhiteSpace(a.Description)).Select(a => $"{d.Value}.{a.Name}")))
@@ -85,9 +147,15 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Theory]
-        [InlineData("If", "ActionTrue")]
-        [InlineData("If", "ActionFalse")]
-        [InlineData("ForEach", "Action")]
+        [InlineData("If", "Then")]
+        [InlineData("If", "Else")]
+        [InlineData("ForEach", "Do")]
+        public void Blocks_UseTheStepsWidget(string step, string arg)
+        {
+            Assert.Equal("steps", Arg(step, arg).Arg.Type);
+        }
+
+        [Theory]
         [InlineData("ExecuteAction", "Value")]
         [InlineData("RollDice", "FollowUpActionName")]
         public void ActionReferences_UseActionWidget(string step, string arg)
@@ -99,7 +167,6 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         [InlineData("GetConnectedPlayers", "Value")]
         [InlineData("SetVariable", "Name")]
         [InlineData("ForEach", "ItemName")]
-        [InlineData("FilterCollection", "ItemName")]
         [InlineData("GetPropertyValue", "Output")]
         [InlineData("RollDice", "OutputVariable")]
         public void VariableCreatingArguments_AreMarkedAsOutputs(string step, string arg)
@@ -108,9 +175,10 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
-        public void FilterCondition_IsDeferred_ButOrdinaryArgumentsAreNot()
+        public void Blocks_AreDeferred_ButOrdinaryArgumentsAreNot()
         {
-            Assert.True(Arg("FilterCollection", "Condition").Arg.Deferred);
+            Assert.True(Arg("If", "Then").Arg.Deferred);
+            Assert.True(Arg("ForEach", "Do").Arg.Deferred);
             Assert.False(Arg("If", "Condition").Arg.Deferred);
         }
 
@@ -124,11 +192,25 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
                 hooks.Single(h => h.Key == nameof(Hook.ChatCommand)).Variables);
         }
 
-        // The editor offers a list of entity types instead of a free-text Type.
+        // The editor offers the kinds Find knows instead of a free-text What.
         [Fact]
-        public void GetData_Type_IsAnEntityTypePicker()
+        public void Find_What_IsAKindPicker()
         {
-            Assert.Equal("entitytype", Arg("GetData", "Type").Arg.Type);
+            Assert.Equal("findkind", Arg("Find", "What").Arg.Type);
+        }
+
+        [Theory]
+        [InlineData("GetData")]
+        [InlineData("GetDetail")]
+        [InlineData("SetDetail")]
+        [InlineData("Calculate")]
+        [InlineData("FilterCollection")]
+        [InlineData("QueryData")]
+        [InlineData("QueryProperties")]
+        [InlineData("SendCommand")]
+        public void RemovedSteps_AreGone(string step)
+        {
+            Assert.DoesNotContain(AllSteps(), s => s.Value == step);
         }
     }
 }

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/addon.json",
+  "key": "sanity",
+  "name": "Sanity examples",
+  "version": "0.2.0",
+  "description": "Example actions: targets, Bless, Fireball, random monster, random damage."
+}

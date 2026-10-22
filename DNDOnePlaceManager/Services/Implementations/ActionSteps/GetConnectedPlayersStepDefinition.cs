@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Services.Implementations.ActionBody;
+using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
 using System;
@@ -11,6 +11,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Get Connected Players";
         public string Value => "GetConnectedPlayers";
+        public IReadOnlyList<string> Keywords => new[] { "players", "online", "who is here" };
         public string Category => "Data";
         public string Description => "Stores the list of players connected right now (each with Id and Name) in a variable, e.g. to loop over them with For Each.";
         public string? Summary => "Connected players[ → {Value}]";

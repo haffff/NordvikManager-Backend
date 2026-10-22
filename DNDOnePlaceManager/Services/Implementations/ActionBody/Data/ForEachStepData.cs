@@ -1,4 +1,5 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
+using Newtonsoft.Json.Linq;
 using System.ComponentModel;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -8,12 +9,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Name of the variable holding the collection to iterate over.")]
         public string Collection { get; set; }
 
-        [VariableOutput]
-        [Description("Name used for the current item in each iteration. Accessible as a variable inside the sub-action.")]
+        [VariableOutput("item", ItemOf = nameof(Collection))]
+        [Description("Name used for the current item in each iteration, readable in the steps of Do.")]
         public string ItemName { get; set; }
 
-        [UIType("action")]
-        [Description("Name of the action to execute for each item in the collection.")]
-        public string Action { get; set; }
+        [UIType("steps")]
+        [Description("Steps to run for each item. They use the action's variables: what they set is there after the loop.")]
+        public JArray? Do { get; set; }
     }
 }

@@ -48,9 +48,9 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             _lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Player" }] = new List<IPlayerConnection> { _everyone };
         }
 
-        private async Task<Dictionary<string, object>> Run(IActionStepDefinition step, object data)
+        private async Task<Dictionary<string, object>> Run(IActionStepDefinition step, object data, Dictionary<string, object> variables = null)
         {
-            var variables = new Dictionary<string, object>();
+            variables ??= new Dictionary<string, object>();
             await step.Execute(_mediator.Object, variables, _lobby, new ActionStep { Type = step.Value, Data = JObject.FromObject(data) });
             return variables;
         }
@@ -110,6 +110,18 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             var variables = await Run(new GetTurnOrderStepDefinition(), new { MapId = _mapId.ToString(), Output = "order" });
 
             Assert.Equal(3, JObject.FromObject(variables["order"])["Round"]!.Value<int>());
+        }
+
+        // A player's client sends the map they are looking at; several views are no longer an error.
+        [Fact]
+        public async Task NoMapId_UsesTheMapThePlayerIsLookingAt()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetBattleMapsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<BattleMapDto> { new() { Id = Guid.NewGuid(), MapId = Guid.NewGuid() }, new() { Id = Guid.NewGuid(), MapId = Guid.NewGuid() } });
+
+            await Run(new SortTurnOrderStepDefinition(), new { MapId = "" }, new Dictionary<string, object> { ["mapId"] = _mapId.ToString() });
+
+            Assert.Equal(_mapId, Sent.MapId);
         }
 
         [Fact]

@@ -28,6 +28,10 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Link
         {
             await base.Handle(request, cancellationToken);
 
+            // The host's disk belongs to whoever runs this server, not to a game's GM.
+            if (!request.IsLocalAdmin)
+                throw new PermissionException(Permission.Edit);
+
             var playerId = request.Player?.Id ?? Guid.Empty;
 
             var game = await dbContext.Games
@@ -37,10 +41,6 @@ namespace DndOnePlaceManager.Application.Commands.Resources.Link
 
             var player = await dbContext.Players.FirstOrDefaultAsync(p => p.Id == playerId, cancellationToken);
             Guard.NotFound(player, "Player", playerId);
-
-            var isGM = player.System || game.MasterId == playerId;
-            if (!isGM)
-                throw new PermissionException(Permission.Edit);
 
             // Normalize to an absolute path before persisting — a relative LocalPath would
             // resolve against the backend process's working directory, which can change

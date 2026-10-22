@@ -1,0 +1,116 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "fireball",
+  "prefix": "sanity",
+  "description": "Map tool: rolls Fireball where the map was clicked; asks the GM before damaging the tokens in range.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "a822e2fb-5a41-58eb-ae8d-ecb7774cdfdc",
+      "Type": "Find",
+      "Data": {
+        "Label": "Tokens in the blast",
+        "What": "tokens",
+        "Near": "%position%",
+        "Radius": "%radiusSquares%",
+        "Output": "hit"
+      }
+    },
+    {
+      "id": "74a444ae-5431-5b19-81a8-5aa57e419b89",
+      "Type": "ShowMarker",
+      "Data": {
+        "Label": "Show the blast while the GM decides",
+        "Shape": "circle",
+        "X": "%position.x%",
+        "Y": "%position.y%",
+        "Radius": "%radiusSquares%",
+        "UntilActionEnds": true
+      }
+    },
+    {
+      "id": "48eb84a7-89a7-58f6-b252-05724c115c5e",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Fire damage",
+        "DiceString": "%dice%",
+        "OutputVariable": "fireDamage",
+        "SimpleOutput": true,
+        "PrintToChat": true,
+        "ChatTitle": "%playerName%: Fireball"
+      }
+    },
+    {
+      "id": "811843ed-1ac6-5a91-bc33-0bcab8f7db76",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Who was hit",
+        "Output": "",
+        "Script": "return { hitCount: vars.hit.length, hitNames: vars.hit.map(function (t) { return t.name; }).join(\", \") || \"nobody\" };"
+      }
+    },
+    {
+      "id": "638037a8-6b1e-58b0-b946-6a04d270f0c1",
+      "Type": "RequestUserInput",
+      "Data": {
+        "Label": "Ask the GM",
+        "UserID": "%gmId%",
+        "ShowDialog": true,
+        "Options": "yes\nhalf\nno",
+        "StopIfCancelled": false,
+        "Timeout": "00:02:00",
+        "Output": "answer",
+        "Message": "Fireball by %playerName%: %fireDamage% fire damage to %hitNames%. Apply it?"
+      }
+    },
+    {
+      "id": "229b766e-5225-5779-9995-ec2fef0d0370",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Read the answer",
+        "Output": "",
+        "Script": "var a = String(vars.answer == null ? \"\" : vars.answer).trim().toLowerCase();\nvar dmg = Number(vars.fireDamage) || 0;\nvar final = 0, text;\nif (vars.hitCount === 0) text = \"The Fireball hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" fire damage to \" + vars.hitCount + \" creature(s).\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.hitCount + \" creature(s).\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, apply: final > 0 ? 1 : 0, result: text };"
+      }
+    },
+    {
+      "id": "6e588571-361f-5f09-98d7-2b8131b46486",
+      "Type": "If",
+      "Data": {
+        "Label": "Apply when the GM agreed",
+        "Condition": "%apply% = 1",
+        "Then": [
+          {
+            "id": "e49b1f88-0204-5b96-99df-263a485674a3",
+            "Type": "ForEach",
+            "Data": {
+              "Label": "Each token hit",
+              "Collection": "hit",
+              "ItemName": "target",
+              "Do": [
+                {
+                  "id": "0ffed69f-74d8-5ade-94f8-eb5d066a7f7f",
+                  "Type": "ExecuteAction",
+                  "Data": {
+                    "Label": "Damage it",
+                    "Value": "sanity/damage_target"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fbb4c3ec-02c4-5285-8bc4-bd17fe0f16e9",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Result",
+        "Template": "Text",
+        "Title": "Fireball",
+        "Message": "%result%"
+      }
+    }
+  ]
+}

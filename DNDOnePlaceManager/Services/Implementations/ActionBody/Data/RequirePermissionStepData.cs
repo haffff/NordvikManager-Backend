@@ -11,7 +11,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Permission to require: Read, Execute, Control, Edit, Remove, All.")]
         public string Permission { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Variable name to store the boolean result. Leave empty to skip storing.")]
         public string Output { get; set; }
 

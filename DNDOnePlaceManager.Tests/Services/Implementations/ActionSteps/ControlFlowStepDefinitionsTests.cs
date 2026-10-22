@@ -41,55 +41,6 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
-        public void Filter_DeclaresConditionAsDeferred()
-        {
-            Assert.Contains("Condition", new FilterStepDefinition().DeferredArguments);
-        }
-
-        [Fact]
-        public async Task Filter_EvaluatesConditionPerItem()
-        {
-            var vars = new Dictionary<string, object>
-            {
-                ["numbers"] = new List<object> { 1, 5, 10, 15 },
-                ["threshold"] = 7,
-            };
-
-            await new FilterStepDefinition().Execute(_mediator, vars, null, MakeStep("FilterCollection", new
-            {
-                Collection = "numbers",
-                ItemName = "n",
-                Condition = "%n% > %threshold%",
-                OutputName = "big",
-            }));
-
-            Assert.Equal(new object[] { 10, 15 }, ((IEnumerable<object>)vars["big"]).ToArray());
-            Assert.False(vars.ContainsKey("n"));
-        }
-
-        [Fact]
-        public async Task Filter_ObjectItems_UseVariablePaths_AndRestoreShadowedVariable()
-        {
-            var vars = new Dictionary<string, object>
-            {
-                ["cards"] = new List<object> { JObject.Parse("{\"name\":\"Orc\",\"hp\":0}"), JObject.Parse("{\"name\":\"Elf\",\"hp\":4}") },
-                ["c"] = "outer",
-            };
-
-            await new FilterStepDefinition().Execute(_mediator, vars, null, MakeStep("FilterCollection", new
-            {
-                Collection = "cards",
-                ItemName = "c",
-                Condition = "%v:c.hp% > 0",
-                OutputName = "alive",
-            }));
-
-            var alive = Assert.Single((IEnumerable<object>)vars["alive"]);
-            Assert.Equal("Elf", ((JObject)alive)["name"].ToString());
-            Assert.Equal("outer", vars["c"]);
-        }
-
-        [Fact]
         public async Task Exit_ThrowsExitWithMessage()
         {
             var ex = await Assert.ThrowsAsync<ActionExitException>(() =>

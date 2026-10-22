@@ -24,6 +24,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Send Chat";
         public string Value => "SendChat";
+        public IReadOnlyList<string> Keywords => new[] { "chat", "message", "say", "announce", "whisper", "tell" };
         public string Category => "Client";
         public string Description => "Sends a formatted message to the game chat. Use Template='Roll' after a RollDice step to display a styled roll card, 'BigNumber' for a large value, or 'Text' for a plain message.";
         public string? Summary => "Chat[ to {Player}]:[ {Title}][ {Message}][ {Number}]";

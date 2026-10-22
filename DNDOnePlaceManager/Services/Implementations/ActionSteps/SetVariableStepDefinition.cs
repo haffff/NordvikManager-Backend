@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Services.Actions;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -13,6 +14,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Set Variable";
         public string Value => "SetVariable";
+        public IReadOnlyList<string> Keywords => new[] { "remember", "store", "variable", "value" };
         public string Category => "Control Flow";
         public string Description => "Sets a variable to a value, with optional type casting and a default fallback when the value is empty.";
         public string? Summary => "{Name} = {Value}";
@@ -28,7 +30,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var raw = stepData.Value ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(raw) && !string.IsNullOrWhiteSpace(stepData.DefaultValue))
-                raw = stepData.DefaultValue.Prepare(variables);
+                raw = ActionTokenResolver.ResolveVariables(stepData.DefaultValue, variables);
 
             var targetType = ActionValueTypes.Resolve(stepData.Type);
 

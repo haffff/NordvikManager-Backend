@@ -1,3 +1,4 @@
+using System.Linq;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Models;
 using DNDOnePlaceManager.Services.Implementations;
@@ -31,7 +32,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         private static ActionStep MakeStep(
             string userName = null, string userId = null, string message = null,
             bool? showDialog = null, string defaultInput = null, string output = "ans",
-            TimeSpan? timeout = null)
+            TimeSpan? timeout = null, string options = null, bool? stopIfCancelled = null)
         {
             var d = new JObject();
             if (userName != null) d["UserName"] = userName;
@@ -41,6 +42,8 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             if (defaultInput != null) d["DefaultInput"] = defaultInput;
             if (output != null) d["Output"] = output;
             if (timeout.HasValue) d["Timeout"] = JToken.FromObject(timeout.Value);
+            if (options != null) d["Options"] = options;
+            if (stopIfCancelled.HasValue) d["StopIfCancelled"] = stopIfCancelled.Value;
             return new ActionStep { Type = "RequestUserInput", Data = d };
         }
 
@@ -130,31 +133,71 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             await exec;
         }
 
+        // No answer — the player isn't connected, doesn't answer in time or cancels — stops the
+        // action by default; with StopIfCancelled off the answer is empty and it carries on.
         [Fact]
-        public async Task PlayerNotFound_ReturnsImmediately_NoSend()
+        public async Task PlayerNotFound_StopsTheAction_NoSend()
         {
             var lobby = MakeLobby(out var inputHandler);
             var conn = AddPlayer(lobby, "Alice", out _);
-            var vars = new Dictionary<string, object>();
 
-            await _def.Execute(_mediator.Object, vars, lobby, MakeStep(userName: "Ghost", message: "Q", output: "ans"));
+            await Assert.ThrowsAsync<ActionExitException>(() =>
+                _def.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, MakeStep(userName: "Ghost", message: "Q", output: "ans")));
 
             conn.Verify(c => c.SendMessageToPlayer(It.IsAny<object>()), Times.Never);
             Assert.Empty(inputHandler);
-            Assert.Empty(vars);
         }
 
         [Fact]
-        public async Task Timeout_LeavesOutputUnset()
+        public async Task PlayerNotFound_WithStopIfCancelledOff_GivesAnEmptyAnswer()
+        {
+            var lobby = MakeLobby(out _);
+            var vars = new Dictionary<string, object>();
+
+            await _def.Execute(_mediator.Object, vars, lobby, MakeStep(userName: "Ghost", message: "Q", output: "ans", stopIfCancelled: false));
+
+            Assert.Equal("", vars["ans"]);
+        }
+
+        [Fact]
+        public async Task Timeout_StopsTheAction()
         {
             var lobby = MakeLobby(out _);
             AddPlayer(lobby, "Alice", out _);
+
+            await Assert.ThrowsAsync<ActionExitException>(() => _def.Execute(_mediator.Object, new Dictionary<string, object>(), lobby,
+                MakeStep(userName: "Alice", message: "Q", output: "ans", timeout: TimeSpan.FromMilliseconds(50))));
+        }
+
+        [Fact]
+        public async Task Cancelled_StopsTheAction()
+        {
+            var lobby = MakeLobby(out var inputHandler);
+            AddPlayer(lobby, "Alice", out var lastSent);
+
+            var exec = _def.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, MakeStep(userName: "Alice", message: "Q", output: "ans"));
+            var token = lastSent().InputToken.Value;
+            inputHandler[token].TrySetResult(new WebSocketCommand { InputToken = token, Data = JToken.FromObject("") });
+
+            await Assert.ThrowsAsync<ActionExitException>(() => exec);
+        }
+
+        // Options: the dialog shows them as buttons; the answer is the one chosen.
+        [Fact]
+        public async Task Options_AreSentAsButtons_AndTheChoiceIsTheAnswer()
+        {
+            var lobby = MakeLobby(out var inputHandler);
+            AddPlayer(lobby, "Alice", out var lastSent);
             var vars = new Dictionary<string, object>();
 
-            await _def.Execute(_mediator.Object, vars, lobby,
-                MakeStep(userName: "Alice", message: "Q", output: "ans", timeout: TimeSpan.FromMilliseconds(50)));
+            var exec = _def.Execute(_mediator.Object, vars, lobby,
+                MakeStep(userName: "Alice", message: "Apply?", showDialog: true, options: "yes\nhalf\n no \n", output: "ans"));
+            var sent = lastSent();
+            Assert.Equal(new[] { "yes", "half", "no" }, sent.Data["options"]!.Select(x => (string)x));
+            inputHandler[sent.InputToken.Value].TrySetResult(new WebSocketCommand { Data = JToken.FromObject("half") });
 
-            Assert.False(vars.ContainsKey("ans"));
+            await exec;
+            Assert.Equal("half", vars["ans"].ToString());
         }
 
         [Fact]

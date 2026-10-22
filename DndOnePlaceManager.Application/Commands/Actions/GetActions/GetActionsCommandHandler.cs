@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Mapping;
+﻿using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -26,14 +26,11 @@ namespace DndOnePlaceManager.Application.Commands.Actions.GetActions
 
             game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
-            var actions = Enumerable.Empty<ActionModel>();
+            // A fixed order, so pages don't skip or repeat actions.
+            IEnumerable<ActionModel> actions = game.Actions.OrderBy(x => x.Prefix).ThenBy(x => x.Name);
             if (request.Page != null)
             {
-                actions = game.Actions.Skip((int)request.Page * 10).Take(10);
-            }
-            else
-            {
-                actions = game.Actions;
+                actions = actions.Skip((int)request.Page * 10).Take(10);
             }
 
             var actionsDtos = mapper.Map<List<ActionDto>>(actions);

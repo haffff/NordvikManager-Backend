@@ -28,6 +28,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Set Property";
         public string Value => "SetProperty";
+        public IReadOnlyList<string> Keywords => new[] { "write", "change", "value", "hp", "damage", "heal", "stat", "property", "set" };
         public string Category => "Data";
         public string Description => "Creates or updates a named property on any entity, identified by its ID.";
         public string? Summary => "Set {PropertyName} of {ParentId} = {PropertyValue}";
@@ -37,13 +38,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var stepData = step.Data.ToObject<SetPropertyStepData>();
 
-            if (string.IsNullOrWhiteSpace(stepData.ParentId))
-                throw new ActionProcessException("SetProperty: 'ParentId' is required.");
             if (string.IsNullOrWhiteSpace(stepData.PropertyName))
                 throw new ActionProcessException("SetProperty: 'PropertyName' is required.");
 
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
-                throw new ActionProcessException($"SetProperty: 'ParentId' value '{stepData.ParentId}' is not a valid GUID.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "SetProperty", stepData.Of, stepData.ParentId);
 
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();

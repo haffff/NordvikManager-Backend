@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add Toolbar Button";
         public string Value => "AddToolbarButton";
+        public IReadOnlyList<string> Keywords => new[] { "toolbar", "button", "menu" };
         public string Category => "Client";
         public string Description => "Adds a button to the main toolbar that runs an action, or, with a Menu Id, a dropdown menu that Add Menu Item steps can fill.";
         public string? Summary => "Toolbar button {UiName}[ → {Action}]";
@@ -37,26 +38,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data = payload
             };
 
-            if (stepData.OnlyOwner)
-            {
-                variables.TryGetValue("Player", out var playerObj);
-                var triggeringPlayer = playerObj as PlayerDTO;
-
-                if (triggeringPlayer == null)
-                    throw new ActionProcessException("AddToolbarButton: OnlyOwner is true but no triggering player found in context.");
-
-                var connectedPlayer = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(
-                    x => x.Id == triggeringPlayer.Id)
-                    ?? throw new ActionProcessException("AddToolbarButton: Triggering player is not connected.");
-
-                gameLobby.SendToPlayer(command, connectedPlayer);
-            }
-            else
-            {
-                gameLobby.Broadcast(command, gameLobby.SystemPlayer);
-            }
-
-            await Task.CompletedTask;
+            await UiDelivery.SendAsync(mediator, gameLobby, variables, "AddToolbarButton", command, stepData.OnlyTriggeringPlayer, stepData.GmOnly);
         }
     }
 }

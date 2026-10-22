@@ -126,6 +126,22 @@ namespace DNDOnePlaceManager.Tests.Controllers
             Assert.Equal(gameResponse, ok.Value);
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetFullGame_TellsWhetherTheUserIsLocalAdmin(bool isLocalAdmin)
+        {
+            var gameResponse = new DndOnePlaceManager.Application.Commands.BattleMap.GetGame.GetGameCommandResponse();
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(gameResponse);
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = isLocalAdmin });
+
+            var result = await controller.GetFullGame(Guid.NewGuid());
+
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(isLocalAdmin, ((DndOnePlaceManager.Application.Commands.BattleMap.GetGame.GetGameCommandResponse)ok.Value!).IsLocalAdmin);
+        }
+
         // =========================================================================
         // GetChat
         // =========================================================================

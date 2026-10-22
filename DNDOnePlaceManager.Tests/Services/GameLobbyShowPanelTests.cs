@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Application.Commands.Security.CheckPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.WebRTC;
@@ -27,18 +28,23 @@ namespace DNDOnePlaceManager.Tests.Services
         private readonly PlayerDTO _gm = new() { Id = Guid.NewGuid(), Name = "GM", IsOwner = true };
         private readonly PlayerDTO _abelard = new() { Id = Guid.NewGuid(), Name = "Abelard" };
         private readonly PlayerDTO _other = new() { Id = Guid.NewGuid(), Name = "Other" };
+        private readonly PlayerDTO _editor = new() { Id = Guid.NewGuid(), Name = "Editor" };
         private readonly Dictionary<PlayerDTO, RecordingConnection> _connections = new();
         private readonly GameLobby _lobby;
 
         public GameLobbyShowPanelTests()
         {
+            // Only the editor has Edit on the game (checked live, not from the connect-time DTO).
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((IRequest<bool> c, CancellationToken _) => ((CheckPermissionsCommand)c).Player.Id == _editor.Id);
             var scopes = new ServiceCollection()
-                .AddSingleton(new Mock<IMediator>().Object)
+                .AddSingleton(mediator.Object)
                 .AddSingleton(new Mock<DNDOnePlaceManager.Services.Interfaces.IActionProcessingService>().Object)
                 .BuildServiceProvider()
                 .GetRequiredService<IServiceScopeFactory>();
             _lobby = new GameLobby(scopes) { GameId = Guid.NewGuid(), SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" } };
-            foreach (var player in new[] { _gm, _abelard, _other })
+            foreach (var player in new[] { _gm, _abelard, _other, _editor })
             {
                 var connection = new RecordingConnection();
                 _connections[player] = connection;
@@ -73,6 +79,15 @@ namespace DNDOnePlaceManager.Tests.Services
 
             Assert.Single(Panels(_abelard));
             Assert.Empty(Panels(_other));
+        }
+
+        [Fact]
+        public async Task ShowPanel_ReachesPlayers_WhenSentByAnEditorWhoIsNotTheOwner()
+        {
+            await _lobby.HandlePostCommand(_editor, ShowBattleMap(null));
+
+            Assert.Single(Panels(_abelard));
+            Assert.Single(Panels(_gm));
         }
 
         [Fact]

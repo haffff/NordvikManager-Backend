@@ -1,0 +1,70 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "damage_target",
+  "prefix": "sanity",
+  "description": "Lowers a token's HP by 'damage': its card's hp, or a card-less token's Bar 1.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "2f756c64-500f-5f06-ab99-5f5c0422899f",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Where its HP is",
+        "Output": "",
+        "Script": "var t = vars.target;\nreturn t.cardId ? { hpOf: t.cardId, hpName: \"hp\" } : { hpOf: t.id, hpName: \"bar1_value\" };"
+      }
+    },
+    {
+      "id": "0fe8a9c9-509a-5b2b-a95b-b69756902803",
+      "Type": "GetPropertyValue",
+      "Data": {
+        "Label": "Its HP",
+        "ParentId": "%hpOf%",
+        "PropertyName": "%hpName%",
+        "DefaultValue": "",
+        "Output": "hp"
+      }
+    },
+    {
+      "id": "b0906d4c-4d9f-5f2b-aede-056745637964",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "New HP",
+        "Output": "",
+        "Script": "var cur = parseInt(vars.hp, 10);\nvar dmg = Number(vars.damage) || 0;\nif (isNaN(cur)) return { hasHp: 0, report: vars.target.name + \" has no HP to lower.\" };\nvar now = Math.max(0, cur - dmg);\nreturn { hasHp: 1, newHp: String(now), report: vars.target.name + \": -\" + dmg + \" HP (\" + cur + \" -> \" + now + \")\" };"
+      }
+    },
+    {
+      "id": "dd73f653-88bd-51d1-8027-089fa35c85ee",
+      "Type": "If",
+      "Data": {
+        "Label": "Only when it has HP",
+        "Condition": "%hasHp% = 1",
+        "Then": [
+          {
+            "id": "3be0f519-b116-57b6-ab77-ae561a79bcd6",
+            "Type": "SetProperty",
+            "Data": {
+              "Label": "HP",
+              "ParentId": "%hpOf%",
+              "PropertyName": "%hpName%",
+              "PropertyValue": "%newHp%"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "887cc348-45a3-5a9b-b58d-688c90acbe8c",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Report to the GM only (names and HP may be secret)",
+        "Template": "Text",
+        "Title": "Damage",
+        "Message": "%report%",
+        "Player": "%gmId%"
+      }
+    }
+  ]
+}

@@ -29,7 +29,9 @@ namespace DndOnePlaceManager.Application.Commands.Resources.UpdateResource
             var resourceModel = dbContext.Resources.FirstOrDefault(x => x.Id == request.Resource.Id);
             Guard.NotFound(resourceModel, "Resource", request.Resource.Id);
 
-            if (resourceModel.PlayerId != request.Player.Id && !(request.Player.IsOwner ?? false))
+            // The uploader, or whoever may edit the game (owner or co-GM).
+            var canEditGame = (request.Player.IsOwner ?? false) || ((request.Player.Permission ?? Permission.None) & Permission.Edit) != 0;
+            if (resourceModel.PlayerId != request.Player.Id && !canEditGame)
                 throw new PermissionException(Permission.Edit);
 
             if (request.Resource.Name != null)

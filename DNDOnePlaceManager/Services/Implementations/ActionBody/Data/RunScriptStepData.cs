@@ -10,9 +10,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [UIType("code")]
         public string? Script { get; set; }
 
+        [Description("Optional. Shared script files to put before the script (resource keys, one per line or comma-separated), " +
+            "e.g. myaddon_rules.js: functions several actions use.")]
+        public string? Include { get; set; }
+
         [Description("Optional. When set, the whole return value is stored in this variable. " +
             "When empty, the script must return an object and each of its keys becomes a variable.")]
-        [VariableOutput]
+        [VariableOutput("script")]
         public string? Output { get; set; }
     }
 }

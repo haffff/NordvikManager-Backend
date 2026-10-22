@@ -28,6 +28,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Category = x.Category,
                 Description = x.Description,
                 Summary = x.Summary,
+                Keywords = x.Keywords.ToArray(),
                 Arguments = x.DataType?
                     .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                     .Where(y => y.SetMethod?.IsPublic == true)
@@ -40,8 +41,24 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                         ConditionValue = y.GetCustomAttribute<ShowIfAttribute>()?.Value,
                         IsOutput = y.GetCustomAttribute<VariableOutputAttribute>() != null,
                         Deferred = deferred.Contains(y.Name, StringComparer.OrdinalIgnoreCase),
+                        Output = Shape(y.GetCustomAttribute<VariableOutputAttribute>()),
+                        Default = y.GetCustomAttribute<DefaultValueAttribute>()?.Value,
                     }).ToArray()
             };
         }
+
+        private static OutputShape? Shape(VariableOutputAttribute? output) => output == null ? null : new OutputShape
+        {
+            Kind = output.Kind,
+            Fields = output.Fields,
+            FieldsBy = output.FieldsBy,
+            FieldsByValue = output.FieldsFrom?.GetField("Fields", BindingFlags.Public | BindingFlags.Static)?.GetValue(null)
+                is IReadOnlyDictionary<string, string[]> byValue
+                    ? byValue.ToDictionary(x => x.Key, x => x.Value)
+                    : null,
+            SingleWhen = output.SingleWhen,
+            ValueWhen = output.ValueWhen,
+            ItemOf = output.ItemOf,
+        };
     }
 }

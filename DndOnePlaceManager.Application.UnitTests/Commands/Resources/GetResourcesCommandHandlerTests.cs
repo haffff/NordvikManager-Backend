@@ -4,6 +4,7 @@ using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using Moq;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
 {
@@ -34,9 +35,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
         }
 
         [Fact]
-        public async Task Handle_Gm_SeesAllResourcesOfTheGameWithoutData()
+        public async Task Handle_LocalAdminGm_SeesAllResourcesOfTheGameWithoutData()
         {
-            var (_, resources) = await Handler().Handle(new GetResourcesCommand { GameId = gameId, Player = Player() }, CancellationToken.None);
+            var (_, resources) = await Handler().Handle(new GetResourcesCommand { GameId = gameId, Player = Player(), IsLocalAdmin = true }, CancellationToken.None);
 
             Assert.Equal(new[] { "map.png", "token.png" }, resources.Select(x => x.Name).OrderBy(x => x));
             Assert.All(resources, x => Assert.Null(x.Data));
@@ -50,6 +51,8 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
         public async Task Handle_Player_SeesOnlyOwnResourcesWithoutPaths()
         {
             var player = new DndOnePlaceManager.Application.DataTransferObjects.Game.PlayerDTO { Id = otherPlayerId, Name = "Player" };
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(otherPlayerId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission>()))
+                .Returns(false);
 
             var (_, resources) = await Handler().Handle(new GetResourcesCommand { GameId = gameId, Player = player }, CancellationToken.None);
 

@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
+using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DNDOnePlaceManager.Extensions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
@@ -14,6 +15,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Get Property Value";
         public string Value => "GetPropertyValue";
+        public IReadOnlyList<string> Keywords => new[] { "read", "value", "hp", "health", "stat", "property", "get" };
         public string Description => "Reads a single named property's value for one entity, falling back to DefaultValue when it doesn't exist.";
         public string Category => "Properties";
         public string? Summary => "Read {PropertyName} of {ParentId}[ → {Output}]";
@@ -26,7 +28,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (string.IsNullOrWhiteSpace(stepData.Output))
                 return;
 
-            if (!Guid.TryParse(stepData.ParentId, out var parentGuid))
+            // No such owner (no id given, a token without a card…): the default, as for a missing property.
+            Guid parentGuid;
+            try
+            {
+                parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "GetPropertyValue", stepData.Of, stepData.ParentId);
+            }
+            catch (ActionProcessException)
             {
                 variables[stepData.Output] = stepData.DefaultValue;
                 return;

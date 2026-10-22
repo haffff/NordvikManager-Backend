@@ -29,84 +29,39 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
     // done/failed/exited, with variables) plus a "finished" message, sent only to the player
     // who ran it. The important case is a failing sub-action: its exception never reaches
     // the calling If/ExecuteAction step, so the trace must still mark that step as failed.
-    public class ActionTraceTests
+    public class ActionTraceTests : ActionServiceTestBase
     {
-        private readonly Mock<IMediator> _mediator = new();
-        private readonly List<JObject> _sent = new();
-        private readonly List<ActionDto> _actions = new();
-        private readonly PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "GM" };
-        private readonly IActionProcessingService _service;
-
-        public ActionTraceTests()
+        // An action only the GM may run (GmPermission) has no row for a co-GM on the action
+        // itself; Edit on the game is enough, like for the owner.
+        [Fact]
+        public async Task GmOnlyAction_RunByACoGm_Runs()
         {
-            var steps = new IActionStepDefinition[]
-            {
-                new SetVariableStepDefinition(), new IfStepDefinition(), new LogStepDefinition(),
-                new ExitStepDefinition(), new CalculateStepDefinition(),
-            };
-
-            var games = new Mock<DbSet<GameModel>>();
-            var db = new Mock<IDbContext>();
-            db.Setup(d => d.Games).Returns(games.Object);
-
-            _mediator.Setup(m => m.Send(It.IsAny<GetActionsCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => (CommandResponse.Ok, _actions));
             _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
-
-            IActionProcessingService service = null;
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IEnumerable<IActionStepDefinition>))).Returns(steps);
-            provider.Setup(p => p.GetService(typeof(IDbContext))).Returns(db.Object);
-            provider.Setup(p => p.GetService(typeof(IMediator))).Returns(_mediator.Object);
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(() => service);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<DNDOnePlaceManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<DNDOnePlaceManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            // ActionProcessingService is internal to the API assembly.
-            var type = typeof(IActionProcessingService).Assembly
-                .GetType("DNDOnePlaceManager.Services.Implementations.ActionProcessingService");
-            service = (IActionProcessingService)Activator.CreateInstance(type, scopeFactory.Object);
-
-            var connection = new Mock<IPlayerConnection>();
-            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))
-                .Callback<object>(m =>
+                .ReturnsAsync((IRequest<bool> c, CancellationToken _) =>
                 {
-                    if (m is WebSocketCommand cmd && cmd.Command == "action_trace")
-                        lock (_sent) _sent.Add((JObject)cmd.Data);
-                })
-                .ReturnsAsync(true);
+                    var check = (CheckPermissionsCommand)c;
+                    return check.EntityId == _lobby.GameId && check.RequiredPermission == Permission.Edit;
+                });
+            AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
+            _actions[^1].GmPermission = Permission.Execute;
 
-            var lobby = new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-                ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>> { [_player] = new() { connection.Object } },
-            };
-            _service = lobby.ActionProcessingService;
+            var msgs = await Run("gm");
+
+            Assert.Equal("Completed", msgs.Last()["state"]?.ToString());
         }
 
-        private void AddAction(string name, params object[] steps) => _actions.Add(new ActionDto
+        [Fact]
+        public async Task GmOnlyAction_RunByAPlayer_IsRefused()
         {
-            Id = Guid.NewGuid(), Prefix = "t", Name = name, IsEnabled = true, Hook = 0,
-            Content = JsonConvert.SerializeObject(steps),
-        });
+            _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+            AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
+            _actions[^1].GmPermission = Permission.Execute;
 
-        private static object Step(string id, string type, object data) => new { id, Type = type, Data = data };
+            await Run("gm"); // no trace: a player who can't edit the game isn't traced
 
-        private async Task<List<JObject>> Run(string name)
-        {
-            var trace = new ActionTrace { TraceId = Guid.NewGuid(), Player = _player };
-            await _service.ExecActionAsync($"t/{name}", new CommandHookArgs { Player = _player }, null, trace);
-            return _sent.Where(m => m["traceId"]?.ToString() == trace.TraceId.ToString()).ToList();
+            Assert.Contains(_lobby.EventLog.GetEntries(), e => e.Category == "Permission");
         }
-
-        private static JObject Last(List<JObject> msgs, string stepId) =>
-            msgs.Last(m => m["stepId"]?.ToString() == stepId);
 
         [Fact]
         public async Task CompletedRun_ReportsEachStepWithVariables_ThenFinished()
@@ -128,9 +83,9 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
         [Fact]
         public async Task FailingSubAction_MarksTheCallingStepFailed()
         {
-            AddAction("broken", Step("b1", "Calculate", new { Expression = "1 +", OutputName = "x" }));
+            AddAction("broken", Step("b1", "RunScript", new { Script = "throw new Error('broken');" }));
             AddAction("caller",
-                Step("c1", "If", new { Condition = "1 = 1", ActionTrue = "t/broken" }),
+                Step("c1", "ExecuteAction", new { Value = "t/broken" }),
                 Step("c2", "Log", new { Message = "after" }));
 
             var msgs = await Run("caller");
@@ -148,7 +103,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
         [Fact]
         public async Task MissingSubAction_MarksTheCallingStepFailed()
         {
-            AddAction("caller2", Step("c1", "If", new { Condition = "1 = 1", ActionTrue = "t/nope" }));
+            AddAction("caller2", Step("c1", "ExecuteAction", new { Value = "t/nope" }));
 
             var msgs = await Run("caller2");
 
@@ -174,7 +129,7 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations
         [Fact]
         public async Task FailingStep_ReportsFailedStepAndFaultedRun()
         {
-            AddAction("bad", Step("f1", "Calculate", new { Expression = "1 +", OutputName = "x" }));
+            AddAction("bad", Step("f1", "RunScript", new { Script = "throw new Error('broken');" }));
 
             var msgs = await Run("bad");
 

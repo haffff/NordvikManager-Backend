@@ -7,6 +7,8 @@ using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Game.GetGameSessionDetails;
 using DndOnePlaceManager.Application.Commands.Game.GetGameCentralSessionId;
 using DndOnePlaceManager.Application.Commands.Game.SetGameCentralSession;
+using DndOnePlaceManager.Application.Commands.Game.UpdateGame;
+using DNDOnePlaceManager.Controllers.Requests;
 using DndOnePlaceManager.Application.Commands.Player.CheckUserBanned;
 using DndOnePlaceManager.Application.Commands.Properties.GetPropertiesByQuery;
 using DndOnePlaceManager.Application.DataTransferObjects;
@@ -97,7 +99,7 @@ namespace DNDOnePlaceManager.Controllers
         }
 
         /// <summary>
-        /// Gets list of games where user is present
+        /// Gets list of games where user is present; the server's local admin gets every game.
         /// </summary>
         [HttpGet]
         [Authorize]
@@ -105,7 +107,7 @@ namespace DNDOnePlaceManager.Controllers
         public async Task<IActionResult> GetGames()
         {
             var user = HttpContext.Items["User"] as User;
-            GetGameListCommand command = new GetGameListCommand() { UserId = user.Id };
+            GetGameListCommand command = new GetGameListCommand() { UserId = user.Id, AllGames = user.IsLocalAdmin };
             var res = await mediator.Send(command);
             return Ok(res.GameItemList);
         }
@@ -124,10 +126,39 @@ namespace DNDOnePlaceManager.Controllers
             RemoveGameCommand removeGameCommand = new RemoveGameCommand()
             {
                 GameID = gameId,
-                Player = player.Player
+                Player = player?.Player,
+                // The server's local admin may delete any game, member or not.
+                AsLocalAdmin = user?.IsLocalAdmin == true,
             };
 
             var res = await mediator.Send(removeGameCommand);
+
+            return Ok(res);
+        }
+
+        /// <summary>
+        /// Renames a game and sets its description, from the game list. Needs Edit on the game,
+        /// or being the server's local admin.
+        /// </summary>
+        [HttpPost]
+        [Authorize]
+        [Route("UpdateGame")]
+        public async Task<IActionResult> UpdateGame([FromBody] UpdateGameRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var player = await mediator.Send(new GetPlayerCommand { User = user, GameID = request.GameId });
+            var isLocalAdmin = user?.IsLocalAdmin == true;
+            if (player?.Player == null && !isLocalAdmin)
+                return Forbid();
+
+            var res = await mediator.Send(new UpdateGameCommand
+            {
+                GameId = request.GameId,
+                Player = player?.Player,
+                AsLocalAdmin = isLocalAdmin,
+                Name = string.IsNullOrWhiteSpace(request.Name) ? null : request.Name,
+                ShortDescription = request.Description,
+            });
 
             return Ok(res);
         }

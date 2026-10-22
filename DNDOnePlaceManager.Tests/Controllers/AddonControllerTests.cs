@@ -1,4 +1,4 @@
-using DndOnePlaceManager.Application.Commands.Actions.GetActions;
+﻿using DndOnePlaceManager.Application.Commands.Actions.GetActions;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
@@ -112,6 +112,19 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Assert
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.Equal(actions, ok.Value);
+        }
+
+        // The Actions panel asks without a page: it must get every action, not the first
+        // ten (a game with an addon has more, and new ones vanished from the list).
+        [Fact]
+        public async Task GetActions_WithoutAPage_AsksForAllActions()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetActionsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, new List<ActionDto>()));
+
+            await _controller.GetActions(Guid.NewGuid(), null);
+
+            _mediator.Verify(m => m.Send(It.Is<GetActionsCommand>(c => c.Page == null), It.IsAny<CancellationToken>()), Times.Once);
         }
 
         // =========================================================================

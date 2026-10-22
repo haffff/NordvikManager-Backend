@@ -1,4 +1,4 @@
-﻿using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionBody.Data;
 using MediatR;
@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 {
-    public class IfStepDefinition : IActionStepDefinition
+    public class IfStepDefinition : IActionStepDefinition, IDeferredArgumentsStep
     {
         [ThreadStatic]
         private static DataTable DT;
@@ -17,10 +17,15 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "If";
         public string Value => "If";
+        public IReadOnlyList<string> Keywords => new[] { "condition", "check", "when", "otherwise", "else", "branch" };
         public string Category => "Control Flow";
-        public string Description => "Evaluates a true/false condition and runs one action when it is true, another when it is false. The chosen action gets a copy of the variables.";
+        public string Description => "Evaluates a true/false condition and runs the Then steps when it is true, the Else steps when it is false. They work on the action's own variables.";
         public string? Summary => "If {Condition}[ → {OutputName}]";
         public Type DataType => typeof(IfStepData);
+
+        // The blocks are filled in step by step as they run, with the variables of that moment.
+        private static readonly string[] Blocks = { nameof(IfStepData.Then), nameof(IfStepData.Else) };
+        public IReadOnlyCollection<string> DeferredArguments => Blocks;
 
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
@@ -31,15 +36,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (GetDT().Compute(condition, "") is not bool result)
                 throw new ActionProcessException($"If: condition '{condition}' did not evaluate to true/false.");
 
-            // Written before branching so the branch action (which gets a copy of variables) sees it too.
             if (!string.IsNullOrWhiteSpace(isStep.OutputName))
                 variables[isStep.OutputName] = result;
 
-            string action = result ? isStep.ActionTrue : isStep.ActionFalse;
-            if (string.IsNullOrWhiteSpace(action))
-                return;
-
-            await gameLobby.ActionProcessingService.ExecActionAsync(action, null, variables);
+            var block = result ? isStep.Then : isStep.Else;
+            if (block is { Count: > 0 })
+                await gameLobby.ActionProcessingService.RunBlockAsync(block, variables,
+                    result ? nameof(IfStepData.Then) : nameof(IfStepData.Else));
         }
     }
 }

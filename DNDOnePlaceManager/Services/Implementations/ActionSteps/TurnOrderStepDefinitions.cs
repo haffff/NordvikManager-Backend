@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add To Turn Order";
         public string Value => "AddToTurnOrder";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "combat" };
         public string Category => "Turn order";
         public string Description => "Adds a token (or a free entry, by name) to a map's turn order. The first entry starts round 1.";
         public string? Summary => "Add [{ElementId}][{Name}] to the turn order[ → {Output}]";
@@ -36,7 +37,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (entry.ElementId == null && entry.Name == null)
                 throw new ActionProcessException($"{Value}: give an 'ElementId' (a token) or a 'Name' (a free entry).");
 
-            var notice = await TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, data.MapId,
+            var notice = await TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, data.MapId,
                 new TurnOrderCommand { Operation = TurnOrderOperation.Add, Entries = new() { entry } });
 
             if (!string.IsNullOrWhiteSpace(data.Output))
@@ -57,7 +58,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var data = step.Data.ToObject<RemoveFromTurnOrderStepData>()!;
             var (entryId, elementId) = TurnOrderStepHelper.EntryOrToken(Value, data.EntryId, data.ElementId);
-            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, data.MapId, new TurnOrderCommand
+            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, data.MapId, new TurnOrderCommand
             {
                 Operation = TurnOrderOperation.Remove,
                 EntryIds = entryId.HasValue ? new() { entryId.Value } : null,
@@ -70,6 +71,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Set Initiative";
         public string Value => "SetInitiative";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "combat" };
         public string Category => "Turn order";
         public string Description => "Sets (or clears) the initiative of an entry or a token's entry, optionally sorting the turn order afterwards.";
         public string? Summary => "Set initiative of [{EntryId}][{ElementId}] to {Initiative}";
@@ -80,7 +82,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var data = step.Data.ToObject<SetInitiativeStepData>()!;
             var (entryId, elementId) = TurnOrderStepHelper.EntryOrToken(Value, data.EntryId, data.ElementId);
             var initiative = TurnOrderStepHelper.OptionalNumber(Value, nameof(data.Initiative), data.Initiative);
-            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, data.MapId, new TurnOrderCommand
+            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, data.MapId, new TurnOrderCommand
             {
                 Operation = TurnOrderOperation.Update,
                 EntryId = entryId,
@@ -96,13 +98,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Next Turn";
         public string Value => "NextTurn";
+        public IReadOnlyList<string> Keywords => new[] { "initiative", "turn", "round", "combat" };
         public string Category => "Turn order";
         public string Description => "Passes the turn to the next entry of a map's turn order; after the last one, the next round starts.";
         public string? Summary => "Next turn";
         public Type DataType => typeof(TurnOrderMapStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step) =>
-            TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
+            TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
                 new TurnOrderCommand { Operation = TurnOrderOperation.Advance, Direction = 1 });
     }
 
@@ -116,7 +119,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public Type DataType => typeof(TurnOrderMapStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step) =>
-            TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
+            TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
                 new TurnOrderCommand { Operation = TurnOrderOperation.Advance, Direction = -1 });
     }
 
@@ -130,7 +133,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public Type DataType => typeof(TurnOrderMapStepData);
 
         public Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step) =>
-            TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
+            TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, step.Data.ToObject<TurnOrderMapStepData>()?.MapId,
                 new TurnOrderCommand { Operation = TurnOrderOperation.Sort });
     }
 
@@ -146,7 +149,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var data = step.Data.ToObject<ResetTurnOrderStepData>()!;
-            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, Value, data.MapId,
+            await TurnOrderStepHelper.RunAsync(mediator, gameLobby, variables, Value, data.MapId,
                 new TurnOrderCommand { Operation = TurnOrderOperation.Reset, Clear = TurnOrderStepHelper.Flag(data.Clear) == true });
         }
     }
@@ -166,7 +169,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             if (string.IsNullOrWhiteSpace(data.Output))
                 throw new ActionProcessException($"{Value}: 'Output' is required.");
 
-            var mapId = await TurnOrderStepHelper.ResolveMapId(mediator, gameLobby, Value, data.MapId);
+            var mapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, Value, data.MapId);
             variables[data.Output] = await mediator.Send(new GetTurnOrderCommand
             {
                 GameId = gameLobby.GameId,
@@ -182,10 +185,10 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         /// Changes the turn order as the system player, then tells everyone (and fires the
         /// hooks) exactly as a player's turnorder_* command would.
         /// </summary>
-        public static async Task<TurnOrderNotice> RunAsync(IMediator mediator, GameLobby gameLobby, string step, string? mapIdText, TurnOrderCommand command)
+        public static async Task<TurnOrderNotice> RunAsync(IMediator mediator, GameLobby gameLobby, Dictionary<string, object> variables, string step, string? mapIdText, TurnOrderCommand command)
         {
             command.GameId = gameLobby.GameId;
-            command.MapId = await ResolveMapId(mediator, gameLobby, step, mapIdText);
+            command.MapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, step, mapIdText);
             command.Player = gameLobby.SystemPlayer;
 
             TurnOrderNotice? notice;
@@ -208,18 +211,6 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data = TurnOrderMessages.NoticeData(notice),
             });
             return notice;
-        }
-
-        /// <summary>The given map, or the map shown in the game's only battle map view.</summary>
-        public static async Task<Guid> ResolveMapId(IMediator mediator, GameLobby gameLobby, string step, string? mapIdText)
-        {
-            if (!string.IsNullOrWhiteSpace(mapIdText))
-                return ElementStepHelper.ParseGuid(step, "MapId", mapIdText);
-
-            var battleMaps = (await mediator.Send(new GetBattleMapsCommand { GameID = gameLobby.GameId, Player = gameLobby.SystemPlayer }))?.ToList();
-            if (battleMaps is not { Count: 1 } || battleMaps[0].MapId is not Guid mapId)
-                throw new ActionProcessException($"{step}: 'MapId' is required when the game has {battleMaps?.Count ?? 0} battle map views.");
-            return mapId;
         }
 
         public static Guid? OptionalGuid(string step, string argument, string? value) =>

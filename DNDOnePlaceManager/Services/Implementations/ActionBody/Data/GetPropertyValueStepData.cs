@@ -5,13 +5,17 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class GetPropertyValueStepData
     {
-        [Description("GUID of the entity whose property to read, e.g. %v:Data.id% or %playerId%.")]
+        [UIType("propertyowner")]
+        [Description("Whose property: empty for the entity in ParentId; tokenCard for the card of the token in ParentId; map for the map in ParentId (empty: the one the player is looking at); game for the game.")]
+        public string? Of { get; set; }
+
+        [Description("GUID of the entity whose property to read, e.g. %Data.id% or %playerId%.")]
         public string ParentId { get; set; }
 
         [Description("Name of the property to read.")]
         public string PropertyName { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the property's value will be stored.")]
         public string Output { get; set; }
 

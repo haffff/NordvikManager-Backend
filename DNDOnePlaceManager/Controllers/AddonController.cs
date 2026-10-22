@@ -77,7 +77,8 @@ namespace DNDOnePlaceManager.Controllers
 
         [Route("actions")]
         [HttpGet]
-        public async Task<IActionResult> GetActions([FromQuery] Guid gameId, int page)
+        // Without a page: every action (the Actions panel lists them all).
+        public async Task<IActionResult> GetActions([FromQuery] Guid gameId, int? page)
         {
             GetPlayerCommandResponse player = await GetPlayer(gameId);
 
@@ -676,7 +677,7 @@ namespace DNDOnePlaceManager.Controllers
             public Dictionary<string, object> Variables { get; set; }
         }
 
-        /// <summary>POST addon/resolveQuery — resolve %q:%, %qn:%, %v:%, %varName% patterns against the live database.</summary>
+        /// <summary>POST addon/resolveQuery — fill in an expression's tokens (%name%, %name.path%, %q:%) as a running action would.</summary>
         [Route("resolveQuery")]
         [HttpPost]
         public async Task<IActionResult> ResolveQuery([FromQuery] Guid gameId, [FromBody] ResolveQueryRequest body)
@@ -700,8 +701,8 @@ namespace DNDOnePlaceManager.Controllers
                 Variables = body.Variables ?? new Dictionary<string, object>(),
             };
 
-            var result = await mediator.Send(command);
-            return Ok(new { result });
+            var resolved = await mediator.Send(command);
+            return Ok(new { result = resolved.Result, unresolved = resolved.Unresolved });
         }
 
         // =========================================================================

@@ -1,4 +1,4 @@
-﻿using DNDOnePlaceManager.Models;
+using DNDOnePlaceManager.Models;
 using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
@@ -25,8 +25,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
             "Players can open these menus too, so check permissions in the action (Require Permission).")]
         public string Location { get; set; }
 
-        [System.ComponentModel.Description("If true, only the player who triggered this action gets the item; otherwise every connected player does.")]
-        public bool OnlyOwner { get; set; }
+        [System.ComponentModel.Description("Only the player who triggered this action gets the item (e.g. the player whose game just loaded). Otherwise every connected player does.")]
+        public bool OnlyTriggeringPlayer { get; set; }
+
+        [System.ComponentModel.Description("Only GMs get the item: the game's owner and players with Edit on the game.")]
+        public bool GmOnly { get; set; }
 
         [System.ComponentModel.Description("If non-empty, places this item inside a submenu with this viewId. Example: 'addons.myaddon'. The submenu is created on the client if it does not yet exist.")]
         public string SubMenuId { get; set; }

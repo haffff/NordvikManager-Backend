@@ -1,4 +1,4 @@
-﻿using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
+using DndOnePlaceManager.Application.Commands.Card.GetAllCards;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
 using DndOnePlaceManager.Application.Commands.Game.Player.GetPlayer;
 using DndOnePlaceManager.Application.Commands.Resources;
@@ -6,6 +6,8 @@ using DndOnePlaceManager.Application.Commands.Resources.CreateResource;
 using DndOnePlaceManager.Application.Commands.Resources.DeleteResourceData;
 using DndOnePlaceManager.Application.Commands.Resources.GetResource;
 using DndOnePlaceManager.Application.Commands.Resources.GetResourceContent;
+using DndOnePlaceManager.Application.Commands.Resources.Link;
+using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Application.Commands.Resources.UpdateResourceData;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
@@ -516,6 +518,71 @@ namespace DNDOnePlaceManager.Tests.Controllers
             // Act & Assert
             await Assert.ThrowsAsync<PermissionException>(() =>
                 _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        // =========================================================================
+        // The host's disk: local admin only
+        // =========================================================================
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task BrowseLocalDirectory_PassesWhetherTheUserIsLocalAdmin(bool isLocalAdmin)
+        {
+            BrowseLocalDirectoryCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<BrowseLocalDirectoryCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<IReadOnlyList<LocalDirectoryEntry>>, CancellationToken>((c, _) => sent = (BrowseLocalDirectoryCommand)c)
+                     .ReturnsAsync(new List<LocalDirectoryEntry>());
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = isLocalAdmin });
+
+            await controller.BrowseLocalDirectory(Guid.NewGuid(), null);
+
+            Assert.Equal(isLocalAdmin, sent!.IsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task LinkDirectory_NotLocalAdmin_IsForbiddenBeforeAnythingStarts()
+        {
+            var result = await _controller.LinkDirectory(Guid.NewGuid(), new LinkDirectoryRequest { LocalDirectoryPath = "C:/" });
+
+            Assert.IsType<ForbidResult>(result);
+        }
+
+        [Fact]
+        public async Task GetResources_PassesWhetherTheUserIsLocalAdmin()
+        {
+            GetResourcesCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, List<ResourceDTO>)>, CancellationToken>((c, _) => sent = (GetResourcesCommand)c)
+                     .ReturnsAsync((CommandResponse.Ok, new List<ResourceDTO>()));
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = true });
+
+            await controller.GetResources(Guid.NewGuid());
+
+            Assert.True(sent!.IsLocalAdmin);
+        }
+
+        // The client builds a token for "place this card's token" here too, so the client and
+        // the server's SpawnToken place tokens the same way.
+        [Fact]
+        public async Task BuildToken_BuildsItAsThePlayer()
+        {
+            var player = SomePlayer();
+            SetupPlayer(_mediator, player);
+            var built = new DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuiltToken(new JObject { ["name"] = "Goblin" }, 2);
+            DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand>(), It.IsAny<CancellationToken>()))
+                .Callback<IRequest<DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuiltToken>, CancellationToken>((c, _) => sent = (DndOnePlaceManager.Application.Commands.Actions.BuildToken.BuildTokenCommand)c)
+                .ReturnsAsync(built);
+            var mapId = Guid.NewGuid();
+            var cardId = Guid.NewGuid();
+
+            var result = await _controller.BuildToken(Guid.NewGuid(), new DNDOnePlaceManager.Models.BuildTokenRequest { MapId = mapId, CardId = cardId, X = 10, Y = 20 });
+
+            var body = Body(result);
+            Assert.Equal("Goblin", (string)JObject.Parse((string)body["object"]!)["name"]);
+            Assert.Equal(2, (int)body["size"]!);
+            Assert.Equal((mapId, cardId, 10.0, 20.0, player.Id), (sent.MapId, sent.CardId, sent.X, sent.Y, sent.Player.Id));
         }
     }
 }

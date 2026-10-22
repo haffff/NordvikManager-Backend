@@ -18,6 +18,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Delete Card";
         public string Value => "DeleteCard";
+        public IReadOnlyList<string> Keywords => new[] { "remove card" };
         public string Category => "Data";
         public string Description => "Permanently deletes a card and its properties.";
         public string? Summary => "Delete card {CardId}";
@@ -41,6 +42,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Delete Property";
         public string Value => "DeleteProperty";
+        public IReadOnlyList<string> Keywords => new[] { "remove", "clear", "property" };
         public string Category => "Properties";
         public string Description => "Deletes a named property from an entity. Does nothing if the property doesn't exist.";
         public string? Summary => "Delete {PropertyName} of {ParentId}";
@@ -49,7 +51,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
         {
             var stepData = step.Data.ToObject<DeletePropertyStepData>();
-            var parentId = ElementStepHelper.ParseGuid("DeleteProperty", "ParentId", stepData.ParentId);
+            var parentId = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "DeleteProperty", stepData.Of, stepData.ParentId);
             if (string.IsNullOrWhiteSpace(stepData.PropertyName))
                 throw new ActionProcessException("DeleteProperty: 'PropertyName' is required.");
 
@@ -86,6 +88,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Delay";
         public string Value => "Delay";
+        public IReadOnlyList<string> Keywords => new[] { "wait", "pause", "later" };
         public string Category => "Control Flow";
         public string Description => $"Waits before running the next step (up to {MaxMilliseconds / 1000} seconds).";
         public string? Summary => "Wait {Milliseconds} ms";

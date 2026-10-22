@@ -4,7 +4,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class MoveElementStepData
     {
-        [Description("GUID of the element (token, shape, ...) to move. E.g. %v:Data.id% in an Element hook.")]
+        [Description("GUID of the element (token, shape, ...) to move. E.g. %Data.id% in an Element hook.")]
         public string ElementId { get; set; }
 
         [Description("New horizontal position (canvas 'left') in pixels.")]
@@ -25,7 +25,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("GUID of the map to show.")]
         public string MapId { get; set; }
 
-        [Description("GUID of the battle map view to switch. Leave empty when the game has a single battle map view.")]
+        [Description("GUID of the battle map view to switch. Leave empty for the view the player is looking at (or the game's first one).")]
         public string? BattleMapId { get; set; }
     }
 }

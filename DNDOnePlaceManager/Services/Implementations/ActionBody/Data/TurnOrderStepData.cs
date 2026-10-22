@@ -7,7 +7,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
     // the game has a single battle map view: its current map is used.
     public class TurnOrderMapStepData
     {
-        [Description("Map whose turn order to change, e.g. %v:Data.mapId% in a Turn Changed hook. Leave empty to use the map shown in the game's only battle map view.")]
+        [Description("Map whose turn order to change, e.g. %Data.mapId% in a Turn Changed hook. Leave empty for the map the player is looking at (or the game's first battle map view).")]
         public string? MapId { get; set; }
     }
 
@@ -25,7 +25,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("\"true\" to hide the entry from players (the GM still runs its turn).")]
         public string? Hidden { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the new entry's id will be stored.")]
         public string? Output { get; set; }
     }
@@ -62,7 +62,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
     public class GetTurnOrderStepData : TurnOrderMapStepData
     {
-        [VariableOutput]
+        [VariableOutput("object", "mapId", "round", "currentEntryId", "entries")]
         [Description("Name of the variable for the turn order: { MapId, Round, CurrentEntryId, Entries: [{ Id, Name, Initiative, ElementId, Hidden }] }.")]
         public string? Output { get; set; }
     }

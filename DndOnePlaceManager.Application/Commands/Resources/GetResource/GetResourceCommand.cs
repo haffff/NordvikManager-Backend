@@ -13,5 +13,7 @@ namespace DndOnePlaceManager.Application.Commands.Resources.GetResource
         public Guid? ResourceId { get; set; }
         public string? Key { get; set; }
         public PlayerDTO Player { get; set; }
+        /// <summary>The caller runs this server, so may see where its files are.</summary>
+        public bool IsLocalAdmin { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 
 namespace DNDOnePlaceManager.Models
@@ -16,6 +16,22 @@ namespace DNDOnePlaceManager.Models
         public bool IsOutput { get; set; }
         /// <summary>True when %tokens% in this argument are NOT filled in before the step runs.</summary>
         public bool Deferred { get; set; }
+        /// <summary>The value the step uses when the argument isn't set (e.g. true for a switch that is on unless turned off).</summary>
+        public object? Default { get; set; }
+        /// <summary>For an output argument: what the variable it names holds.</summary>
+        public OutputShape? Output { get; set; }
+    }
+
+    /// <summary>What an output variable holds; see <see cref="VariableOutputAttribute"/>.</summary>
+    public class OutputShape
+    {
+        public string Kind { get; set; }
+        public string[] Fields { get; set; }
+        public string? FieldsBy { get; set; }
+        public Dictionary<string, string[]>? FieldsByValue { get; set; }
+        public string? SingleWhen { get; set; }
+        public string? ValueWhen { get; set; }
+        public string? ItemOf { get; set; }
     }
 
     public class ActionDefinitionResponse
@@ -27,6 +43,8 @@ namespace DNDOnePlaceManager.Models
         /// <summary>Optional one-line template, e.g. "Roll {DiceString}[ → {OutputVariable}]"; [..] segments drop when a placeholder in them is empty.</summary>
         public string? Summary { get; set; }
         public ActionDefinitionArgument[] Arguments { get; set; }
+        /// <summary>What the step is for, in the words someone looking for it would use.</summary>
+        public string[] Keywords { get; set; } = System.Array.Empty<string>();
     }
 
     [JsonObject]

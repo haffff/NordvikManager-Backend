@@ -87,6 +87,8 @@ namespace DNDOnePlaceManager.Controllers
             cmd.PlayerID = player?.Player?.Id ?? default;
 
             var game = await mediator.Send(cmd);
+            if (game != null)
+                game.IsLocalAdmin = currentUser?.IsLocalAdmin == true;
 
             return Ok(game);
         }

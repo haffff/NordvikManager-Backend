@@ -24,6 +24,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Move Element";
         public string Value => "MoveElement";
+        public IReadOnlyList<string> Keywords => new[] { "move", "teleport", "push", "token" };
         public string Category => "Map";
         public string Description => "Moves an element (e.g. a token) to a new position; clients animate it like a drag. " +
             "Also fires Element Updated / Element Moved hooks — an action on those hooks that moves the same element will loop.";
@@ -55,6 +56,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Delete Element";
         public string Value => "DeleteElement";
+        public IReadOnlyList<string> Keywords => new[] { "remove", "token", "element" };
         public string Category => "Map";
         public string Description => "Removes an element (e.g. a token) from its map.";
         public string? Summary => "Delete element {ElementId}";
@@ -77,6 +79,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Change Map";
         public string Value => "ChangeMap";
+        public IReadOnlyList<string> Keywords => new[] { "switch map", "scene", "show map" };
         public string Category => "Map";
         public string Description => "Switches a battle map view to another map for everyone in the game.";
         public string? Summary => "Show map {MapId}[ in {BattleMapId}]";
@@ -87,24 +90,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var stepData = step.Data.ToObject<ChangeMapStepData>();
             var mapId = ElementStepHelper.ParseGuid("ChangeMap", "MapId", stepData.MapId);
 
-            Guid battleMapId;
-            if (!string.IsNullOrWhiteSpace(stepData.BattleMapId))
-            {
-                battleMapId = ElementStepHelper.ParseGuid("ChangeMap", "BattleMapId", stepData.BattleMapId);
-            }
-            else
-            {
-                var battleMaps = (await mediator.Send(new GetBattleMapsCommand
-                {
-                    GameID = gameLobby.GameId,
-                    Player = gameLobby.SystemPlayer,
-                }))?.ToList();
-
-                if (battleMaps == null || battleMaps.Count != 1 || battleMaps[0].Id == null)
-                    throw new ActionProcessException(
-                        $"ChangeMap: 'BattleMapId' is required when the game has {battleMaps?.Count ?? 0} battle map views.");
-                battleMapId = battleMaps[0].Id.Value;
-            }
+            var battleMapId = (await ActiveMap.BattleMapAsync(mediator, gameLobby, variables, stepData.BattleMapId))?.Id
+                ?? throw new ActionProcessException("ChangeMap: the game has no battle map view to show the map in.");
 
             // Same shape as the client's CommandFactory map_change command.
             await ElementStepHelper.SendAsync(gameLobby, new WebSocketCommand

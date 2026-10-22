@@ -21,6 +21,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
 
         public string Name => "Play Playlist";
         public string Value => "PlayPlaylist";
+        public IReadOnlyList<string> Keywords => new[] { "music", "playlist", "audio" };
         public string Category => "Audio";
         public string Description => "Starts (or resumes, if paused) a music playlist for everyone in the game.";
         public string? Summary => "Play playlist {PlaylistId}";

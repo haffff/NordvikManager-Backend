@@ -17,6 +17,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     {
         public string Name => "Add Menu Item";
         public string Value => "AddMenuItem";
+        public IReadOnlyList<string> Keywords => new[] { "menu", "right-click", "button", "option" };
         public string Category => "Client";
         public string Description => "Adds an item that runs an action to one of the app's menus (Game, View, Settings, map right-click > Add, ...) or to a toolbar dropdown made with Add Toolbar Button. Pick the menu in Location.";
         public string? Summary => "Menu item {UiName}[ → {Action}]";
@@ -37,26 +38,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 Data = payload
             };
 
-            if (stepData.OnlyOwner)
-            {
-                variables.TryGetValue("Player", out var playerObj);
-                var triggeringPlayer = playerObj as PlayerDTO;
-
-                if (triggeringPlayer == null)
-                    throw new ActionProcessException("AddMenuItem: OnlyOwner is true but no triggering player found in context.");
-
-                var connectedPlayer = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(
-                    x => x.Id == triggeringPlayer.Id)
-                    ?? throw new ActionProcessException("AddMenuItem: Triggering player is not connected.");
-
-                gameLobby.SendToPlayer(command, connectedPlayer);
-            }
-            else
-            {
-                gameLobby.Broadcast(command, gameLobby.SystemPlayer);
-            }
-
-            await Task.CompletedTask;
+            await UiDelivery.SendAsync(mediator, gameLobby, variables, "AddMenuItem", command, stepData.OnlyTriggeringPlayer, stepData.GmOnly);
         }
     }
 }

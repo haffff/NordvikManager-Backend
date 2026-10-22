@@ -25,7 +25,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "Hello %name%!", Variables = new() { ["name"] = "World" } };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Hello World!", result);
         }
@@ -36,7 +36,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "Value: %missing%" };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Value: %missing%", result);
         }
@@ -47,7 +47,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "%gameId%/%playerId%" };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal($"{game.Id}/{PlayerId}", result);
         }
@@ -58,11 +58,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand
             {
-                GameId = game.Id, Player = Player(), Expression = "%v:player.Name%",
+                GameId = game.Id, Player = Player(), Expression = "%player.Name%",
                 Variables = new() { ["player"] = Player() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Tester", result);
         }
@@ -73,11 +73,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var cmd = new ResolveQueryCommand
             {
-                GameId = game.Id, Player = Player(), Expression = "[%v:player.NoSuchField%]",
+                GameId = game.Id, Player = Player(), Expression = "[%player.NoSuchField%]",
                 Variables = new() { ["player"] = Player() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("[]", result);
         }
@@ -93,7 +93,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["cardId"] = card.Id.ToString() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal(card.Id.ToString(), result);
         }
@@ -109,7 +109,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["cardId"] = card.Id.ToString() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Goblin", result);
         }
@@ -119,7 +119,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         {
             var game = BuildGame();
             var card = SeedCard(game, "Goblin");
-            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, IsProtected = false });
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, Card = card, IsProtected = false });
             Db.SaveChanges();
             var cmd = new ResolveQueryCommand
             {
@@ -127,7 +127,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["cardId"] = card.Id.ToString() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("7", result);
         }
@@ -137,7 +137,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         {
             var game = BuildGame();
             var card = SeedCard(game, "Goblin");
-            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "secretHp", Value = "999", ParentID = card.Id, IsProtected = true });
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "secretHp", Value = "999", ParentID = card.Id, Card = card, IsProtected = true });
             Db.SaveChanges();
             var cmd = new ResolveQueryCommand
             {
@@ -145,7 +145,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["cardId"] = card.Id.ToString() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("[]", result);
         }
@@ -161,7 +161,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["foreignId"] = foreignId.ToString() },
             };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("[]", result);
         }
@@ -173,7 +173,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var card = SeedCard(game, "Goblin");
             var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = $"%q:{card.Id}.name%" };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Goblin", result);
         }
@@ -183,9 +183,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         {
             var game = BuildGame();
             SeedCard(game, "Goblin");
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "%qn:card-\"Goblin\".name%" };
+            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "%q:card[Goblin].name%" };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("Goblin", result);
         }
@@ -194,9 +194,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
         public async Task Handle_QueryByName_UnknownName_ReturnsEmpty()
         {
             var game = BuildGame();
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "[%qn:card-\"NoSuchCard\".name%]" };
+            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "[%q:card[NoSuchCard].name%]" };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
             Assert.Equal("[]", result);
         }
@@ -207,7 +207,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
             var game = BuildGame();
             var card = SeedCard(game, "Goblin");
             SeedCard(game, "Orc");
-            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, IsProtected = false });
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, Card = card, IsProtected = false });
             Db.SaveChanges();
             Db.ChangeTracker.Clear();
             var cmd = new ResolveQueryCommand
@@ -216,7 +216,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
                 Variables = new() { ["cardId"] = card.Id.ToString() },
             };
 
-            Assert.Equal("7", await Handler().Handle(cmd, CancellationToken.None));
+            Assert.Equal("7", (await Handler().Handle(cmd, CancellationToken.None)).Result);
             Assert.Empty(Db.ChangeTracker.Entries<DndOnePlaceManager.Domain.Entities.BattleMap.CardModel>());
             Assert.Empty(Db.ChangeTracker.Entries<PlayerModel>());
         }

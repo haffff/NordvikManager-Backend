@@ -8,14 +8,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
         [Description("Display name for the new card.")]
         public string Name { get; set; }
 
-        [Description("Id of the template card to create from (e.g. resolved via %qn:card-\"Template Name\".id%). Determines the card's bundle (MainResource/AdditionalResources) and seeds its initial properties.")]
+        [Description("Id of the template card to create from (e.g. resolved via %q:card[Template Name].id%). Determines the card's bundle (MainResource/AdditionalResources) and seeds its initial properties.")]
         public string TemplateId { get; set; }
 
         [UIType("playerid")]
         [Description("Player to grant Edit permission on the new card. Pick one, or type an ID / %variable%. Leave empty to skip.")]
         public string Owner { get; set; }
 
-        [VariableOutput]
+        [VariableOutput("value")]
         [Description("Name of the variable where the new card's id will be stored.")]
         public string Output { get; set; }
 

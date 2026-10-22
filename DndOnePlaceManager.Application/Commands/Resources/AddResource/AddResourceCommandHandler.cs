@@ -50,8 +50,8 @@ namespace DndOnePlaceManager.Application.Commands.Resources
 
             if (request.StorageKind == ResourceStorageKind.ManagedFile)
             {
-                var isGM = player.System || (game != null && game.MasterId == player.Id);
-                if (!isGM)
+                // Files go into the server's own folder, so editing the game is enough.
+                if (game == null || !game.HasPermission(player.Id, Permission.Edit))
                     throw new PermissionException(Permission.Edit);
 
                 model.Path = await storage.SaveAsync(model.GameId, model.Id, data, null);
