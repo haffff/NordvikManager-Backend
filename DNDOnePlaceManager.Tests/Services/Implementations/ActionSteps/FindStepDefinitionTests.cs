@@ -1,6 +1,7 @@
 using DndOnePlaceManager.Application.Commands.Actions.Find;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
+using DndOnePlaceManager.Application.Exceptions;
 using DNDOnePlaceManager.Services.Implementations;
 using DNDOnePlaceManager.Services.Implementations.ActionBody;
 using DNDOnePlaceManager.Services.Implementations.ActionSteps;
@@ -54,6 +55,32 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             await new FindStepDefinition().Execute(_mediator.Object, variables, _lobby,
                 new ActionStep { Type = "Find", Data = JObject.FromObject(data) });
             return variables;
+        }
+
+        // Near a card's id (%cardId%) finds nothing, as the card isn't on the map: say so instead.
+        [Fact]
+        public async Task NearACard_SaysToUseItsToken()
+        {
+            var card = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<FindCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IRequest<List<JObject>> c, CancellationToken _) => ((FindCommand)c) is { What: "cards", Id: var id } && id == card
+                    ? new List<JObject> { new() { ["id"] = card.ToString(), ["name"] = "Wizard" } }
+                    : new List<JObject>());
+
+            var e = await Assert.ThrowsAsync<ActionProcessException>(() =>
+                Run(new { What = "tokens", Near = card.ToString(), Radius = "2", Output = "t" }, new Dictionary<string, object> { ["mapId"] = Guid.NewGuid().ToString() }));
+
+            Assert.Contains("is a card", e.Message);
+        }
+
+        [Fact]
+        public async Task NearAToken_FindingNothing_IsNoError()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<FindCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<JObject>());
+
+            var vars = await Run(new { What = "tokens", Near = Guid.NewGuid().ToString(), Radius = "2", Output = "t" }, new Dictionary<string, object> { ["mapId"] = Guid.NewGuid().ToString() });
+
+            Assert.Empty((JArray)vars["t"]);
         }
 
         [Fact]

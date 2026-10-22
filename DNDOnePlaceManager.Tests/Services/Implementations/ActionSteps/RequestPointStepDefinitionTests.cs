@@ -201,6 +201,29 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { Shape = "cone", Radius = "3", Output = "point" }));
         }
 
+        // %cardId% is empty unless a card runs the action, so a From written as a variable can arrive empty.
+        [Fact]
+        public async Task AnEmptyFrom_SaysAVariableInItMayHaveNoValue()
+        {
+            var e = await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { MaxDistance = "12", From = "", Output = "point" }));
+
+            Assert.Contains("no value", e.Message);
+        }
+
+        // A card's id is not a token on the map.
+        [Fact]
+        public async Task AFromThatIsACard_SaysToUseItsToken()
+        {
+            var card = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.Is<FindCommand>(c => c.What == "cards" && c.Id == card), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new List<JObject> { new() { ["id"] = card.ToString(), ["name"] = "Wizard" } });
+
+            var e = await Assert.ThrowsAsync<ActionProcessException>(() => Run(new { MaxDistance = "12", From = card.ToString(), Output = "point" }));
+
+            Assert.Contains("is a card", e.Message);
+            Assert.Contains("Wizard", e.Message);
+        }
+
         [Fact]
         public async Task ACone_HasNoMaxDistance()
         {

@@ -18,6 +18,13 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
     /// </summary>
     public readonly record struct MapPlace(Guid? ElementId, double? X, double? Y)
     {
+        /// <summary>
+        /// Added to "needs a place" errors: tokens are filled in before the step runs, so a place
+        /// written as a variable that has no value (e.g. %cardId% when no card ran the action)
+        /// arrives empty.
+        /// </summary>
+        public const string EmptyHint = " It is empty here: if it holds a variable (e.g. %cardId%, set only when a card runs the action), that variable has no value.";
+
         public static MapPlace Parse(string step, string argument, string value)
         {
             var text = value.Trim();
@@ -58,9 +65,24 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             if (ElementId is not Guid id)
                 return (X!.Value, Y!.Value, 0, 0);
-            var element = (await mediator.Send(new FindCommand { GameId = gameLobby.GameId, What = "elements", Id = id }) ?? new List<JObject>()).FirstOrDefault()
-                ?? throw new ActionProcessException($"{step}: '{argument}': there is no token or element '{id}' in this game.");
+            var element = (await mediator.Send(new FindCommand { GameId = gameLobby.GameId, What = "elements", Id = id }) ?? new List<JObject>()).FirstOrDefault();
+            if (element == null)
+            {
+                await ThrowIfCardAsync(mediator, gameLobby, step, argument, id);
+                throw new ActionProcessException($"{step}: '{argument}': there is no token or element '{id}' in this game.");
+            }
             return ((double)element["x"]!, (double)element["y"]!, (double?)element["w"] ?? 0, (double?)element["h"] ?? 0);
+        }
+
+        /// <summary>
+        /// A card's id (%cardId%) is the usual wrong place: the card isn't on the map, its token is.
+        /// </summary>
+        public static async Task ThrowIfCardAsync(IMediator mediator, GameLobby gameLobby, string step, string argument, Guid id)
+        {
+            var card = (await mediator.Send(new FindCommand { GameId = gameLobby.GameId, What = "cards", Id = id }) ?? new List<JObject>()).FirstOrDefault();
+            if (card != null)
+                throw new ActionProcessException($"{step}: '{argument}': '{id}' is a card ({card["name"]}), not a token on the map. " +
+                    "Give its token: pick it with Request Targets, or use %elementId% from a token's right-click menu.");
         }
 
         private static bool IsNumber(JToken? value) => value?.Type is JTokenType.Integer or JTokenType.Float;

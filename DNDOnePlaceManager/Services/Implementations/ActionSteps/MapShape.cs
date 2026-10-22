@@ -56,14 +56,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
         {
             var shape = ShapeOf(step, spec.Shape);
             if (string.IsNullOrWhiteSpace(spec.At))
-                throw new ActionProcessException($"{step}: 'At' is required: where the {shape} goes, e.g. %point% or a token.");
+                throw new ActionProcessException($"{step}: 'At' is required: where the {shape} goes, e.g. %point% or a token." + MapPlace.EmptyHint);
             var at = await MapPlace.Parse(step, "At", spec.At).ResolveAsync(mediator, gameLobby, step, "At");
 
             (double X, double Y)? toward = null;
             if (shape is "line" or "cone")
             {
                 if (string.IsNullOrWhiteSpace(spec.Toward))
-                    throw new ActionProcessException($"{step}: a {shape} needs 'Toward': the point or token it points at.");
+                    throw new ActionProcessException($"{step}: a {shape} needs 'Toward': the point or token it points at." + MapPlace.EmptyHint);
                 var t = await MapPlace.Parse(step, "Toward", spec.Toward).ResolveAsync(mediator, gameLobby, step, "Toward");
                 if (t.X == at.X && t.Y == at.Y)
                     throw new ActionProcessException($"{step}: 'Toward' is where the {shape} starts, so it points nowhere.");

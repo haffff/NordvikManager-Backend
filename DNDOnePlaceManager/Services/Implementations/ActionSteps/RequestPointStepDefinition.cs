@@ -50,11 +50,11 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var shape = none ? "none" : MapShape.ShapeOf("RequestPoint", data.Shape);
             var aimed = shape is "line" or "cone";
             if (aimed && string.IsNullOrWhiteSpace(data.From))
-                throw new ActionProcessException($"RequestPoint: a {shape} starts at 'From' (the caster's token, or a point); the player aims it.");
+                throw new ActionProcessException($"RequestPoint: a {shape} starts at 'From' (the caster's token, or a point); the player aims it." + MapPlace.EmptyHint);
             if (aimed && !string.IsNullOrWhiteSpace(data.MaxDistance))
                 throw new ActionProcessException($"RequestPoint: a {shape} is as long as its Radius, so it has no 'MaxDistance'.");
             if (!aimed && !string.IsNullOrWhiteSpace(data.MaxDistance) && string.IsNullOrWhiteSpace(data.From))
-                throw new ActionProcessException("RequestPoint: 'MaxDistance' needs 'From': the token or point the range counts from.");
+                throw new ActionProcessException("RequestPoint: 'MaxDistance' needs 'From': the token or point the range counts from." + MapPlace.EmptyHint);
 
             var mapId = await ActiveMap.MapIdAsync(mediator, gameLobby, variables, "RequestPoint", data.MapId);
             var grid = await MapShape.GridSizeAsync(mediator, gameLobby, mapId);

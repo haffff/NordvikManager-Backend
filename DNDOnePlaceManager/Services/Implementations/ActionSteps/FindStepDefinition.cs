@@ -57,6 +57,12 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 command.Id = (await ActiveMap.BattleMapAsync(mediator, gameLobby, variables, null))?.Id;
 
             var found = await mediator.Send(command) ?? new List<JObject>();
+            // Nothing near a card: the card isn't on the map, so say so rather than find nothing.
+            if (found.Count == 0)
+            {
+                if (command.NearElementId is Guid near) await MapPlace.ThrowIfCardAsync(mediator, gameLobby, "Find", "Near", near);
+                if (command.TowardElementId is Guid toward) await MapPlace.ThrowIfCardAsync(mediator, gameLobby, "Find", "Toward", toward);
+            }
             variables[data.Output] = data.First ? found.FirstOrDefault() : new JArray(found);
         }
 
@@ -70,9 +76,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 if (!AreaShape.Shapes.Contains(shape))
                     throw new ActionProcessException($"Find: 'Shape' must be {string.Join(", ", AreaShape.Shapes)}, not '{data.Shape}'.");
                 if (string.IsNullOrWhiteSpace(data.Near))
-                    throw new ActionProcessException("Find: an area needs 'Near': its centre, or where a line or cone starts.");
+                    throw new ActionProcessException("Find: an area needs 'Near': its centre, or where a line or cone starts." + MapPlace.EmptyHint);
                 if ((shape == "line" || shape == "cone") && string.IsNullOrWhiteSpace(data.Toward))
-                    throw new ActionProcessException($"Find: a {shape} needs 'Toward': the point or token it points at.");
+                    throw new ActionProcessException($"Find: a {shape} needs 'Toward': the point or token it points at." + MapPlace.EmptyHint);
                 command.Shape = shape;
             }
 
