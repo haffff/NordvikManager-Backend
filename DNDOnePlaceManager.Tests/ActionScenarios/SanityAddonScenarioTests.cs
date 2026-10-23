@@ -777,6 +777,42 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.False(PlayerCanRead(goblinCard));
         }
 
+        // Players can fire any action by name with any arguments: a playerId among them must
+        // not make SetPermission (or RequirePermission) think the GM triggered it.
+        [Fact]
+        public async Task SetPermission_AForgedPlayerIdArgument_IsIgnored()
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "share", Prefix = "test", IsEnabled = true,
+                Content = new JArray(SetPermission(goblinCard, player.Name)).ToString() };
+            var args = new JObject { ["playerId"] = gm.Id.ToString(), ["playerName"] = gm.Name };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = player, Data = args, Command = new WebSocketCommand { Command = "execute_action" } },
+                args.ToObject<Dictionary<string, object>>());
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error");
+            Assert.False(PlayerCanRead(goblinCard));
+        }
+
+        // The real path of an addon's settings view: the token arrives as an argument and is
+        // written with %token%. Only the GM who sent it may ever see it.
+        [Fact]
+        public async Task SetProperty_Protected_TokenFromAnArgument_ReachesNoOtherPlayer()
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "save", Prefix = "test", IsEnabled = true,
+                Content = new JArray(SetGameProperty("trilium_token", "%token%", isProtected: true)).ToString() };
+            var args = new JObject { ["token"] = "etapi-secret" };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = args, Command = new WebSocketCommand { Command = "execute_action" } },
+                args.ToObject<Dictionary<string, object>>());
+
+            NoErrors();
+            Assert.Equal("etapi-secret", GameProperty("trilium_token")!.Value);
+            Assert.DoesNotContain(sent, s => s.To != gm && JsonConvert.SerializeObject(s.Command).Contains("etapi-secret"));
+            Assert.DoesNotContain(lobby.EventLog.GetEntries(), e => (e.Message ?? "").Contains("etapi-secret"));
+        }
+
         [Fact]
         public async Task SetPermission_Edit_IsRefused()
         {
