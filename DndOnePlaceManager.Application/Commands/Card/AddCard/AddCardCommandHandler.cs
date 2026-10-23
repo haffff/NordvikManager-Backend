@@ -68,7 +68,9 @@ namespace DndOnePlaceManager.Application.Commands.Card.AddCard
             model.IsCustomUi = request.IsCustomUi;
             model.IsTemplate = request.IsTemplate;
             model.FirstOpen = true;
-            model.Key = request.Dto.Key;
+            // Keys are unique per game and ShowView finds views by key: only who may edit the
+            // game names one, so a player's card can't take a key an addon will need.
+            model.Key = game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit) ? request.Dto.Key : null;
 
             if (request.Dto.TemplateId != null)
             {

@@ -33,6 +33,14 @@ namespace DndOnePlaceManager.Application.Extension
             }
         }
 
+        /// <summary>
+        /// Who runs the game: its owner, the system player and co-GMs (Edit on the game).
+        /// Their files may be a card's code or a script; anyone else's upload may not.
+        /// </summary>
+        public static bool IsRunBy(this DNDOnePlaceManager.Domain.Entities.BattleMap.GameModel game, Guid playerId) =>
+            playerId != Guid.Empty
+            && (playerId == game.MasterId || playerId == game.SystemPlayerId || game.HasPermission(playerId, Permission.Edit));
+
         public static void ThrowIfNoPermission(this IEntity entity, Guid playerId, Permission permission = Permission.Read)
         {
             if (!HasPermission(entity, playerId, permission))

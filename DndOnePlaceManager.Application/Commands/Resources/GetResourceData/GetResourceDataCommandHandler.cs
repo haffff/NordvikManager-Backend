@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using DndOnePlaceManager.Application.Extension;
 using Microsoft.EntityFrameworkCore;
 
 namespace DndOnePlaceManager.Application.Commands.Resources
@@ -30,6 +31,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources
                 x.GameId == request.GameID &&
                 (x.Id == request.ID || (x.Key != null && request.Key != null && x.Key == request.Key)));
             var player = await dbContext.Players.FirstOrDefaultAsync(x => x.Id == request.Player.Id);
+
+            if (image != null && request.OnlyFromGameEditors)
+            {
+                var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == image.GameId, cancellationToken);
+                if (game == null || !game.IsRunBy(image.PlayerId))
+                    image = null;
+            }
 
             //Todo - when getting from game. check for player
 

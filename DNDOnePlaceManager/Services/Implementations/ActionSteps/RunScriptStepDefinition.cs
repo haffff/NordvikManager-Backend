@@ -94,6 +94,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                 var (data, _) = await mediator.Send(new DndOnePlaceManager.Application.Commands.Resources.GetResourceDataCommand
                 {
                     GameID = gameLobby.GameId, Player = gameLobby.SystemPlayer, Key = key,
+                    // Runs as the system: never a player's upload under that key.
+                    OnlyFromGameEditors = true,
                 });
                 if (data == null)
                     throw new ActionProcessException($"RunScript: no script file '{key}' to include.");

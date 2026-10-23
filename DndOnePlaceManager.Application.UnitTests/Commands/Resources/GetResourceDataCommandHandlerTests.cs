@@ -2,6 +2,7 @@ using DndOnePlaceManager.Application.Commands.Resources;
 using DndOnePlaceManager.Domain.Enums;
 using DndOnePlaceManager.Domain.Entities.Resources;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
+using Moq;
 using System.Text;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
@@ -29,7 +30,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             return game;
         }
 
-        private Guid SeedResource(Guid gameId, string key, byte[] data)
+        private Guid SeedResource(Guid gameId, string key, byte[] data) => SeedResource(gameId, key, data, PlayerId);
+
+        private Guid SeedResource(Guid gameId, string key, byte[] data, Guid uploader)
         {
             var id = Guid.NewGuid();
             Db.Resources.Add(new ResourceModel
@@ -40,7 +43,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
                 Name = key,
                 Data = data,
                 MimeType = MimeType.JSON,
-                PlayerId = PlayerId,
+                PlayerId = uploader,
             });
             Db.SaveChanges();
             return id;
@@ -90,6 +93,50 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
 
             Assert.Null(data);
             Assert.Equal(MimeType.None, mimeType);
+        }
+
+        // RunScript's Include runs a file's code on the server as the system, so it asks for
+        // files from someone who runs the game only: a player's upload under that key isn't one.
+
+        private Guid PlayerWithoutEditOnTheGame()
+        {
+            var player = Guid.NewGuid();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(player, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            return player;
+        }
+
+        [Fact]
+        public async Task Handle_ByKey_ReturnsAnyonesFile()
+        {
+            var game = BuildGame();
+            SeedResource(game.Id, "notes.txt", new byte[] { 7 }, PlayerWithoutEditOnTheGame());
+
+            var (data, _) = await Handler().Handle(new GetResourceDataCommand { GameID = game.Id, Player = Player(), Key = "notes.txt" }, CancellationToken.None);
+
+            Assert.Equal(new byte[] { 7 }, data);
+        }
+
+        [Fact]
+        public async Task Handle_OnlyFromGameEditors_IgnoresAPlayersUpload()
+        {
+            var game = BuildGame();
+            SeedResource(game.Id, "trilium_lib.js", new byte[] { 7 }, PlayerWithoutEditOnTheGame());
+
+            var (data, _) = await Handler().Handle(new GetResourceDataCommand { GameID = game.Id, Player = Player(), Key = "trilium_lib.js", OnlyFromGameEditors = true }, CancellationToken.None);
+
+            Assert.Null(data);
+        }
+
+        [Fact]
+        public async Task Handle_OnlyFromGameEditors_ReturnsTheGmsFile()
+        {
+            var game = BuildGame();
+            SeedResource(game.Id, "trilium_lib.js", new byte[] { 7 }, Guid.NewGuid()); // the permissive mock: runs the game
+
+            var (data, _) = await Handler().Handle(new GetResourceDataCommand { GameID = game.Id, Player = Player(), Key = "trilium_lib.js", OnlyFromGameEditors = true }, CancellationToken.None);
+
+            Assert.Equal(new byte[] { 7 }, data);
         }
     }
 }
