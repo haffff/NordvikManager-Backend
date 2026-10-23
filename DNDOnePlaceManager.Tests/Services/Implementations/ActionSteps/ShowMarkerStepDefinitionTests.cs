@@ -163,8 +163,12 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
         {
             await Run(new { Shape = "rect", At = "0,0", Width = "2", Height = "1", Duration = "0.05" });
 
-            await Task.Delay(400);
-            var end = Assert.Single(_sent, c => c.Command == "preview_end");
+            // The marker goes away on a background timer: wait for it rather than a fixed time,
+            // which a busy CI runner can overrun.
+            WebSocketCommand[] Sent() { lock (_sent) return _sent.ToArray(); }
+            for (var i = 0; i < 100 && !Sent().Any(c => c.Command == "preview_end"); i++)
+                await Task.Delay(50);
+            var end = Assert.Single(Sent(), c => c.Command == "preview_end");
             Assert.Equal(_view.ToString(), end.BattleMapId);
         }
 
