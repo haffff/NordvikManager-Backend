@@ -2,6 +2,7 @@
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
+using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
 using Moq;
 using Newtonsoft.Json;
@@ -116,6 +117,152 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
 
             Assert.Equal(after, Db.Cards.Find(card.Id)!.IsHidden);
+        }
+
+        // ── A card's code is the GM's: who only has Edit on the card (e.g. a player's own
+        // sheet) can't point it at other HTML/JS, or the GM opening it would run that code
+        // with the GM's rights. ────────────────────────────────────────────────────────
+
+        private (GameModel game, CardModel card) SeedPlayersOwnCard()
+        {
+            var game = BuildGame();
+            var card = SeedCard(game.Id, "My sheet");
+            card.Key = "dnd5e_character";
+            card.MainResource = Guid.NewGuid();
+            card.AdditionalResources = JsonConvert.SerializeObject(new List<Guid> { Guid.NewGuid() });
+            Db.SaveChanges();
+            // Edit on the card (it's theirs), not on the game.
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            return (game, card);
+        }
+
+        // The same card as sent by the app: only what the test changes differs.
+        private static CardDto Unchanged(CardModel card) => new()
+        {
+            Id = card.Id,
+            Name = card.Name,
+            Description = card.Description,
+            Key = card.Key,
+            MainResource = card.MainResource,
+            AdditionalResources = JsonConvert.DeserializeObject<List<Guid>>(card.AdditionalResources ?? "[]"),
+            IsHidden = card.IsHidden,
+        };
+
+        public static IEnumerable<object[]> CodeChanges() => new[]
+        {
+            new object[] { "MainResource" },
+            new object[] { "AdditionalResources" },
+            new object[] { "Key" },
+            new object[] { "IsHidden" },
+        };
+
+        private static void Change(CardDto dto, string field)
+        {
+            switch (field)
+            {
+                case "MainResource": dto.MainResource = Guid.NewGuid(); break;
+                case "AdditionalResources": dto.AdditionalResources = new List<Guid> { Guid.NewGuid() }; break;
+                case "Key": dto.Key = "trilium_viewer"; break;
+                case "IsHidden": dto.IsHidden = true; break;
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(CodeChanges))]
+        public async Task Handle_WithoutEditOnTheGame_CannotChangeTheCardsCode(string field)
+        {
+            var (_, card) = SeedPlayersOwnCard();
+            var before = (card.MainResource, card.AdditionalResources, card.Key, card.IsHidden);
+            var dto = Unchanged(card);
+            Change(dto, field);
+
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None));
+
+            Db.ChangeTracker.Clear();
+            var stored = Db.Cards.Find(card.Id)!;
+            Assert.Equal(before, (stored.MainResource, stored.AdditionalResources, stored.Key, stored.IsHidden));
+        }
+
+        [Fact]
+        public async Task Handle_WithoutEditOnTheGame_CanStillRenameTheirCard()
+        {
+            var (_, card) = SeedPlayersOwnCard();
+            var dto = Unchanged(card);
+            dto.Name = "Aria";
+            dto.Description = "Bard";
+
+            var response = await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal("Aria", Db.Cards.Find(card.Id)!.Name);
+        }
+
+        [Fact]
+        public async Task Handle_WithoutEditOnTheGame_NullListAndEmptyKeyCountAsUnchanged()
+        {
+            var game = BuildGame();
+            var card = SeedCard(game.Id, "Plain");
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            var dto = new CardDto { Id = card.Id, Name = "Renamed", Key = "", AdditionalResources = null };
+
+            var response = await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
+        // "Update from template" (Card Settings): a template's code is the GM's, so a player
+        // may put exactly that on their card.
+        [Fact]
+        public async Task Handle_WithoutEditOnTheGame_CanTakeATemplatesCode()
+        {
+            var (game, card) = SeedPlayersOwnCard();
+            var template = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Character", GameId = game.Id, IsTemplate = true, Properties = new(),
+                MainResource = Guid.NewGuid(),
+                AdditionalResources = JsonConvert.SerializeObject(new List<Guid> { Guid.NewGuid(), Guid.NewGuid() }),
+            };
+            Db.Cards.Add(template);
+            Db.SaveChanges();
+            var dto = Unchanged(card);
+            dto.MainResource = template.MainResource;
+            dto.AdditionalResources = JsonConvert.DeserializeObject<List<Guid>>(template.AdditionalResources);
+
+            await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Equal(template.MainResource, Db.Cards.Find(card.Id)!.MainResource);
+        }
+
+        [Fact]
+        public async Task Handle_WithoutEditOnTheGame_CannotTakeAnotherGamesTemplatesCode()
+        {
+            var (_, card) = SeedPlayersOwnCard();
+            var other = new GameModel { Id = Guid.NewGuid(), Name = "Other game", SystemPlayerId = Guid.NewGuid() };
+            Db.Games.Add(other);
+            var template = new CardModel { Id = Guid.NewGuid(), Name = "Other", GameId = other.Id, IsTemplate = true, Properties = new(), MainResource = Guid.NewGuid() };
+            Db.Cards.Add(template);
+            Db.SaveChanges();
+            var dto = Unchanged(card);
+            dto.MainResource = template.MainResource;
+            dto.AdditionalResources = new List<Guid>();
+
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_WithEditOnTheGame_CanChangeTheCardsCode()
+        {
+            var game = BuildGame();
+            var card = SeedCard(game.Id);
+            var dto = UpdateDto(card.Id); // the permissive mock: Edit on the game too
+
+            await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Equal(dto.MainResource, Db.Cards.Find(card.Id)!.MainResource);
         }
     }
 }

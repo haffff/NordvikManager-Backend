@@ -350,6 +350,26 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             PermissionsMock.Verify(p => p.SetGenericPermissions(It.Is<IEntity>(e => e.Id == id), It.IsAny<Permission>()), Times.Never);
         }
 
+        // Keys are unique per game and ShowView finds views by key: a player's card gets
+        // none, so it can't take a key an addon's view or template will need.
+        [Fact]
+        public async Task Handle_PlayerWithReadOnTemplate_GetsNoKey_AndTheTemplatesCode()
+        {
+            var (game, template) = SeedPlayerGameWithTemplate(playerCanReadTemplate: true);
+            template.Key = "note";
+            template.MainResource = Guid.NewGuid();
+            Db.SaveChanges();
+            var cmd = PlayerCreates(game, template.Id);
+            cmd.Dto.Key = "trilium_viewer";
+            cmd.Dto.MainResource = Guid.NewGuid();
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            var card = Db.Cards.Find(id)!;
+            Assert.Null(card.Key);
+            Assert.Equal(template.MainResource, card.MainResource);
+        }
+
         [Fact]
         public async Task Handle_PlayerWithoutReadOnTemplate_ThrowsPermissionException()
         {

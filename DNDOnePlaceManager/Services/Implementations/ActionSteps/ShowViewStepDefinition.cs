@@ -42,8 +42,9 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
 
+            // Views only: whatever else holds the key is not shown in the view's place.
             var card = await dbContext.Cards
-                .FirstOrDefaultAsync(c => c.Key == stepData.ViewKey && c.GameId == gameLobby.GameId);
+                .FirstOrDefaultAsync(c => c.Key == stepData.ViewKey && c.GameId == gameLobby.GameId && c.IsCustomUi);
 
             if (card == null)
                 throw new ActionProcessException($"ShowView: no view with key '{stepData.ViewKey}' found in this game.");
