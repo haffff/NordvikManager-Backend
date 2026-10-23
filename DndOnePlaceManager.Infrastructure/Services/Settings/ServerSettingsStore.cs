@@ -53,9 +53,10 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
                 var temp = options.FilePath + ".tmp";
                 File.WriteAllText(temp, JsonSerializer.Serialize(settings, WriteOptions));
                 File.Move(temp, options.FilePath, overwrite: true);
-            }
 
-            Changed?.Invoke(settings);
+                // Inside the lock: two saves at once must reach listeners in the order they hit the file.
+                Changed?.Invoke(settings);
+            }
             return settings;
         }
 
