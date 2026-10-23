@@ -25,6 +25,34 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Resources
             Assert.Equal(new byte[] { 2, 2 }, Db.Resources.Find(resource.Id)!.Data);
         }
 
+        // An action writing to a key a player uploaded under: the row stops being theirs, or
+        // they could rewrite what the action stored (e.g. a script it later runs).
+        [Fact]
+        public async Task Handle_ExistingKeyOfAPlayerWithoutEditOnTheGame_BecomesTheWritersRow()
+        {
+            var game = BuildGame();
+            var squatter = Guid.NewGuid();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(squatter, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is DNDOnePlaceManager.Domain.Entities.BattleMap.GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            var resource = SeedResource(game, squatter, key: "trilium_lib.js", data: new byte[] { 1 });
+
+            await Handler().Handle(new SetResourceCommand { GameId = game.Id, Player = Player(), Key = "trilium_lib.js", Data = new byte[] { 2 } }, CancellationToken.None);
+
+            Assert.Equal(PlayerId, Db.Resources.Find(resource.Id)!.PlayerId);
+        }
+
+        [Fact]
+        public async Task Handle_ExistingKeyOfSomeoneWhoMayEditTheGame_KeepsItsUploader()
+        {
+            var game = BuildGame();
+            var gm = Guid.NewGuid();
+            var resource = SeedResource(game, gm, key: "notes.json", data: new byte[] { 1 });
+
+            await Handler().Handle(new SetResourceCommand { GameId = game.Id, Player = Player(), Key = "notes.json", Data = new byte[] { 2 } }, CancellationToken.None);
+
+            Assert.Equal(gm, Db.Resources.Find(resource.Id)!.PlayerId);
+        }
+
         [Fact]
         public async Task Handle_ExistingKey_NoMimeTypeProvided_KeepsOriginalMimeType()
         {

@@ -61,6 +61,50 @@ namespace DNDOnePlaceManager.Tests.WebSockets.Handlers
         }
 
         // =====================================================================
+        // Protected properties (API keys): the broadcast goes to every client,
+        // so it never carries the value
+        // =====================================================================
+
+        private static PropertyDTO Secret() => new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "trilium_token",
+            ParentID = Guid.NewGuid(),
+            EntityName = "GameModel",
+            Value = "etapi-secret",
+            IsProtected = true,
+        };
+
+        [Fact]
+        public async Task UpdateProperty_Protected_BroadcastsNoValue()
+        {
+            var updated = Secret();
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, updated));
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyUpdate, JObject.FromObject(updated));
+
+            await _handler.Handle(cmd, _player);
+
+            var data = Assert.IsType<JObject>(cmd.Data);
+            Assert.True(data["isProtected"]!.ToObject<bool>());
+            Assert.Equal(JTokenType.Null, data["value"]!.Type);
+            Assert.DoesNotContain("etapi-secret", cmd.Data.ToString());
+        }
+
+        [Fact]
+        public async Task AddProperty_Protected_BroadcastsNoValue()
+        {
+            var added = Secret();
+            _mediator.Setup(m => m.Send(It.IsAny<AddPropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, added));
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyAdd, JObject.FromObject(added));
+
+            await _handler.Handle(cmd, _player);
+
+            Assert.DoesNotContain("etapi-secret", cmd.Data.ToString());
+        }
+
+        // =====================================================================
         // Remove — bare GUID in, full canonical DTO out
         // =====================================================================
 

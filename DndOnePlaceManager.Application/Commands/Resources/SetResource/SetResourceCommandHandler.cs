@@ -47,6 +47,13 @@ namespace DndOnePlaceManager.Application.Commands.Resources.SetResource
 
                 if (mimeType != MimeType.None)
                     existing.MimeType = mimeType;
+
+                // A player's upload that happened to have this key: what's written now is the
+                // writer's, or the player could rewrite it later (a script an action runs).
+                var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == existing.GameId, cancellationToken);
+                if (game != null && request.Player?.Id is Guid writerId && !game.IsRunBy(existing.PlayerId))
+                    existing.PlayerId = writerId;
+
                 dbContext.SaveChanges();
                 return existing.Id;
             }

@@ -355,6 +355,52 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
             Assert.False(Db.Resources.Any(r => r.Id == existing.Id));
         }
 
+        // A player can upload a resource under any free key (Resources.Global.Create). If it
+        // takes the key of an addon's file first, the install must not adopt it: the
+        // player's file would become the addon's code, run by whoever opens its cards.
+        private Guid PlayerWithoutEditOnTheGame()
+        {
+            var squatter = Guid.NewGuid();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(squatter, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
+                .Returns(false);
+            return squatter;
+        }
+
+        [Fact]
+        public async Task Handle_KeyTakenByAPlayersUpload_ReplacesIt_EvenWithoutReinstall()
+        {
+            var game = BuildGame();
+            var squatted = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerWithoutEditOnTheGame() };
+            Db.Resources.Add(squatted);
+            Db.SaveChanges();
+
+            var cmd = ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');")));
+            cmd.Reinstall = false;
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+            Assert.False(Db.Resources.Any(r => r.Id == squatted.Id));
+        }
+
+        [Fact]
+        public async Task Handle_TemplateReferringToAPlayersUploadByKey_DoesNotUseIt()
+        {
+            var game = BuildGame();
+            var squatted = Guid.NewGuid();
+            Db.Resources.Add(new ResourceModel { Id = squatted, Name = "x.js", Key = "shared_x.js", GameId = game.Id, PlayerId = PlayerWithoutEditOnTheGame() });
+            Db.SaveChanges();
+
+            var archive = BuildAddonZip(BasicInfoJson,
+                ("templates/monster.json", "{\"name\":\"Monster\",\"description\":\"d\",\"mainResource\":\"shared_x.js\",\"additionalResources\":[\"shared_x.js\"]}"));
+
+            await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.Is<AddCardCommand>(c => c.IsTemplate
+                && c.Dto.MainResource == null
+                && !c.Dto.AdditionalResources!.Contains(squatted)), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task Handle_AddResourceReturnsNullId_ThrowsInvalidOperationException()
         {

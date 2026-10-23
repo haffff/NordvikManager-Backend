@@ -17,11 +17,14 @@ using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DNDOnePlaceManager.Services.Interfaces;
 using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.WebSockets.Handlers;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -643,6 +646,229 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
 
             NoErrors();
             Assert.NotEqual("s3cret", PropertyValue(mapId, "leak"));
+        }
+
+        // SetProperty Protected: an addon's settings view saves an API key (e.g. Trilium's
+        // ETAPI token) for Send Request's bearer token. No client and no later step sees it.
+        private Task RunSteps(params JObject[] steps) => RunStepsAs(gm, steps);
+
+        private async Task RunStepsAs(PlayerDTO by, params JObject[] steps)
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "steps", Prefix = "test", IsEnabled = true, Content = new JArray(steps).ToString() };
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = by, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+        }
+
+        private static JObject SetGameProperty(string name, string value, bool? isProtected = null)
+        {
+            var data = new JObject { ["Of"] = "game", ["PropertyName"] = name, ["PropertyValue"] = value };
+            if (isProtected != null) data["Protected"] = isProtected.Value;
+            return new JObject { ["Type"] = "SetProperty", ["Data"] = data };
+        }
+
+        private PropertyModel? GameProperty(string name)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IDbContext>();
+            return db.Properties.AsNoTracking().FirstOrDefault(p => p.ParentID == gameId && p.Name == name);
+        }
+
+        private void NothingSentContains(string text) =>
+            Assert.DoesNotContain(sent, s => JsonConvert.SerializeObject(s.Command).Contains(text));
+
+        [Fact]
+        public async Task SetProperty_Protected_IsStoredProtected_AndNoClientGetsTheValue()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "etapi-secret", isProtected: true));
+
+            NoErrors();
+            var stored = GameProperty("trilium_token")!;
+            Assert.True(stored.IsProtected);
+            Assert.Equal("etapi-secret", stored.Value);
+            NothingSentContains("etapi-secret");
+        }
+
+        [Fact]
+        public async Task SetProperty_Protected_ReplacesTheSecret_WithoutSendingIt()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "first-secret", isProtected: true));
+
+            await RunSteps(SetGameProperty("trilium_token", "second-secret", isProtected: true));
+
+            NoErrors();
+            Assert.Equal("second-secret", GameProperty("trilium_token")!.Value);
+            NothingSentContains("first-secret");
+            NothingSentContains("second-secret");
+        }
+
+        // A plain SetProperty on it later never makes it readable.
+        [Fact]
+        public async Task SetProperty_WithoutProtected_OnAProtectedProperty_KeepsItProtected()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "etapi-secret", isProtected: true));
+
+            await RunSteps(SetGameProperty("trilium_token", "new-secret"));
+
+            NoErrors();
+            var stored = GameProperty("trilium_token")!;
+            Assert.True(stored.IsProtected);
+            NothingSentContains("new-secret");
+        }
+
+        [Fact]
+        public async Task SetProperty_Protected_LaterStepsReadNothing()
+        {
+            await RunSteps(
+                SetGameProperty("trilium_token", "etapi-secret", isProtected: true),
+                new JObject { ["Type"] = "GetPropertyValue", ["Data"] = new JObject { ["Of"] = "game", ["PropertyName"] = "trilium_token", ["Output"] = "t" } },
+                new JObject { ["Type"] = "SetProperty", ["Data"] = new JObject { ["Of"] = "map", ["PropertyName"] = "leak", ["PropertyValue"] = "%t%" } });
+
+            Assert.NotEqual("etapi-secret", PropertyValue(mapId, "leak"));
+            Assert.DoesNotContain(lobby.EventLog.GetEntries(), e => (e.Message ?? "").Contains("etapi-secret"));
+        }
+
+        // SetPermission: share a card for viewing (e.g. a Trilium lore note), only Read or
+        // Control, only by someone who has it; the players who gain or lose it are told.
+        private static JObject SetPermission(Guid entity, string player, string permission = "Read", bool revoke = false) =>
+            new() { ["Type"] = "SetPermission", ["Data"] = new JObject { ["EntityId"] = entity.ToString(), ["Player"] = player, ["Permission"] = permission, ["Revoke"] = revoke } };
+
+        private bool PlayerCanRead(Guid entity)
+        {
+            using var scope = services.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Services.IPermissionService>()
+                .CheckIfHasPermissions(player, entity, Permission.Read);
+        }
+
+        private List<WebSocketCommand> SentTo(PlayerDTO to, string command) =>
+            sent.Where(x => x.To == to && x.Command.Command == command).Select(x => x.Command).ToList();
+
+        [Fact]
+        public async Task SetPermission_SharesACard_AndTellsOnlyThatPlayer()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Id.ToString()!));
+
+            NoErrors();
+            Assert.True(PlayerCanRead(goblinCard));
+            var added = Assert.Single(SentTo(player, WebSocketCommandNames.CardAdd));
+            Assert.Equal(goblinCard.ToString(), added.Data!["id"]!.ToString());
+            Assert.Empty(SentTo(gm, WebSocketCommandNames.CardAdd));
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Message.Contains("SetPermission") && e.Message.Contains("Goblin"));
+        }
+
+        [Fact]
+        public async Task SetPermission_Unshares_AndTheCardLeavesThatPlayersList()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Name));
+
+            await RunSteps(SetPermission(goblinCard, player.Name, revoke: true));
+
+            NoErrors();
+            Assert.False(PlayerCanRead(goblinCard));
+            Assert.Single(SentTo(player, WebSocketCommandNames.CardDelete));
+        }
+
+        [Fact]
+        public async Task SetPermission_ByAPlayer_IsRefused()
+        {
+            await RunStepsAs(player, SetPermission(goblinCard, player.Name));
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error");
+            Assert.False(PlayerCanRead(goblinCard));
+        }
+
+        // Players can fire any action by name with any arguments: a playerId among them must
+        // not make SetPermission (or RequirePermission) think the GM triggered it.
+        [Fact]
+        public async Task SetPermission_AForgedPlayerIdArgument_IsIgnored()
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "share", Prefix = "test", IsEnabled = true,
+                Content = new JArray(SetPermission(goblinCard, player.Name)).ToString() };
+            var args = new JObject { ["playerId"] = gm.Id.ToString(), ["playerName"] = gm.Name };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = player, Data = args, Command = new WebSocketCommand { Command = "execute_action" } },
+                args.ToObject<Dictionary<string, object>>());
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error");
+            Assert.False(PlayerCanRead(goblinCard));
+        }
+
+        // The real path of an addon's settings view: the token arrives as an argument and is
+        // written with %token%. Only the GM who sent it may ever see it.
+        [Fact]
+        public async Task SetProperty_Protected_TokenFromAnArgument_ReachesNoOtherPlayer()
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "save", Prefix = "test", IsEnabled = true,
+                Content = new JArray(SetGameProperty("trilium_token", "%token%", isProtected: true)).ToString() };
+            var args = new JObject { ["token"] = "etapi-secret" };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = args, Command = new WebSocketCommand { Command = "execute_action" } },
+                args.ToObject<Dictionary<string, object>>());
+
+            NoErrors();
+            Assert.Equal("etapi-secret", GameProperty("trilium_token")!.Value);
+            Assert.DoesNotContain(sent, s => s.To != gm && JsonConvert.SerializeObject(s.Command).Contains("etapi-secret"));
+            Assert.DoesNotContain(lobby.EventLog.GetEntries(), e => (e.Message ?? "").Contains("etapi-secret"));
+        }
+
+        [Fact]
+        public async Task SetPermission_Edit_IsRefused()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Name, "Edit"));
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error" && e.Message.Contains("Read"));
+            Assert.False(PlayerCanRead(goblinCard));
+        }
+
+        // Debug mode pauses every action at every step and shows its variables (arguments
+        // included). It's the GM's tool: players can't turn it on, see it or answer it.
+        private Task Send(PlayerDTO by, string command, JToken? data = null, Guid? inputToken = null) =>
+            lobby.HandleCommand(by, new WebSocketCommand { Command = command, Data = data, InputToken = inputToken });
+
+        [Fact]
+        public async Task DebugMode_APlayerCantTurnItOn()
+        {
+            await Send(player, WebSocketCommandNames.CmdDebugModeSet, true);
+
+            Assert.False(lobby.Debug);
+        }
+
+        [Fact]
+        public async Task DebugMode_OnlyGmsSeeAndAnswerIt()
+        {
+            await Send(gm, WebSocketCommandNames.CmdDebugModeSet, true);
+            Assert.True(lobby.Debug);
+
+            var run = RunSteps(SetGameProperty("debugged", "1"));
+            WebSocketCommand? paused = null;
+            for (var i = 0; i < 100 && paused == null; i++)
+            {
+                await Task.Delay(50);
+                paused = sent.LastOrDefault(x => x.To == gm && x.Command.Command == WebSocketCommandNames.CmdDebugAction && x.Command.InputToken != null).Command;
+            }
+            Assert.NotNull(paused);
+            Assert.DoesNotContain(sent, x => x.To == player && x.Command.Command == WebSocketCommandNames.CmdDebugAction);
+
+            // A player's answer is ignored: the action keeps waiting.
+            await Send(player, WebSocketCommandNames.CmdDebugActionResponse, WebSocketCommandNames.DebugStopSignal, paused!.InputToken);
+            Assert.True(lobby.ActionProcessingService.InputHandler.ContainsKey(paused.InputToken!.Value));
+
+            // The GM's answers move it on (the first pause is before any step; stop at the next).
+            var answered = new HashSet<Guid?>();
+            for (var i = 0; i < 100 && !run.IsCompleted; i++)
+            {
+                var pending = sent.Where(x => x.To == gm && x.Command.Command == WebSocketCommandNames.CmdDebugAction && x.Command.InputToken != null)
+                    .Select(x => x.Command.InputToken).LastOrDefault(t => !answered.Contains(t));
+                if (pending != null)
+                {
+                    answered.Add(pending);
+                    await Send(gm, WebSocketCommandNames.CmdDebugActionResponse, WebSocketCommandNames.DebugStopSignal, pending);
+                }
+                await Task.Delay(50);
+            }
+            Assert.True(run.IsCompleted);
         }
 
         // Include: shared script files (an addon's resources) go before the script.
