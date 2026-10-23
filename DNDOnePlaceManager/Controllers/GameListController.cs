@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Services;
+﻿using DndOnePlaceManager.Infrastructure.Services.Settings;
+using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
 using DndOnePlaceManager.Application.Commands.Application;
 using DndOnePlaceManager.Application.Commands.BattleMap;
@@ -165,7 +166,7 @@ namespace DNDOnePlaceManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
-        public async Task<IActionResult> GetFeaturedAddons([FromServices] IBuiltInAddons builtInAddons)
+        public async Task<IActionResult> GetFeaturedAddons([FromServices] IBuiltInAddons builtInAddons, [FromServices] AddonRegistryOptions addonRegistry)
         {
             // Built-in addons first (shipped with the server, offered ticked), then the
             // registry's featured ones. The built-ins are listed even when the registry
@@ -181,8 +182,7 @@ namespace DNDOnePlaceManager.Controllers
                 })
                 .ToList();
 
-            var featuredAddonsConfig = configuration.GetSection("AddonsConfiguration:FeaturedAddons").Get<string[]>()
-                ?? Array.Empty<string>();
+            var featuredAddonsConfig = addonRegistry.FeaturedAddons;
 
             try
             {

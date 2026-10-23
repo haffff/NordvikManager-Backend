@@ -11,7 +11,7 @@ using DndOnePlaceManager.Application.Services;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using MediatR;
-using Microsoft.Extensions.Configuration;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -25,13 +25,13 @@ namespace DndOnePlaceManager.Application.Commands.BattleMap
         IServiceScopeFactory serviceScopeFactory;
         IBuiltInAddons builtInAddons;
 
-        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IConfiguration configuration, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory, IBuiltInAddons builtInAddons) : base(battleMapContext, mapper)
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, AddonRegistryOptions addonRegistry, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory, IBuiltInAddons builtInAddons) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
             this.logger = logger;
             this.serviceScopeFactory = serviceScopeFactory;
             this.builtInAddons = builtInAddons;
-            mainRepositoryUrl = configuration["AddonsConfiguration:MainRepository"];
+            mainRepositoryUrl = addonRegistry.MainRepository;
         }
 
         public async override Task<Guid?> Handle(AddGameCommand request, CancellationToken cancellationToken)

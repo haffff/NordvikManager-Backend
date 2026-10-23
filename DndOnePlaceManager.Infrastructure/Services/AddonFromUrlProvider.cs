@@ -1,5 +1,5 @@
 ﻿using DndOnePlaceManager.Infrastructure.Interfaces;
-using Microsoft.Extensions.Configuration;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using Newtonsoft.Json.Linq;
 using System.Net;
 
@@ -14,10 +14,10 @@ namespace DndOnePlaceManager.Infrastructure.Services
         private static readonly HttpClient httpClient = new HttpClient();
         private readonly string _mainRepository;
 
-        public AddonRepositoryService(IConfiguration configuration)
+        public AddonRepositoryService(AddonRegistryOptions registry)
         {
-            _mainRepository = configuration["AddonsConfiguration:MainRepository"]
-                ?? throw new InvalidOperationException("AddonsConfiguration:MainRepository is not configured.");
+            _mainRepository = registry.MainRepository
+                ?? throw new InvalidOperationException("No addon registry is set: AddonsConfiguration:MainRepository in appsettings, or Application Settings.");
         }
 
         /// <inheritdoc/>

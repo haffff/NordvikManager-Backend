@@ -1,5 +1,6 @@
 using DndOnePlaceManager.Application.Commands.Properties.Proxy;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using DndOnePlaceManager.Infrastructure.Services.Proxy;
 using DNDOnePlaceManager.Domain.Entities.BattleMap;
 using Moq;
 
@@ -11,7 +12,9 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
     {
         private readonly Mock<IProxyHttpService> _proxyService = new();
 
-        private ProxyCommandHandler Handler() => new(Db, Mapper, _proxyService.Object);
+        private ProxyOptions _options = ProxyOptions.From(Array.Empty<string>());
+
+        private ProxyCommandHandler Handler() => new(Db, Mapper, _proxyService.Object, _options);
 
         private static ProxyCommand BaseCommand(string url = "http://8.8.8.8/webhook") => new()
         {
@@ -63,6 +66,31 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Properties
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
+        }
+
+        // The server's owner can allow a private host (e.g. a Trilium on the home network).
+        [Fact]
+        public async Task Handle_ListedPrivateHost_CallsProxyService()
+        {
+            _options = ProxyOptions.From(new[] { "192.168.1.1:8080" });
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "note"));
+
+            var result = await Handler().Handle(BaseCommand("http://192.168.1.1:8080/etapi/notes/abc/content"), CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Equal("note", result.ResponseBody);
+        }
+
+        [Fact]
+        public async Task Handle_ListedPrivateHostOnAnotherPort_ReturnsBadRequest()
+        {
+            _options = ProxyOptions.From(new[] { "192.168.1.1:8080" });
+
+            var result = await Handler().Handle(BaseCommand("http://192.168.1.1:22/"), CancellationToken.None);
+
+            Assert.Equal(400, result.StatusCode);
+            _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
         [Fact]

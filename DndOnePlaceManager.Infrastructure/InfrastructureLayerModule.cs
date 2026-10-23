@@ -2,11 +2,15 @@ using DNDOnePlaceManager.Data.Contexts;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services;
 using DndOnePlaceManager.Infrastructure.Services.Backup;
+using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Sandbox;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using DndOnePlaceManager.Infrastructure.Services.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace DndOnePlaceManager.Infrastructure
 {
@@ -36,6 +40,45 @@ namespace DndOnePlaceManager.Infrastructure
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
             services.AddHttpClient();
+            services.AddSingleton(ServerSettingsOptions.FromConfiguration(configuration));
+            services.AddSingleton<IServerSettingsStore, ServerSettingsStore>();
+            // appsettings hosts plus the ones saved from Application Settings, kept current on every save.
+            services.AddSingleton(sp =>
+            {
+                var proxy = ProxyOptions.FromConfiguration(configuration);
+                var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<ProxyOptions>();
+                foreach (var entry in proxy.Ignored)
+                    logger?.LogWarning(ProxyOptions.ConfigKey + ": ignoring \"{Entry}\" — use a host or host:port, e.g. localhost:37840", entry);
+
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                if (store.LoadError != null)
+                    logger?.LogWarning("Server settings: {Error}", store.LoadError);
+                foreach (var entry in proxy.SetRuntimeHosts(store.Load().Security.ProxyAllowedPrivateHosts))
+                    logger?.LogWarning("server-settings.json: ignoring private host \"{Entry}\" — use a host or host:port, e.g. localhost:37840", entry);
+                store.Changed += settings => proxy.SetRuntimeHosts(settings.Security.ProxyAllowedPrivateHosts);
+                return proxy;
+            });
+            // appsettings origins (or the defaults) plus the saved ones; the card sandbox CSP follows every save.
+            services.AddSingleton(sp =>
+            {
+                var logger = sp.GetRequiredService<ILogger<SandboxOrigins>>();
+                var origins = new SandboxOrigins(configuration, logger);
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                foreach (var entry in origins.SetRuntimeOrigins(store.Load().Security.SandboxAllowedOrigins))
+                    logger.LogWarning("server-settings.json: ignoring sandbox origin \"{Origin}\" — use an https origin such as https://cdn.example.com", entry);
+                store.Changed += settings => origins.SetRuntimeOrigins(settings.Security.SandboxAllowedOrigins);
+                return origins;
+            });
+            // appsettings AddonsConfiguration, replaced by what the local admin saved, per value.
+            services.AddSingleton(sp =>
+            {
+                var registry = AddonRegistryOptions.FromConfiguration(configuration);
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                registry.SetRuntime(store.Load().Addons);
+                store.Changed += settings => registry.SetRuntime(settings.Addons);
+                return registry;
+            });
+            services.AddProxyHttpClient();
             services.AddScoped<IProxyHttpService, ProxyHttpService>();
         }
     }

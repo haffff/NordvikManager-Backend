@@ -1,3 +1,4 @@
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using DndOnePlaceManager.Application.Commands.BattleMap;
 using DndOnePlaceManager.Application.Commands.Game.DeleteGame;
 using DndOnePlaceManager.Application.Commands.Game.UpdateGame;
@@ -249,7 +250,7 @@ namespace DNDOnePlaceManager.Tests.Controllers
             var controller = CreateController(_mediator, realConfig, _lobbyService, RegularUser());
 
             // Act
-            var result = await controller.GetFeaturedAddons(NoBuiltIns());
+            var result = await controller.GetFeaturedAddons(NoBuiltIns(), AddonRegistryOptions.FromConfiguration(realConfig));
 
             // Assert
             Assert.IsType<OkObjectResult>(result);
@@ -267,6 +268,23 @@ namespace DNDOnePlaceManager.Tests.Controllers
                 .AddInMemoryCollection(keys.Select((k, i) => new KeyValuePair<string, string?>($"AddonsConfiguration:FeaturedAddons:{i}", k)))
                 .Build();
 
+        private static AddonRegistryOptions Registry(params string[] featured) =>
+            AddonRegistryOptions.FromConfiguration(FeaturedConfig(featured));
+
+        [Fact]
+        public async Task GetFeaturedAddons_UsesTheFeaturedListSavedInApplicationSettings()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e" }, new AddonDto { Key = "themes" } });
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
+            var registry = Registry("dnd5e");
+            registry.SetRuntime(new AddonSettings { FeaturedAddons = new List<string> { "themes" } });
+
+            var listed = Listed(await controller.GetFeaturedAddons(NoBuiltIns(), registry));
+
+            Assert.Equal(new[] { "themes" }, listed.Select(a => a.Key));
+        }
+
         private static List<DndOnePlaceManager.Application.DataTransferObjects.FeaturedAddonDto> Listed(IActionResult result) =>
             Assert.IsAssignableFrom<IEnumerable<DndOnePlaceManager.Application.DataTransferObjects.FeaturedAddonDto>>(Assert.IsType<OkObjectResult>(result).Value).ToList();
 
@@ -275,10 +293,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e", Name = "D&D" }, new AddonDto { Key = "basics", Name = "Registry copy" } });
-            var controller = CreateController(_mediator, FeaturedConfig("dnd5e", "basics"), _lobbyService, RegularUser());
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
             var builtIns = NoBuiltIns(new DndOnePlaceManager.Application.Services.BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", Array.Empty<byte>()));
 
-            var listed = Listed(await controller.GetFeaturedAddons(builtIns));
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns, Registry("dnd5e", "basics")));
 
             Assert.Equal(new[] { "basics", "dnd5e" }, listed.Select(a => a.Key));
             Assert.True(listed[0].BuiltIn);
@@ -291,10 +309,10 @@ namespace DNDOnePlaceManager.Tests.Controllers
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new HttpRequestException("offline"));
-            var controller = CreateController(_mediator, FeaturedConfig("dnd5e"), _lobbyService, RegularUser());
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
             var builtIns = NoBuiltIns(new DndOnePlaceManager.Application.Services.BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", Array.Empty<byte>()));
 
-            var listed = Listed(await controller.GetFeaturedAddons(builtIns));
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns, Registry("dnd5e")));
 
             Assert.Equal(new[] { "basics" }, listed.Select(a => a.Key));
         }

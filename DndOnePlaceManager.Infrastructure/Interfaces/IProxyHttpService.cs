@@ -13,5 +13,14 @@ namespace DndOnePlaceManager.Infrastructure.Interfaces
             Dictionary<string, object?> body,
             string? bearerToken = null,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// GETs the URL and returns the response as it is (binary-safe), with its content type
+        /// (without parameters such as charset).
+        /// </summary>
+        Task<(bool Success, int StatusCode, byte[]? Body, string? ContentType)> GetBytesAsync(
+            string url,
+            string? bearerToken = null,
+            CancellationToken cancellationToken = default);
     }
 }
