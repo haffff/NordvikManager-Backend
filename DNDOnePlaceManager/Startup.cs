@@ -73,7 +73,6 @@ namespace DNDOnePlaceManager
             services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
-            services.AddSingleton<DNDOnePlaceManager.Engine.SandboxOrigins>();
             services.AddSingleton<SecurityHeadersMiddleWare>();
             services.AddSingleton<ICentralServerService, CentralServerService>();
             services.AddSingleton<ILobbyRegistry, LobbyRegistry>();

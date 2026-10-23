@@ -1,7 +1,10 @@
 using DndOnePlaceManager.Application.Commands.ServerSettings;
 using DndOnePlaceManager.Application.DataTransferObjects.ServerSettings;
 using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Sandbox;
 using DndOnePlaceManager.Infrastructure.Services.Settings;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
 {
@@ -11,6 +14,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
         private readonly ServerSettingsOptions _options;
         private readonly ServerSettingsStore _store;
         private readonly ProxyOptions _proxy = ProxyOptions.From(new[] { "trilium.lan" });
+        private readonly SandboxOrigins _sandbox = new(new ConfigurationBuilder().Build(), NullLogger<SandboxOrigins>.Instance);
 
         public ServerSettingsCommandHandlerTests()
         {
@@ -25,11 +29,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
                 Directory.Delete(_folder, recursive: true);
         }
 
-        private GetServerSettingsCommandHandler GetHandler() => new(Db, Mapper, _store, _options, _proxy);
-        private SetProxyAllowedPrivateHostsCommandHandler SetHandler() => new(Db, Mapper, _store, _options, _proxy);
+        private ServerSettingsView View() => new(_store, _options, _proxy, _sandbox);
+        private GetServerSettingsCommandHandler GetHandler() => new(Db, Mapper, View());
 
         private Task<ServerSettingsDTO> Set(params string[] hosts) =>
-            SetHandler().Handle(new SetProxyAllowedPrivateHostsCommand { Hosts = hosts.ToList() }, default);
+            new SetProxyAllowedPrivateHostsCommandHandler(Db, Mapper, View()).Handle(new SetProxyAllowedPrivateHostsCommand { Hosts = hosts.ToList() }, default);
+
+        private Task<ServerSettingsDTO> SetOrigins(params string[] origins) =>
+            new SetSandboxAllowedOriginsCommandHandler(Db, Mapper, View()).Handle(new SetSandboxAllowedOriginsCommand { Origins = origins.ToList() }, default);
 
         // =========================================================================
         // GetServerSettings
@@ -108,7 +115,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
         [Fact]
         public async Task Set_TooManyEntries_Throws()
         {
-            var hosts = Enumerable.Range(1, SetProxyAllowedPrivateHostsCommandHandler.MaxEntries + 1).Select(i => $"host{i}.lan").ToArray();
+            var hosts = Enumerable.Range(1, ServerSettingsView.MaxListEntries + 1).Select(i => $"host{i}.lan").ToArray();
 
             await Assert.ThrowsAsync<ServerSettingsException>(() => Set(hosts));
         }
@@ -120,6 +127,64 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
 
             await Assert.ThrowsAsync<ServerSettingsLockedException>(() => Set("localhost:8080"));
             Assert.False(File.Exists(_options.FilePath));
+        }
+
+        // =========================================================================
+        // SetSandboxAllowedOrigins
+        // =========================================================================
+
+        [Fact]
+        public async Task Get_ReturnsTheDefaultOriginsAsLocked_AndTheSavedOnes()
+        {
+            await SetOrigins("https://cdn.example.com");
+
+            var result = await GetHandler().Handle(new GetServerSettingsCommand(), default);
+
+            Assert.Equal(SandboxOrigins.Defaults, result.SandboxAllowedOrigins.Locked);
+            Assert.Equal(new[] { "https://cdn.example.com" }, result.SandboxAllowedOrigins.Entries);
+        }
+
+        [Fact]
+        public async Task SetOrigins_SavesTrimmedDistinctOrigins()
+        {
+            var result = await SetOrigins(" https://cdn.example.com\n", "https://CDN.example.com", "https://*.example.org:8443");
+
+            Assert.Equal(new[] { "https://cdn.example.com", "https://*.example.org:8443" }, _store.Load().Security.SandboxAllowedOrigins);
+            Assert.Equal(new[] { "https://cdn.example.com", "https://*.example.org:8443" }, result.SandboxAllowedOrigins.Entries);
+        }
+
+        [Theory]
+        [InlineData("'unsafe-eval'")]
+        [InlineData("https://a.com; script-src *")]
+        [InlineData("https://a.com\" onload=\"x")]
+        [InlineData("http://plain.example.com")]
+        [InlineData("*")]
+        [InlineData("https://a.com/path")]
+        [InlineData("https://a.com\nhttps://b.com")]
+        public async Task SetOrigins_InvalidEntry_ThrowsNamingIt_AndSavesNothing(string entry)
+        {
+            var ex = await Assert.ThrowsAsync<ServerSettingsException>(() => SetOrigins("https://ok.example.com", entry));
+
+            Assert.Contains(entry, ex.Message);
+            Assert.False(File.Exists(_options.FilePath));
+        }
+
+        [Fact]
+        public async Task SetOrigins_Throws_WhenLockedByConfig()
+        {
+            _options.AllowRuntimeChanges = false;
+
+            await Assert.ThrowsAsync<ServerSettingsLockedException>(() => SetOrigins("https://cdn.example.com"));
+        }
+
+        [Fact]
+        public async Task SetOrigins_KeepsTheSavedPrivateHosts()
+        {
+            await Set("localhost:8080");
+
+            await SetOrigins("https://cdn.example.com");
+
+            Assert.Equal(new[] { "localhost:8080" }, _store.Load().Security.ProxyAllowedPrivateHosts);
         }
     }
 }

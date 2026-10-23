@@ -36,6 +36,11 @@ namespace DNDOnePlaceManager.Controllers
         public Task<IActionResult> SetProxyAllowedPrivateHosts([FromBody] SetProxyAllowedPrivateHostsCommand command) =>
             AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
 
+        /// <summary>Hosts addon cards and Html chat messages may load from (card sandbox CSP). Players see a change after they reload.</summary>
+        [HttpPut("sandbox-allowed-origins")]
+        public Task<IActionResult> SetSandboxAllowedOrigins([FromBody] SetSandboxAllowedOriginsCommand command) =>
+            AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
+
         private async Task<IActionResult> AsLocalAdmin(Func<Task<IActionResult>> action)
         {
             var user = HttpContext.Items["User"] as User;

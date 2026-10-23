@@ -44,6 +44,19 @@ namespace DNDOnePlaceManager.Tests.Engine.Middlewares
         }
 
         [Fact]
+        public async Task SandboxPage_FollowsOriginsSavedAfterStart()
+        {
+            var origins = SandboxOriginsTests.Create("https://cdn.example.com");
+            var middleware = new SecurityHeadersMiddleWare(origins);
+            await Run(middleware, "/sandbox.html");
+
+            origins.SetRuntimeOrigins(new[] { "https://new.example.com" });
+            var csp = Directives(await Run(middleware, "/sandbox.html"));
+
+            Assert.Equal("connect-src 'self' https://cdn.example.com https://new.example.com", csp["connect-src"]);
+        }
+
+        [Fact]
         public async Task SandboxPage_UsesTheConfiguredHosts()
         {
             var csp = Directives(await Run(Create("https://cdn.example.com", "https://*.example.org:8443"), "/sandbox.html"));

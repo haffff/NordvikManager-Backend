@@ -1,7 +1,10 @@
 using DndOnePlaceManager.Application.Commands.Properties.Proxy;
 using DndOnePlaceManager.Infrastructure;
 using DndOnePlaceManager.Infrastructure.Interfaces;
+using DndOnePlaceManager.Application.Commands.ServerSettings;
+using DndOnePlaceManager.Application.DataTransferObjects.ServerSettings;
 using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Sandbox;
 using DndOnePlaceManager.Infrastructure.Services.Settings;
 using MediatR;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +45,33 @@ namespace DndOnePlaceManager.Application.UnitTests.Infrastructure.Proxy
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<IRequestHandler<ProxyCommand, ProxyCommandResult>>());
             Assert.NotNull(scope.ServiceProvider.GetRequiredService<IRequestHandler<DownloadResourceCommand, DownloadResourceResult>>());
             Assert.IsType<ProxyHttpService>(scope.ServiceProvider.GetRequiredService<IProxyHttpService>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<IRequestHandler<GetServerSettingsCommand, ServerSettingsDTO>>());
+            Assert.NotNull(scope.ServiceProvider.GetRequiredService<IRequestHandler<SetSandboxAllowedOriginsCommand, ServerSettingsDTO>>());
+        }
+
+        [Fact]
+        public void Register_AppliesSavedSandboxOrigins_AtStartAndOnEverySave()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
+            var file = Path.Combine(folder, "server-settings.json");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(file, """{ "Security": { "SandboxAllowedOrigins": [ "https://cdn.example.com" ] } }""");
+            try
+            {
+                using var provider = Container(("ServerSettings:FilePath", file));
+                var origins = provider.GetRequiredService<SandboxOrigins>();
+                Assert.Contains("https://cdn.example.com", origins.Origins);
+                Assert.Contains("https://fonts.gstatic.com", origins.Origins);
+
+                provider.GetRequiredService<IServerSettingsStore>().Update(s => s.Security.SandboxAllowedOrigins = new List<string> { "https://new.example.com" });
+
+                Assert.DoesNotContain("https://cdn.example.com", origins.Origins);
+                Assert.Contains("https://new.example.com", origins.Origins);
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
         }
 
         [Fact]

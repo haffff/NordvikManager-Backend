@@ -1,10 +1,6 @@
-using DndOnePlaceManager.Infrastructure.Interfaces;
-using DndOnePlaceManager.Infrastructure.Services.Proxy;
-using DndOnePlaceManager.Infrastructure.Services.Settings;
-
 namespace DndOnePlaceManager.Application.DataTransferObjects.ServerSettings
 {
-    /// <summary>Application Settings → Local network access, for the local admin.</summary>
+    /// <summary>Application Settings for the local admin (see ServerSettingsView).</summary>
     public class ServerSettingsDTO
     {
         // False when appsettings sets Security:AllowRuntimeSettings to false.
@@ -15,16 +11,7 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.ServerSettings
 
         public SettingListDTO ProxyAllowedPrivateHosts { get; set; } = new();
 
-        public static ServerSettingsDTO From(IServerSettingsStore store, ServerSettingsOptions options, ProxyOptions proxyOptions) => new()
-        {
-            CanEdit = options.AllowRuntimeChanges,
-            Error = store.LoadError,
-            ProxyAllowedPrivateHosts = new SettingListDTO
-            {
-                Locked = proxyOptions.ConfiguredEntries,
-                Entries = store.Load().Security.ProxyAllowedPrivateHosts,
-            },
-        };
+        public SettingListDTO SandboxAllowedOrigins { get; set; } = new();
     }
 
     public class SettingListDTO

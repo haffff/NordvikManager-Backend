@@ -16,6 +16,9 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
     {
         /// <summary>Added to Security:ProxyAllowedPrivateHosts from appsettings (see ProxyOptions).</summary>
         public List<string> ProxyAllowedPrivateHosts { get; set; } = new();
+
+        /// <summary>Added to Security:SandboxAllowedOrigins (or its defaults) from appsettings (see SandboxOrigins).</summary>
+        public List<string> SandboxAllowedOrigins { get; set; } = new();
     }
 
     public class ServerSettingsOptions

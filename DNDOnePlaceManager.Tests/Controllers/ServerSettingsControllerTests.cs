@@ -51,6 +51,26 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
+        public async Task SetSandboxOrigins_ReturnsUnauthorized_WhenNotLocalAdmin()
+        {
+            var result = await CreateController(Player()).SetSandboxAllowedOrigins(new SetSandboxAllowedOriginsCommand { Origins = new List<string> { "https://cdn.example.com" } });
+
+            Assert.IsType<UnauthorizedResult>(result);
+            _mediator.Verify(m => m.Send(It.IsAny<SetSandboxAllowedOriginsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task SetSandboxOrigins_ReturnsBadRequest_ForAnInvalidEntry()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<SetSandboxAllowedOriginsCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new ServerSettingsException("Not an https origin"));
+
+            var result = await CreateController(LocalAdmin()).SetSandboxAllowedOrigins(new SetSandboxAllowedOriginsCommand { Origins = new List<string> { "*" } });
+
+            Assert.IsType<BadRequestObjectResult>(result);
+        }
+
+        [Fact]
         public async Task Get_ReturnsOk_ForLocalAdmin()
         {
             var dto = new ServerSettingsDTO();

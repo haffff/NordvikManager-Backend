@@ -69,6 +69,7 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
                 var settings = JsonSerializer.Deserialize<ServerSettings>(File.ReadAllText(options.FilePath)) ?? new ServerSettings();
                 settings.Security ??= new SecuritySettings();
                 settings.Security.ProxyAllowedPrivateHosts ??= new List<string>();
+                settings.Security.SandboxAllowedOrigins ??= new List<string>();
                 return (settings, null);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)

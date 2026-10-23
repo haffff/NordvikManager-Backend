@@ -3,6 +3,7 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services;
 using DndOnePlaceManager.Infrastructure.Services.Backup;
 using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Sandbox;
 using DndOnePlaceManager.Infrastructure.Services.Settings;
 using DndOnePlaceManager.Infrastructure.Services.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,17 @@ namespace DndOnePlaceManager.Infrastructure
                     logger?.LogWarning("server-settings.json: ignoring private host \"{Entry}\" — use a host or host:port, e.g. localhost:37840", entry);
                 store.Changed += settings => proxy.SetRuntimeHosts(settings.Security.ProxyAllowedPrivateHosts);
                 return proxy;
+            });
+            // appsettings origins (or the defaults) plus the saved ones; the card sandbox CSP follows every save.
+            services.AddSingleton(sp =>
+            {
+                var logger = sp.GetRequiredService<ILogger<SandboxOrigins>>();
+                var origins = new SandboxOrigins(configuration, logger);
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                foreach (var entry in origins.SetRuntimeOrigins(store.Load().Security.SandboxAllowedOrigins))
+                    logger.LogWarning("server-settings.json: ignoring sandbox origin \"{Origin}\" — use an https origin such as https://cdn.example.com", entry);
+                store.Changed += settings => origins.SetRuntimeOrigins(settings.Security.SandboxAllowedOrigins);
+                return origins;
             });
             services.AddProxyHttpClient();
             services.AddScoped<IProxyHttpService, ProxyHttpService>();

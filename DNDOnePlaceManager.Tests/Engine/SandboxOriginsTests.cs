@@ -1,7 +1,8 @@
-using DNDOnePlaceManager.Engine;
+using DndOnePlaceManager.Infrastructure.Services.Sandbox;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace DNDOnePlaceManager.Tests.Engine
@@ -49,6 +50,56 @@ namespace DNDOnePlaceManager.Tests.Engine
         public void DropsEntriesThatAreNotHttpsOrigins(string bad)
         {
             Assert.Equal(new[] { "https://ok.example.com" }, Create("https://ok.example.com", bad).Origins);
+        }
+
+        // Origins the local admin saves in Application Settings (server-settings.json) sit on
+        // top of the appsettings ones (or the defaults) and replace each other on every save.
+
+        [Fact]
+        public void SetRuntimeOrigins_AddsToTheDefaults_WhichStayLocked()
+        {
+            var origins = Create();
+
+            origins.SetRuntimeOrigins(new[] { "https://cdn.example.com" });
+
+            Assert.Equal(SandboxOrigins.Defaults.Append("https://cdn.example.com"), origins.Origins);
+            Assert.Equal(SandboxOrigins.Defaults, origins.Configured);
+            Assert.Equal(new[] { "https://cdn.example.com" }, origins.RuntimeEntries);
+        }
+
+        [Fact]
+        public void SetRuntimeOrigins_ReplacesThePreviousList_AndSkipsDuplicates()
+        {
+            var origins = Create("https://cdn.example.com");
+            origins.SetRuntimeOrigins(new[] { "https://a.example.com" });
+
+            origins.SetRuntimeOrigins(new[] { "https://CDN.example.com", "https://b.example.com" });
+
+            Assert.Equal(new[] { "https://cdn.example.com", "https://b.example.com" }, origins.Origins);
+        }
+
+        [Fact]
+        public void SetRuntimeOrigins_TrimsEntries_AndReturnsTheInvalidOnes()
+        {
+            var origins = Create("https://cdn.example.com");
+
+            var ignored = origins.SetRuntimeOrigins(new[] { " https://a.example.com\n", "http://plain.example.com" });
+
+            Assert.Equal(new[] { "http://plain.example.com" }, ignored);
+            Assert.Equal(new[] { "https://a.example.com" }, origins.RuntimeEntries);
+        }
+
+        [Theory]
+        [InlineData("'unsafe-eval'")]
+        [InlineData("https://a.com; script-src *")]
+        [InlineData("https://a.com\" onload=\"x")]
+        [InlineData("http://plain.example.com")]
+        [InlineData("*")]
+        [InlineData("https://a.com/path")]
+        [InlineData("https://a.com\nhttps://b.com")]
+        public void Invalid_ReportsEntriesThatAreNotHttpsOrigins(string bad)
+        {
+            Assert.Equal(new[] { bad }, SandboxOrigins.Invalid(new[] { "https://ok.example.com", bad }));
         }
     }
 }
