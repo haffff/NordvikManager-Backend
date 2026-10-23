@@ -6,7 +6,7 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 {
     public class DownloadResourceStepData
     {
-        [Description("The URL to download, e.g. an image. Private or local addresses (localhost, 192.168.x.x) work only when the server's owner allows the host in Security:ProxyAllowedPrivateHosts.")]
+        [Description("The URL to download, e.g. an image. Private or local addresses (localhost, 192.168.x.x) work only when the server's owner allows the host in Application Settings → Local network access.")]
         public string? TargetUrl { get; set; }
 
         [Description("Parent entity ID used to scope the protected-property lookup. Accepts a literal Guid or a variable name holding a Guid. Defaults to the current game ID when not provided.")]

@@ -2,6 +2,7 @@ using DndOnePlaceManager.Application.Commands.Properties.Proxy;
 using DndOnePlaceManager.Infrastructure;
 using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using MediatR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,30 @@ namespace DndOnePlaceManager.Application.UnitTests.Infrastructure.Proxy
 
             Assert.True(ProxyAddressRules.IsAllowed("localhost", 37840, new[] { IPAddress.Loopback }, options));
             Assert.Contains("not a host", options.Ignored);
+        }
+
+        [Fact]
+        public void Register_AppliesTheSettingsFile_AtStartAndOnEverySave()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
+            var file = Path.Combine(folder, "server-settings.json");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(file, """{ "Security": { "ProxyAllowedPrivateHosts": [ "localhost:8080" ] } }""");
+            try
+            {
+                using var provider = Container(("ServerSettings:FilePath", file));
+                var options = provider.GetRequiredService<ProxyOptions>();
+                Assert.True(ProxyAddressRules.IsAllowed("localhost", 8080, new[] { IPAddress.Loopback }, options));
+
+                provider.GetRequiredService<IServerSettingsStore>().Update(s => s.Security.ProxyAllowedPrivateHosts = new List<string> { "localhost:9090" });
+
+                Assert.False(ProxyAddressRules.IsAllowed("localhost", 8080, new[] { IPAddress.Loopback }, options));
+                Assert.True(ProxyAddressRules.IsAllowed("localhost", 9090, new[] { IPAddress.Loopback }, options));
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
         }
     }
 }

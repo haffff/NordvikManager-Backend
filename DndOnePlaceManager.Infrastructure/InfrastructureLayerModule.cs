@@ -3,6 +3,7 @@ using DndOnePlaceManager.Infrastructure.Interfaces;
 using DndOnePlaceManager.Infrastructure.Services;
 using DndOnePlaceManager.Infrastructure.Services.Backup;
 using DndOnePlaceManager.Infrastructure.Services.Proxy;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using DndOnePlaceManager.Infrastructure.Services.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -38,12 +39,22 @@ namespace DndOnePlaceManager.Infrastructure
             services.AddScoped<IAddonRepositoryService, AddonRepositoryService>();
             services.AddScoped<IVersionService, VersionService>();
             services.AddHttpClient();
+            services.AddSingleton(ServerSettingsOptions.FromConfiguration(configuration));
+            services.AddSingleton<IServerSettingsStore, ServerSettingsStore>();
+            // appsettings hosts plus the ones saved from Application Settings, kept current on every save.
             services.AddSingleton(sp =>
             {
                 var proxy = ProxyOptions.FromConfiguration(configuration);
                 var logger = sp.GetService<ILoggerFactory>()?.CreateLogger<ProxyOptions>();
                 foreach (var entry in proxy.Ignored)
                     logger?.LogWarning(ProxyOptions.ConfigKey + ": ignoring \"{Entry}\" — use a host or host:port, e.g. localhost:37840", entry);
+
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                if (store.LoadError != null)
+                    logger?.LogWarning("Server settings: {Error}", store.LoadError);
+                foreach (var entry in proxy.SetRuntimeHosts(store.Load().Security.ProxyAllowedPrivateHosts))
+                    logger?.LogWarning("server-settings.json: ignoring private host \"{Entry}\" — use a host or host:port, e.g. localhost:37840", entry);
+                store.Changed += settings => proxy.SetRuntimeHosts(settings.Security.ProxyAllowedPrivateHosts);
                 return proxy;
             });
             services.AddProxyHttpClient();

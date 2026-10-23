@@ -39,7 +39,7 @@ namespace DndOnePlaceManager.Infrastructure.Services.Proxy
             var addresses = await ProxyAddressRules.ResolveAsync(host, cancellationToken);
             if (!ProxyAddressRules.IsAllowed(host, port, addresses, options))
                 throw new HttpRequestException(
-                    $"'{host}' is a private or local address. The server's owner can allow it in {ProxyOptions.ConfigKey}.");
+                    $"'{host}' is a private or local address. The server's owner can allow it in Application Settings → Local network access.");
 
             var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try

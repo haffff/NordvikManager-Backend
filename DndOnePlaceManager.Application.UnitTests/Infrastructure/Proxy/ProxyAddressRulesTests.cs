@@ -123,5 +123,44 @@ namespace DndOnePlaceManager.Application.UnitTests.Infrastructure.Proxy
             Assert.Empty(options.AllowedPrivateHosts);
             Assert.False(ProxyAddressRules.IsAllowed("localhost", 80, Ips("127.0.0.1"), options));
         }
+
+        // Hosts the local admin adds in Application Settings (server-settings.json) sit on top
+        // of the appsettings ones and replace each other on every save.
+
+        [Fact]
+        public void SetRuntimeHosts_AddsToTheConfiguredOnes()
+        {
+            var options = ProxyOptions.From(new[] { "trilium.lan" });
+
+            options.SetRuntimeHosts(new[] { "localhost:8080" });
+
+            Assert.True(ProxyAddressRules.IsAllowed("localhost", 8080, Ips("127.0.0.1"), options));
+            Assert.True(ProxyAddressRules.IsAllowed("trilium.lan", 80, Ips("10.0.0.5"), options));
+            Assert.Equal(new[] { "trilium.lan" }, options.ConfiguredEntries);
+            Assert.Equal(new[] { "localhost:8080" }, options.RuntimeEntries);
+        }
+
+        [Fact]
+        public void SetRuntimeHosts_ReplacesThePreviousList_ButNeverTheConfiguredOne()
+        {
+            var options = ProxyOptions.From(new[] { "trilium.lan" });
+            options.SetRuntimeHosts(new[] { "localhost:8080" });
+
+            options.SetRuntimeHosts(Array.Empty<string>());
+
+            Assert.False(ProxyAddressRules.IsAllowed("localhost", 8080, Ips("127.0.0.1"), options));
+            Assert.True(ProxyAddressRules.IsAllowed("trilium.lan", 80, Ips("10.0.0.5"), options));
+        }
+
+        [Fact]
+        public void SetRuntimeHosts_ReturnsAndSkipsInvalidEntries()
+        {
+            var options = ProxyOptions.From(Array.Empty<string>());
+
+            var ignored = options.SetRuntimeHosts(new[] { "http://localhost", "localhost:8080" });
+
+            Assert.Equal(new[] { "http://localhost" }, ignored);
+            Assert.Equal(new[] { "localhost:8080" }, options.RuntimeEntries);
+        }
     }
 }
