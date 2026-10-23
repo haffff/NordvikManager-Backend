@@ -15,6 +15,11 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
         private readonly ServerSettingsStore _store;
         private readonly ProxyOptions _proxy = ProxyOptions.From(new[] { "trilium.lan" });
         private readonly SandboxOrigins _sandbox = new(new ConfigurationBuilder().Build(), NullLogger<SandboxOrigins>.Instance);
+        private readonly AddonRegistryOptions _registry = AddonRegistryOptions.FromConfiguration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["AddonsConfiguration:MainRepository"] = "https://repo.example/addons.json",
+            ["AddonsConfiguration:FeaturedAddons:0"] = "dnd5e",
+        }).Build());
 
         public ServerSettingsCommandHandlerTests()
         {
@@ -29,11 +34,14 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
                 Directory.Delete(_folder, recursive: true);
         }
 
-        private ServerSettingsView View() => new(_store, _options, _proxy, _sandbox);
+        private ServerSettingsView View() => new(_store, _options, _proxy, _sandbox, _registry);
         private GetServerSettingsCommandHandler GetHandler() => new(Db, Mapper, View());
 
         private Task<ServerSettingsDTO> Set(params string[] hosts) =>
             new SetProxyAllowedPrivateHostsCommandHandler(Db, Mapper, View()).Handle(new SetProxyAllowedPrivateHostsCommand { Hosts = hosts.ToList() }, default);
+
+        private Task<ServerSettingsDTO> SetRegistry(string? repository, params string[]? featured) =>
+            new SetAddonRegistryCommandHandler(Db, Mapper, View()).Handle(new SetAddonRegistryCommand { MainRepository = repository, FeaturedAddons = featured?.ToList() }, default);
 
         private Task<ServerSettingsDTO> SetOrigins(params string[] origins) =>
             new SetSandboxAllowedOriginsCommandHandler(Db, Mapper, View()).Handle(new SetSandboxAllowedOriginsCommand { Origins = origins.ToList() }, default);
@@ -185,6 +193,71 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.ServerSettings
             await SetOrigins("https://cdn.example.com");
 
             Assert.Equal(new[] { "localhost:8080" }, _store.Load().Security.ProxyAllowedPrivateHosts);
+        }
+
+        // =========================================================================
+        // SetAddonRegistry
+        // =========================================================================
+
+        [Fact]
+        public async Task Get_ReturnsTheConfiguredRegistry_AndNothingSaved()
+        {
+            var result = await GetHandler().Handle(new GetServerSettingsCommand(), default);
+
+            Assert.Equal("https://repo.example/addons.json", result.AddonRegistry.MainRepository.FromConfig);
+            Assert.Null(result.AddonRegistry.MainRepository.Saved);
+            Assert.Equal(new[] { "dnd5e" }, result.AddonRegistry.FeaturedAddons.FromConfig);
+            Assert.Null(result.AddonRegistry.FeaturedAddons.Saved);
+        }
+
+        [Fact]
+        public async Task SetRegistry_SavesTrimmedValues()
+        {
+            var result = await SetRegistry(" https://mine.example/addons.json ", " themes ", "THEMES", "dnd5e");
+
+            var saved = _store.Load().Addons;
+            Assert.Equal("https://mine.example/addons.json", saved.MainRepository);
+            Assert.Equal(new[] { "themes", "dnd5e" }, saved.FeaturedAddons);
+            Assert.Equal("https://mine.example/addons.json", result.AddonRegistry.MainRepository.Saved);
+        }
+
+        [Fact]
+        public async Task SetRegistry_Nulls_GoBackToAppsettings()
+        {
+            await SetRegistry("https://mine.example/addons.json", "themes");
+
+            await SetRegistry(null, null);
+
+            Assert.Null(_store.Load().Addons.MainRepository);
+            Assert.Null(_store.Load().Addons.FeaturedAddons);
+        }
+
+        [Theory]
+        [InlineData("http://repo.example/addons.json")]
+        [InlineData("file:///etc/passwd")]
+        [InlineData("addons.json")]
+        public async Task SetRegistry_NotAnHttpsUrl_Throws_AndSavesNothing(string url)
+        {
+            var ex = await Assert.ThrowsAsync<ServerSettingsException>(() => SetRegistry(url));
+
+            Assert.Contains(url, ex.Message);
+            Assert.False(File.Exists(_options.FilePath));
+        }
+
+        [Fact]
+        public async Task SetRegistry_InvalidAddonKey_Throws()
+        {
+            var ex = await Assert.ThrowsAsync<ServerSettingsException>(() => SetRegistry(null, "dnd5e", "two words"));
+
+            Assert.Contains("two words", ex.Message);
+        }
+
+        [Fact]
+        public async Task SetRegistry_Throws_WhenLockedByConfig()
+        {
+            _options.AllowRuntimeChanges = false;
+
+            await Assert.ThrowsAsync<ServerSettingsLockedException>(() => SetRegistry("https://mine.example/addons.json"));
         }
     }
 }

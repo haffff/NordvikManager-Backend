@@ -15,13 +15,15 @@ namespace DndOnePlaceManager.Application.Commands.ServerSettings
         private readonly ServerSettingsOptions options;
         private readonly ProxyOptions proxyOptions;
         private readonly SandboxOrigins sandboxOrigins;
+        private readonly AddonRegistryOptions addonRegistry;
 
-        public ServerSettingsView(IServerSettingsStore store, ServerSettingsOptions options, ProxyOptions proxyOptions, SandboxOrigins sandboxOrigins)
+        public ServerSettingsView(IServerSettingsStore store, ServerSettingsOptions options, ProxyOptions proxyOptions, SandboxOrigins sandboxOrigins, AddonRegistryOptions addonRegistry)
         {
             Store = store;
             this.options = options;
             this.proxyOptions = proxyOptions;
             this.sandboxOrigins = sandboxOrigins;
+            this.addonRegistry = addonRegistry;
         }
 
         public void ThrowIfLocked()
@@ -63,6 +65,11 @@ namespace DndOnePlaceManager.Application.Commands.ServerSettings
                 {
                     Locked = sandboxOrigins.Configured,
                     Entries = saved.Security.SandboxAllowedOrigins,
+                },
+                AddonRegistry = new AddonRegistryDTO
+                {
+                    MainRepository = new SettingValueDTO<string> { FromConfig = addonRegistry.ConfiguredMainRepository, Saved = saved.Addons.MainRepository },
+                    FeaturedAddons = new SettingValueDTO<IReadOnlyList<string>> { FromConfig = addonRegistry.ConfiguredFeaturedAddons, Saved = saved.Addons.FeaturedAddons },
                 },
             };
         }

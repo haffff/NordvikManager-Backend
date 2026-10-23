@@ -75,6 +75,30 @@ namespace DndOnePlaceManager.Application.UnitTests.Infrastructure.Proxy
         }
 
         [Fact]
+        public void Register_AppliesTheSavedAddonRegistry_AtStartAndOnEverySave()
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
+            var file = Path.Combine(folder, "server-settings.json");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(file, """{ "Addons": { "MainRepository": "https://mine.example/addons.json" } }""");
+            try
+            {
+                using var provider = Container(("ServerSettings:FilePath", file), ("AddonsConfiguration:MainRepository", "https://repo.example/addons.json"), ("AddonsConfiguration:FeaturedAddons:0", "dnd5e"));
+                var registry = provider.GetRequiredService<AddonRegistryOptions>();
+                Assert.Equal("https://mine.example/addons.json", registry.MainRepository);
+                Assert.Equal(new[] { "dnd5e" }, registry.FeaturedAddons);
+
+                provider.GetRequiredService<IServerSettingsStore>().Update(s => s.Addons.MainRepository = null);
+
+                Assert.Equal("https://repo.example/addons.json", registry.MainRepository);
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+
+        [Fact]
         public void Register_ReadsTheAllowedPrivateHosts()
         {
             using var provider = Container(("Security:ProxyAllowedPrivateHosts:0", "localhost:37840"), ("Security:ProxyAllowedPrivateHosts:1", "not a host"));

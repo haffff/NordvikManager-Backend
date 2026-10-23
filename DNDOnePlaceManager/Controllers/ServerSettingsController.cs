@@ -41,6 +41,11 @@ namespace DNDOnePlaceManager.Controllers
         public Task<IActionResult> SetSandboxAllowedOrigins([FromBody] SetSandboxAllowedOriginsCommand command) =>
             AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
 
+        /// <summary>The addon registry and featured addons; null fields go back to appsettings.</summary>
+        [HttpPut("addon-registry")]
+        public Task<IActionResult> SetAddonRegistry([FromBody] SetAddonRegistryCommand command) =>
+            AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
+
         private async Task<IActionResult> AsLocalAdmin(Func<Task<IActionResult>> action)
         {
             var user = HttpContext.Items["User"] as User;

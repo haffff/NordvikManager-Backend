@@ -69,6 +69,15 @@ namespace DndOnePlaceManager.Infrastructure
                 store.Changed += settings => origins.SetRuntimeOrigins(settings.Security.SandboxAllowedOrigins);
                 return origins;
             });
+            // appsettings AddonsConfiguration, replaced by what the local admin saved, per value.
+            services.AddSingleton(sp =>
+            {
+                var registry = AddonRegistryOptions.FromConfiguration(configuration);
+                var store = sp.GetRequiredService<IServerSettingsStore>();
+                registry.SetRuntime(store.Load().Addons);
+                store.Changed += settings => registry.SetRuntime(settings.Addons);
+                return registry;
+            });
             services.AddProxyHttpClient();
             services.AddScoped<IProxyHttpService, ProxyHttpService>();
         }

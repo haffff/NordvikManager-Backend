@@ -71,6 +71,15 @@ namespace DNDOnePlaceManager.Tests.Controllers
         }
 
         [Fact]
+        public async Task SetAddonRegistry_ReturnsUnauthorized_WhenNotLocalAdmin()
+        {
+            var result = await CreateController(Player()).SetAddonRegistry(new SetAddonRegistryCommand { MainRepository = "https://mine.example/addons.json" });
+
+            Assert.IsType<UnauthorizedResult>(result);
+            _mediator.Verify(m => m.Send(It.IsAny<SetAddonRegistryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
         public async Task Get_ReturnsOk_ForLocalAdmin()
         {
             var dto = new ServerSettingsDTO();

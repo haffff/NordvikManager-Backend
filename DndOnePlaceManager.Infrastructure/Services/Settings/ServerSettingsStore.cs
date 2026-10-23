@@ -70,6 +70,7 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
                 settings.Security ??= new SecuritySettings();
                 settings.Security.ProxyAllowedPrivateHosts ??= new List<string>();
                 settings.Security.SandboxAllowedOrigins ??= new List<string>();
+                settings.Addons ??= new AddonSettings();
                 return (settings, null);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)

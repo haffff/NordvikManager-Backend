@@ -10,6 +10,8 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
     public class ServerSettings
     {
         public SecuritySettings Security { get; set; } = new();
+
+        public AddonSettings Addons { get; set; } = new();
     }
 
     public class SecuritySettings
@@ -19,6 +21,14 @@ namespace DndOnePlaceManager.Infrastructure.Services.Settings
 
         /// <summary>Added to Security:SandboxAllowedOrigins (or its defaults) from appsettings (see SandboxOrigins).</summary>
         public List<string> SandboxAllowedOrigins { get; set; } = new();
+    }
+
+    /// <summary>Replace AddonsConfiguration from appsettings when set; null means "use appsettings" (see AddonRegistryOptions).</summary>
+    public class AddonSettings
+    {
+        public string? MainRepository { get; set; }
+
+        public List<string>? FeaturedAddons { get; set; }
     }
 
     public class ServerSettingsOptions

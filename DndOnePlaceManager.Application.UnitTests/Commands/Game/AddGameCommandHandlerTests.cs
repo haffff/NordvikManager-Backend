@@ -11,6 +11,7 @@ using DndOnePlaceManager.Domain.Enums;
 using DNDOnePlaceManager.Domain.Entities.Auth;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using DndOnePlaceManager.Infrastructure.Services.Settings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -56,7 +57,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Game
 
         private AddGameCommandHandler Handler(IConfiguration? config = null) =>
             new(Db, Mapper, _mediator.Object,
-                config ?? new ConfigurationBuilder().Build(),
+                AddonRegistryOptions.FromConfiguration(config ?? new ConfigurationBuilder().Build()),
                 NullLogger<AddGameCommandHandler>.Instance,
                 BuildBackgroundScopeFactory(_mediator),
                 _builtIns.Object);

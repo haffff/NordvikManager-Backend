@@ -12,6 +12,23 @@ namespace DndOnePlaceManager.Application.DataTransferObjects.ServerSettings
         public SettingListDTO ProxyAllowedPrivateHosts { get; set; } = new();
 
         public SettingListDTO SandboxAllowedOrigins { get; set; } = new();
+
+        public AddonRegistryDTO AddonRegistry { get; set; } = new();
+    }
+
+    public class AddonRegistryDTO
+    {
+        public SettingValueDTO<string> MainRepository { get; set; } = new();
+
+        public SettingValueDTO<IReadOnlyList<string>> FeaturedAddons { get; set; } = new();
+    }
+
+    /// <summary>A setting a saved value replaces: in effect is Saved when set, otherwise FromConfig.</summary>
+    public class SettingValueDTO<T> where T : class
+    {
+        public T? FromConfig { get; set; }
+
+        public T? Saved { get; set; }
     }
 
     public class SettingListDTO
