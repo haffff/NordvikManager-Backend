@@ -22,6 +22,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -643,6 +645,84 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
 
             NoErrors();
             Assert.NotEqual("s3cret", PropertyValue(mapId, "leak"));
+        }
+
+        // SetProperty Protected: an addon's settings view saves an API key (e.g. Trilium's
+        // ETAPI token) for Send Request's bearer token. No client and no later step sees it.
+        private async Task RunSteps(params JObject[] steps)
+        {
+            var action = new ActionDto { Id = Guid.NewGuid(), Name = "steps", Prefix = "test", IsEnabled = true, Content = new JArray(steps).ToString() };
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+        }
+
+        private static JObject SetGameProperty(string name, string value, bool? isProtected = null)
+        {
+            var data = new JObject { ["Of"] = "game", ["PropertyName"] = name, ["PropertyValue"] = value };
+            if (isProtected != null) data["Protected"] = isProtected.Value;
+            return new JObject { ["Type"] = "SetProperty", ["Data"] = data };
+        }
+
+        private PropertyModel? GameProperty(string name)
+        {
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IDbContext>();
+            return db.Properties.AsNoTracking().FirstOrDefault(p => p.ParentID == gameId && p.Name == name);
+        }
+
+        private void NothingSentContains(string text) =>
+            Assert.DoesNotContain(sent, s => JsonConvert.SerializeObject(s.Command).Contains(text));
+
+        [Fact]
+        public async Task SetProperty_Protected_IsStoredProtected_AndNoClientGetsTheValue()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "etapi-secret", isProtected: true));
+
+            NoErrors();
+            var stored = GameProperty("trilium_token")!;
+            Assert.True(stored.IsProtected);
+            Assert.Equal("etapi-secret", stored.Value);
+            NothingSentContains("etapi-secret");
+        }
+
+        [Fact]
+        public async Task SetProperty_Protected_ReplacesTheSecret_WithoutSendingIt()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "first-secret", isProtected: true));
+
+            await RunSteps(SetGameProperty("trilium_token", "second-secret", isProtected: true));
+
+            NoErrors();
+            Assert.Equal("second-secret", GameProperty("trilium_token")!.Value);
+            NothingSentContains("first-secret");
+            NothingSentContains("second-secret");
+        }
+
+        // A plain SetProperty on it later never makes it readable.
+        [Fact]
+        public async Task SetProperty_WithoutProtected_OnAProtectedProperty_KeepsItProtected()
+        {
+            await RunSteps(SetGameProperty("trilium_token", "etapi-secret", isProtected: true));
+
+            await RunSteps(SetGameProperty("trilium_token", "new-secret"));
+
+            NoErrors();
+            var stored = GameProperty("trilium_token")!;
+            Assert.True(stored.IsProtected);
+            NothingSentContains("new-secret");
+        }
+
+        [Fact]
+        public async Task SetProperty_Protected_LaterStepsReadNothing()
+        {
+            await RunSteps(
+                SetGameProperty("trilium_token", "etapi-secret", isProtected: true),
+                new JObject { ["Type"] = "GetPropertyValue", ["Data"] = new JObject { ["Of"] = "game", ["PropertyName"] = "trilium_token", ["Output"] = "t" } },
+                new JObject { ["Type"] = "SetProperty", ["Data"] = new JObject { ["Of"] = "map", ["PropertyName"] = "leak", ["PropertyValue"] = "%t%" } });
+
+            Assert.NotEqual("etapi-secret", PropertyValue(mapId, "leak"));
+            Assert.DoesNotContain(lobby.EventLog.GetEntries(), e => (e.Message ?? "").Contains("etapi-secret"));
         }
 
         // Include: shared script files (an addon's resources) go before the script.

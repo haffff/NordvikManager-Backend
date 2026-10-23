@@ -17,5 +17,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("Value to assign to the property. Supports %variable% substitution.")]
         public string PropertyValue { get; set; }
+
+        [Description("Store it as a protected property, e.g. an API key a settings view saves for Send Request's bearer token: no player, card or later step can read it back. A protected property stays protected.")]
+        public bool Protected { get; set; }
     }
 }

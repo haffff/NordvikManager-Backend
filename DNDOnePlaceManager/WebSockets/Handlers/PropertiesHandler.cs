@@ -25,6 +25,16 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
 
+        // What every client receives. A protected property (an API key) never carries its
+        // value: the server keeps it and only actions use it (Send Request's bearer token).
+        private static JObject Broadcastable(object dto)
+        {
+            var data = JObject.FromObject(dto, _camelSerializer);
+            if (data.Value<bool?>("isProtected") == true)
+                data["value"] = null;
+            return data;
+        }
+
         private IMediator mediator;
 
         public PropertiesHandler(IMediator mediator)
@@ -79,7 +89,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
             var (response, added) = await mediator.Send(addPropertyCommand);
             if (added != null)
-                parsedMsg.Data = JObject.FromObject(added, _camelSerializer);
+                parsedMsg.Data = Broadcastable(added);
             return response;
         }
 
@@ -93,7 +103,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
             var (response, removed) = await mediator.Send(removePropertyCommand);
             if (removed != null)
-                parsedMsg.Data = JObject.FromObject(removed, _camelSerializer);
+                parsedMsg.Data = Broadcastable(removed);
             return response;
         }
         private async Task<CommandResponse?> UpdateProperty(WebSocketCommand parsedMsg, PlayerDTO player)
@@ -106,7 +116,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
             var (response, updated) = await mediator.Send(updatePropertyCommand);
             if (updated != null)
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             return response;
         }
 
@@ -134,7 +144,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -152,7 +162,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -171,7 +181,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -189,7 +199,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -211,7 +221,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -229,7 +239,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }
@@ -248,7 +258,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
             if (updated != null)
             {
                 parsedMsg.Command = WebSocketCommandNames.PropertyUpdate;
-                parsedMsg.Data = JObject.FromObject(updated, _camelSerializer);
+                parsedMsg.Data = Broadcastable(updated);
             }
             return response;
         }

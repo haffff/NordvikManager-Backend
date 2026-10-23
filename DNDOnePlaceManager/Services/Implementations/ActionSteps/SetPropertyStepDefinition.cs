@@ -49,14 +49,15 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
             var entityName = await DetectEntityNameAsync(dbContext, parentGuid, gameLobby.GameId)
                 ?? throw new ActionProcessException($"SetProperty: no entity with ID '{parentGuid}' found in the current game.");
 
-            await SetAsync(mediator, gameLobby, parentGuid, entityName, stepData.PropertyName, stepData.PropertyValue);
+            await SetAsync(mediator, gameLobby, parentGuid, entityName, stepData.PropertyName, stepData.PropertyValue, stepData.Protected);
         }
 
         /// <summary>
         /// Creates or updates one property through the lobby (so clients get the broadcast and
-        /// property hooks fire). Shared with SetPropertiesStepDefinition.
+        /// property hooks fire). Shared with SetPropertiesStepDefinition. A protected property
+        /// (or one asked to be) stays protected; its value never goes out to clients.
         /// </summary>
-        internal static async Task SetAsync(IMediator mediator, GameLobby gameLobby, Guid parentGuid, string entityName, string name, string value)
+        internal static async Task SetAsync(IMediator mediator, GameLobby gameLobby, Guid parentGuid, string entityName, string name, string value, bool isProtected = false)
         {
             var getCmd = new GetPropertyCommand()
             {
@@ -82,12 +83,14 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionSteps
                         ParentID = parentGuid,
                         Value = value,
                         EntityName = entityName,
+                        IsProtected = isProtected,
                     })
                 });
                 return;
             }
 
             property.Value = value;
+            property.IsProtected = property.IsProtected || isProtected;
             await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand()
             {
                 Command = "property_update",
