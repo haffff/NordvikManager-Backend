@@ -236,6 +236,24 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             Assert.Equal(template.MainResource, Db.Cards.Find(card.Id)!.MainResource);
         }
 
+        // A GM-only template's code (written for the GM's data) isn't theirs to take.
+        [Fact]
+        public async Task Handle_WithoutEditOnTheGame_CannotTakeATemplateTheyCantRead()
+        {
+            var (game, card) = SeedPlayersOwnCard();
+            var template = new CardModel { Id = Guid.NewGuid(), Name = "GM tools", GameId = game.Id, IsTemplate = true, Properties = new(), MainResource = Guid.NewGuid() };
+            Db.Cards.Add(template);
+            Db.SaveChanges();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => e.Id == template.Id), It.IsAny<Permission>()))
+                .Returns(false);
+            var dto = Unchanged(card);
+            dto.MainResource = template.MainResource;
+            dto.AdditionalResources = new List<Guid>();
+
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None));
+        }
+
         [Fact]
         public async Task Handle_WithoutEditOnTheGame_CannotTakeAnotherGamesTemplatesCode()
         {

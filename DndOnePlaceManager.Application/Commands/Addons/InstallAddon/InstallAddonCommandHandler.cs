@@ -369,7 +369,8 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             if (existing == null)
                 return true;
 
-            if (request.Reinstall)
+            // A player's upload that took the key first is never adopted as the addon's file.
+            if (request.Reinstall || !game.IsRunBy(existing.PlayerId))
             {
                 dbContext.Remove(existing);
                 return true;
@@ -531,8 +532,12 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
             {
                 if (value == null) return null;
                 if (Guid.TryParse(value, out var guid)) return guid;
-                return addonResources.FirstOrDefault(r => r.Key == value)?.Id
-                    ?? dbContext.Resources.Where(r => r.GameId == game.Id && r.Key == value).Select(r => (Guid?)r.Id).FirstOrDefault();
+                var own = addonResources.FirstOrDefault(r => r.Key == value)?.Id;
+                if (own != null) return own;
+                // Another addon's or the GM's file; never a player's upload under that key.
+                var other = dbContext.Resources.Where(r => r.GameId == game.Id && r.Key == value)
+                    .Select(r => new { r.Id, r.PlayerId }).FirstOrDefault();
+                return other != null && game.IsRunBy(other.PlayerId) ? other.Id : null;
             }
 
             return new CardDto

@@ -47,7 +47,8 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
         // A card's page and scripts run with the rights of whoever opens it. Edit on the card
         // (a player's own sheet) is not enough to change them, or a player could point it at
         // their own upload and run it as the GM. Who may edit the game decides; others may
-        // only take a template's code (Update from template), which is the GM's. The key
+        // only take the code of a template they can read (Update from template), which is
+        // the GM's. The key
         // (ShowView finds views by it) and the hidden flag are the GM's too.
         private void ThrowIfCodeChangeNotAllowed(CardModel card, DataTransferObjects.Game.CardDto dto, Guid playerId)
         {
@@ -60,13 +61,13 @@ namespace DndOnePlaceManager.Application.Commands.Card.UpdateCard
                 return;
 
             var game = dbContext.Games.FirstOrDefault(g => g.Id == card.GameId);
-            if (game != null && game.HasPermission(playerId, Permission.Edit))
+            if (game != null && game.IsRunBy(playerId))
                 return;
 
             var takesATemplatesCode = !keyChanged && !hiddenChanged && dbContext.Cards
                 .Where(t => t.GameId == card.GameId && t.IsTemplate && !t.IsCustomUi && t.MainResource == dto.MainResource)
                 .AsEnumerable()
-                .Any(t => ResourceList(t.AdditionalResources).SequenceEqual(additional));
+                .Any(t => ResourceList(t.AdditionalResources).SequenceEqual(additional) && t.HasPermission(playerId, Permission.Read));
             if (!takesATemplatesCode)
                 throw new PermissionException(Permission.Edit);
         }
