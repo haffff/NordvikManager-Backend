@@ -17,6 +17,7 @@ using DNDOnePlaceManager.Services.Implementations.HookArgs;
 using DNDOnePlaceManager.Services.Interfaces;
 using DNDOnePlaceManager.WebRTC;
 using DNDOnePlaceManager.WebSockets;
+using DNDOnePlaceManager.WebSockets.Core;
 using DNDOnePlaceManager.WebSockets.Handlers;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
@@ -649,11 +650,13 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
 
         // SetProperty Protected: an addon's settings view saves an API key (e.g. Trilium's
         // ETAPI token) for Send Request's bearer token. No client and no later step sees it.
-        private async Task RunSteps(params JObject[] steps)
+        private Task RunSteps(params JObject[] steps) => RunStepsAs(gm, steps);
+
+        private async Task RunStepsAs(PlayerDTO by, params JObject[] steps)
         {
             var action = new ActionDto { Id = Guid.NewGuid(), Name = "steps", Prefix = "test", IsEnabled = true, Content = new JArray(steps).ToString() };
             await lobby.ActionProcessingService.ExecActionAsync(action,
-                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new CommandHookArgs { Player = by, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
                 new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
         }
 
@@ -723,6 +726,64 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
 
             Assert.NotEqual("etapi-secret", PropertyValue(mapId, "leak"));
             Assert.DoesNotContain(lobby.EventLog.GetEntries(), e => (e.Message ?? "").Contains("etapi-secret"));
+        }
+
+        // SetPermission: share a card for viewing (e.g. a Trilium lore note), only Read or
+        // Control, only by someone who has it; the players who gain or lose it are told.
+        private static JObject SetPermission(Guid entity, string player, string permission = "Read", bool revoke = false) =>
+            new() { ["Type"] = "SetPermission", ["Data"] = new JObject { ["EntityId"] = entity.ToString(), ["Player"] = player, ["Permission"] = permission, ["Revoke"] = revoke } };
+
+        private bool PlayerCanRead(Guid entity)
+        {
+            using var scope = services.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<DndOnePlaceManager.Application.Services.IPermissionService>()
+                .CheckIfHasPermissions(player, entity, Permission.Read);
+        }
+
+        private List<WebSocketCommand> SentTo(PlayerDTO to, string command) =>
+            sent.Where(x => x.To == to && x.Command.Command == command).Select(x => x.Command).ToList();
+
+        [Fact]
+        public async Task SetPermission_SharesACard_AndTellsOnlyThatPlayer()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Id.ToString()!));
+
+            NoErrors();
+            Assert.True(PlayerCanRead(goblinCard));
+            var added = Assert.Single(SentTo(player, WebSocketCommandNames.CardAdd));
+            Assert.Equal(goblinCard.ToString(), added.Data!["id"]!.ToString());
+            Assert.Empty(SentTo(gm, WebSocketCommandNames.CardAdd));
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Message.Contains("SetPermission") && e.Message.Contains("Goblin"));
+        }
+
+        [Fact]
+        public async Task SetPermission_Unshares_AndTheCardLeavesThatPlayersList()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Name));
+
+            await RunSteps(SetPermission(goblinCard, player.Name, revoke: true));
+
+            NoErrors();
+            Assert.False(PlayerCanRead(goblinCard));
+            Assert.Single(SentTo(player, WebSocketCommandNames.CardDelete));
+        }
+
+        [Fact]
+        public async Task SetPermission_ByAPlayer_IsRefused()
+        {
+            await RunStepsAs(player, SetPermission(goblinCard, player.Name));
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error");
+            Assert.False(PlayerCanRead(goblinCard));
+        }
+
+        [Fact]
+        public async Task SetPermission_Edit_IsRefused()
+        {
+            await RunSteps(SetPermission(goblinCard, player.Name, "Edit"));
+
+            Assert.Contains(lobby.EventLog.GetEntries(), e => e.Level == "Error" && e.Message.Contains("Read"));
+            Assert.False(PlayerCanRead(goblinCard));
         }
 
         // Include: shared script files (an addon's resources) go before the script.
