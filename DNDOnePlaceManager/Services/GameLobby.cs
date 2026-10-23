@@ -100,6 +100,24 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
         }
 
+        /// <summary>To the connected players who may edit the game (the owner and co-GMs).</summary>
+        public async Task SendToGmsAsync(object message)
+        {
+            using var scope = serviceScopeFactory.CreateScope();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            foreach (var connected in ConnectedPlayers.ToList())
+                if (await CanEditGameAsync(connected.Key, mediator))
+                    connected.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
+        }
+
+        private async Task<bool> CanEditGameAsync(PlayerDTO player, IMediator mediator) =>
+            player.IsOwner == true || await mediator.Send(new CheckPermissionsCommand
+            {
+                Player = player,
+                EntityId = GameId,
+                RequiredPermission = Permission.Edit,
+            });
+
         public void SendToPlayer(object message, PlayerDTO player)
         {
             if (ConnectedPlayers.ContainsKey(player))
@@ -478,6 +496,12 @@ namespace DNDOnePlaceManager.Services.Implementations
 
             if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeSet)
             {
+                // Debug mode shows every action's variables and pauses it at each step: GMs only.
+                if (!await CanEditGameAsync(player, cmdMediator))
+                {
+                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only players who can edit the game can turn debug mode on or off.", player), player);
+                    return true;
+                }
                 Debug = parsedMsg.Data.Value<bool>();
                 parsedMsg.OnlyToSender = true;
                 ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
@@ -525,6 +549,9 @@ namespace DNDOnePlaceManager.Services.Implementations
                     parsedMsg.Result = WebSocketCommandNames.ResultNoData;
                     return true;
                 }
+                // A debug pause is the GM's to continue or stop; players answer their own requests.
+                if (ActionProcessingService.IsDebugToken(parsedMsg.InputToken.Value) && !await CanEditGameAsync(player, cmdMediator))
+                    return true;
                 if (ActionProcessingService.InputHandler.TryRemove(parsedMsg.InputToken.Value, out var tcs))
                     tcs.TrySetResult(parsedMsg);
                 return true;

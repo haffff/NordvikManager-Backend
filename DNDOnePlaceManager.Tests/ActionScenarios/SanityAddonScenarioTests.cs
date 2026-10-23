@@ -822,6 +822,55 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
             Assert.False(PlayerCanRead(goblinCard));
         }
 
+        // Debug mode pauses every action at every step and shows its variables (arguments
+        // included). It's the GM's tool: players can't turn it on, see it or answer it.
+        private Task Send(PlayerDTO by, string command, JToken? data = null, Guid? inputToken = null) =>
+            lobby.HandleCommand(by, new WebSocketCommand { Command = command, Data = data, InputToken = inputToken });
+
+        [Fact]
+        public async Task DebugMode_APlayerCantTurnItOn()
+        {
+            await Send(player, WebSocketCommandNames.CmdDebugModeSet, true);
+
+            Assert.False(lobby.Debug);
+        }
+
+        [Fact]
+        public async Task DebugMode_OnlyGmsSeeAndAnswerIt()
+        {
+            await Send(gm, WebSocketCommandNames.CmdDebugModeSet, true);
+            Assert.True(lobby.Debug);
+
+            var run = RunSteps(SetGameProperty("debugged", "1"));
+            WebSocketCommand? paused = null;
+            for (var i = 0; i < 100 && paused == null; i++)
+            {
+                await Task.Delay(50);
+                paused = sent.LastOrDefault(x => x.To == gm && x.Command.Command == WebSocketCommandNames.CmdDebugAction && x.Command.InputToken != null).Command;
+            }
+            Assert.NotNull(paused);
+            Assert.DoesNotContain(sent, x => x.To == player && x.Command.Command == WebSocketCommandNames.CmdDebugAction);
+
+            // A player's answer is ignored: the action keeps waiting.
+            await Send(player, WebSocketCommandNames.CmdDebugActionResponse, WebSocketCommandNames.DebugStopSignal, paused!.InputToken);
+            Assert.True(lobby.ActionProcessingService.InputHandler.ContainsKey(paused.InputToken!.Value));
+
+            // The GM's answers move it on (the first pause is before any step; stop at the next).
+            var answered = new HashSet<Guid?>();
+            for (var i = 0; i < 100 && !run.IsCompleted; i++)
+            {
+                var pending = sent.Where(x => x.To == gm && x.Command.Command == WebSocketCommandNames.CmdDebugAction && x.Command.InputToken != null)
+                    .Select(x => x.Command.InputToken).LastOrDefault(t => !answered.Contains(t));
+                if (pending != null)
+                {
+                    answered.Add(pending);
+                    await Send(gm, WebSocketCommandNames.CmdDebugActionResponse, WebSocketCommandNames.DebugStopSignal, pending);
+                }
+                await Task.Delay(50);
+            }
+            Assert.True(run.IsCompleted);
+        }
+
         // Include: shared script files (an addon's resources) go before the script.
         [Fact]
         public async Task Script_IncludesSharedFiles()

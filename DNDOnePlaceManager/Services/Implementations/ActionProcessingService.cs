@@ -61,6 +61,11 @@ namespace DNDOnePlaceManager.Services.Implementations
                                                         /// </summary>
         public ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>> InputHandler { get; init; } = new ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>>();
 
+        // Input tokens of debug pauses (only a GM may answer those), as opposed to a player's own request.
+        private readonly ConcurrentDictionary<Guid, byte> debugTokens = new();
+
+        public bool IsDebugToken(Guid token) => debugTokens.ContainsKey(token);
+
         /// <summary>
         /// Tracks all currently running (and recently finished) action executions.
         /// </summary>
@@ -595,9 +600,10 @@ namespace DNDOnePlaceManager.Services.Implementations
                     Data = JObject.FromObject(data),
                 };
 
+            // GMs only: it carries every variable of the action, the caller's arguments included.
             if (!expectInput)
             {
-                GameLobby.Broadcast(cmd, GameLobby.SystemPlayer);
+                await GameLobby.SendToGmsAsync(cmd);
                 return null;
             }
 
@@ -605,7 +611,9 @@ namespace DNDOnePlaceManager.Services.Implementations
             cmd.InputToken = token;
 
             var tcs = new TaskCompletionSource<WebSocketCommand>(TaskCreationOptions.RunContinuationsAsynchronously);
-            InputHandler[token] = tcs; GameLobby.Broadcast(cmd, GameLobby.SystemPlayer);
+            InputHandler[token] = tcs;
+            debugTokens[token] = 0;
+            await GameLobby.SendToGmsAsync(cmd);
 
             entry?.SetWaitingForInput(token);
             try
@@ -621,6 +629,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             }
             finally
             {
+                debugTokens.TryRemove(token, out _);
                 entry?.ClearWaitingForInput();
             }
         }

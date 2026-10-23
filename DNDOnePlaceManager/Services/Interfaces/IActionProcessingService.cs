@@ -17,6 +17,9 @@ namespace DNDOnePlaceManager.Services.Interfaces
     {
         GameLobby GameLobby { get; set; }
         ConcurrentDictionary<Guid, TaskCompletionSource<WebSocketCommand>> InputHandler { get; init; }
+
+        /// <summary>True for the input token of a debug pause, which only a GM may answer.</summary>
+        bool IsDebugToken(Guid token);
         ConcurrentDictionary<Guid, ActionRunEntry> RunningActions { get; }
 
         Task CallHookAsync(Hook hook, HookArgs hookArg);
