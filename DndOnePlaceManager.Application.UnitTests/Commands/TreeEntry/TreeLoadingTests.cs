@@ -61,7 +61,7 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.TreeEntry
         [Fact]
         public async Task Get_LoadsOnlyItsTree()
         {
-            var result = await new GetTreeEntriesCommandHandler(Db, Mapper, new Mock<IMediator>().Object)
+            var result = await new GetTreeEntriesCommandHandler(Db, Mapper, new Mock<IMediator>().Object, PermissionsMock.Object)
                 .Handle(new GetTreeEntriesCommand { GameId = game.Id, PlayerId = PlayerId, EntityType = "CardModel" }, CancellationToken.None);
 
             Assert.Equal(2, result.Count);
