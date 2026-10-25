@@ -22,17 +22,18 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text72",
+        "Content": "text73",
         "Description": "text70",
         "GenericPermission": null,
         "GmPermission": null,
         "Hook": 1,
+        "HookFilter": "text72",
         "Id": "00000000-0000-0000-0000-000000000067",
         "IsEnabled": true,
         "Name": "text68",
         "Path": "text69",
         "Permission": null,
-        "Prefix": "text73"
+        "Prefix": "text74"
       }
     ],
     "Author": "text7",
@@ -71,12 +72,12 @@
     "Resources": [
       {
         "Data": "AQID",
-        "Id": "00000000-0000-0000-0000-000000000078",
-        "Key": "text87",
+        "Id": "00000000-0000-0000-0000-000000000079",
+        "Key": "text88",
         "MimeType": "image/jpeg",
-        "Name": "text86",
-        "Path": "text89",
-        "PlayerId": "00000000-0000-0000-0000-000000000090",
+        "Name": "text87",
+        "Path": "text90",
+        "PlayerId": "00000000-0000-0000-0000-000000000091",
         "PlayerName": null,
         "Storage": 1,
         "Volume": 0.5

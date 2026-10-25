@@ -1,4 +1,6 @@
-﻿using DndOnePlaceManager.Application.Mapping;
+﻿using DndOnePlaceManager.Application.Exceptions;
+using DNDOnePlaceManager.Enums;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
@@ -24,8 +26,13 @@ namespace DndOnePlaceManager.Application.Commands.Actions
 
             game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
+            var (hookFilter, filterError) = HookFilters.Normalize(request.Action!.Hook, request.Action.HookFilter);
+            if (filterError != null)
+                throw WrongArgumentsException.Because(filterError);
+
             var action = mapper.Map<ActionModel>(request.Action);
             action.Id = default;
+            action.HookFilter = hookFilter;
 
             action.Game = game;
             dbContext.Actions.Add(action);

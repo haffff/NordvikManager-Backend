@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.Commands.Player.GetGamePlayers;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Services.Interfaces;
 using DndOnePlaceManager.Domain.Enums;
+using DNDOnePlaceManager.Enums;
 using MediatR;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -20,7 +21,7 @@ namespace DNDOnePlaceManager.WebSockets.Handlers
 
         /// <summary>Slash commands handled here; any other "/name" goes to Hook.ChatCommand actions (see GameLobby).</summary>
         public static readonly IReadOnlySet<string> BuiltInCommands =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "/r", "/roll", "/gr", "/w", "/gm", "/help" };
+            new HashSet<string>(HookFilters.BuiltInChatCommands.Select(name => "/" + name), StringComparer.OrdinalIgnoreCase);
 
         public const string HelpText =
             "Chat commands:\n" +

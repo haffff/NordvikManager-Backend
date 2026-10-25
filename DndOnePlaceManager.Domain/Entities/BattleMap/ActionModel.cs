@@ -15,6 +15,8 @@ namespace DndOnePlaceManager.Domain.Entities.BattleMap
         public string? Path { get; set; }
         public string? Description { get; set; }
         public Hook Hook { get; set; }
+        /// <summary>Which occurrences of the hook run this action; meaning per hook in HookFilters.</summary>
+        public string? HookFilter { get; set; }
         public string Content { get; set; }
         public string Prefix { get; set; }
         public bool IsEnabled { get; set; }

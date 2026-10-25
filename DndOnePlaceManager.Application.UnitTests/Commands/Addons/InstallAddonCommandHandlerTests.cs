@@ -320,6 +320,32 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
         }
 
         [Fact]
+        public async Task Handle_ActionHookFilter_IsPassedOn()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/chat.json", "{\"name\":\"chat\",\"hook\":19,\"hookFilter\":\"poll, vote\",\"content\":\"[]\"}"));
+            var cmd = ValidCommand(game, Player(), archive);
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.HookFilter == "poll, vote"), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_ActionRefused_FailsTheInstall_NamingTheFile()
+        {
+            var game = BuildGame();
+            Mediator.Setup(m => m.Send(It.IsAny<AddActionCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(WrongArgumentsException.Because("A Chat Command action needs the commands it handles in its hook filter, e.g. poll, vote."));
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/chat.json", "{\"name\":\"chat\",\"hook\":19,\"content\":\"[]\"}"));
+            var cmd = ValidCommand(game, Player(), archive);
+
+            var e = await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.Contains("chat.json", e.Message);
+            Assert.Contains("hook filter", e.Message);
+        }
+
+        [Fact]
         public async Task Handle_ScriptAlreadyExists_ReinstallFalse_SkipsWithoutCallingAddResource()
         {
             var game = BuildGame();

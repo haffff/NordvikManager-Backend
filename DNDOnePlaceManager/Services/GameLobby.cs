@@ -204,10 +204,10 @@ namespace DNDOnePlaceManager.Services.Implementations
         }
 
         /// <summary>
-        /// Routes a non-built-in slash command ("/cast fireball") to Hook.ChatCommand actions.
-        /// Only claims the message when at least one such action is enabled — otherwise
-        /// ChatHandler answers as before ("Wrong command"). A claimed message is echoed to the
-        /// sender only and not stored in chat history.
+        /// Routes a non-built-in slash command ("/cast fireball") to the Hook.ChatCommand actions
+        /// whose hook filter lists it ("cast"). Only claims the message when an enabled action
+        /// does; any other command goes on to ChatHandler, which answers "Wrong command". A
+        /// claimed message is echoed to the sender only and not stored in chat history.
         /// </summary>
         private async Task<bool> TryHandleActionChatCommandAsync(WebSocketCommand message, PlayerDTO player)
         {
@@ -223,7 +223,7 @@ namespace DNDOnePlaceManager.Services.Implementations
             if (ChatHandler.BuiltInCommands.Contains(name))
                 return false;
 
-            if (!await ActionProcessingService.HasEnabledHookAsync(Hook.ChatCommand))
+            if (!await ActionProcessingService.HandlesChatCommandAsync(name[1..]))
                 return false;
 
             var args = new ChatCommandHookArgs

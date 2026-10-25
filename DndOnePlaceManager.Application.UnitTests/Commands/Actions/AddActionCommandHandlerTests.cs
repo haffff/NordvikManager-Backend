@@ -3,6 +3,7 @@ using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Application.Exceptions;
 using DndOnePlaceManager.Domain.Entities.BattleMap;
 using DndOnePlaceManager.Domain.Enums;
+using DNDOnePlaceManager.Enums;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 
@@ -67,6 +68,44 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
 
             PermissionsMock.Verify(p => p.SetPermissions(PlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => ((ActionModel)e).Id == id), Permission.All), Times.Once);
             PermissionsMock.Verify(p => p.SetPermissions(game.SystemPlayerId, It.Is<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(e => ((ActionModel)e).Id == id), Permission.All), Times.Once);
+        }
+        [Fact]
+        public async Task Handle_ChatCommandWithoutCommands_ThrowsWrongArgumentsException_SayingWhy()
+        {
+            var game = BuildGame();
+            var action = ValidAction();
+            action.Hook = Hook.ChatCommand;
+            var cmd = new AddActionCommand { GameId = game.Id, Player = Player(), Action = action };
+
+            var e = await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.Contains("e.g. poll, vote", e.Message);
+            Assert.Empty(Db.Actions);
+        }
+
+        [Fact]
+        public async Task Handle_ChatCommand_StoresTheTidiedCommandList()
+        {
+            var game = BuildGame();
+            var action = ValidAction();
+            action.Hook = Hook.ChatCommand;
+            action.HookFilter = " /Poll  vote ";
+            var cmd = new AddActionCommand { GameId = game.Id, Player = Player(), Action = action };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal("poll, vote", Db.Actions.Find(id)!.HookFilter);
+        }
+
+        [Fact]
+        public async Task Handle_FilterOnAHookWithoutOne_ThrowsWrongArgumentsException()
+        {
+            var game = BuildGame();
+            var action = ValidAction();
+            action.Hook = Hook.PropertyUpdate;
+            action.HookFilter = "hp";
+            var cmd = new AddActionCommand { GameId = game.Id, Player = Player(), Action = action };
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
     }
 }

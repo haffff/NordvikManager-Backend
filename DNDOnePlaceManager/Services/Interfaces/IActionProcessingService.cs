@@ -25,7 +25,8 @@ namespace DNDOnePlaceManager.Services.Interfaces
         Task CallHookAsync(Hook hook, HookArgs hookArg);
         Task RunPendingAddonInstallHooksAsync();
         Task CommandToHook(WebSocketCommand webSocketCommand);
-        Task<bool> HasEnabledHookAsync(Hook hook);
+        /// <summary>Whether an enabled Chat Command action lists this command (without "/") in its hook filter.</summary>
+        Task<bool> HandlesChatCommandAsync(string command);
         Task ExecActionAsync(ActionDto action, HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null);
         /// <summary>Runs a block's steps (If's Then/Else, ForEach's Do) inside the running action, on its variables.</summary>
         Task RunBlockAsync(JArray steps, Dictionary<string, object> variables, string blockName);

@@ -1,4 +1,6 @@
-﻿using DndOnePlaceManager.Application.Mapping;
+﻿using DndOnePlaceManager.Application.Exceptions;
+using DNDOnePlaceManager.Enums;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Extension;
 using DndOnePlaceManager.Application.Guards;
 using DndOnePlaceManager.Domain.Enums;
@@ -26,7 +28,12 @@ namespace DndOnePlaceManager.Application.Commands.Actions
             // Check for permissions
             game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Permission.Edit);
 
+            var (hookFilter, filterError) = HookFilters.Normalize(request.Action.Hook, request.Action.HookFilter);
+            if (filterError != null)
+                throw WrongArgumentsException.Because(filterError);
+
             action.Hook = request.Action.Hook;
+            action.HookFilter = hookFilter;
             action.Prefix = request.Action.Prefix;
             action.IsEnabled = request.Action.IsEnabled;
             action.Name = request.Action.Name;

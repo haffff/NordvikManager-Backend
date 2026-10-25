@@ -38,6 +38,8 @@ namespace DNDOnePlaceManager.Enums
                     Category = meta.Category,
                     Variables = meta.Variables
                         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                    Filter = meta.Filter,
+                    FilterRequired = meta.FilterRequired,
                 });
             }
 

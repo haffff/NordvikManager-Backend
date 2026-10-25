@@ -41,6 +41,8 @@ namespace DNDOnePlaceManager.Tests.ActionScenarios
     // players' browsers are stood in for. The scenarios are the ones a GM asked for: up to N
     // targets then an action (Bless), Fireball confirmed by the GM, a random monster from
     // marked cards, and random damage to every token on a map.
+    // One at a time with the other scenario classes: they share the application's static set-up.
+    [Collection("ActionScenarios")]
     public class SanityAddonScenarioTests : IDisposable
     {
         // Every die shows 3 (or its highest face when that is lower).
