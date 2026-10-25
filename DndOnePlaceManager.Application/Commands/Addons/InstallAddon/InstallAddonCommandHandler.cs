@@ -1,4 +1,5 @@
-﻿using DndOnePlaceManager.Application.Mapping;
+﻿using DndOnePlaceManager.Application.Exceptions;
+using DndOnePlaceManager.Application.Mapping;
 using DndOnePlaceManager.Application.Commands.Actions;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
@@ -266,12 +267,21 @@ namespace DndOnePlaceManager.Application.Commands.Addons.InstallAddon
                 // Hook.Install (and any other hook) never actually runs it.
                 dto.IsEnabled = true;
 
-                var (_, result) = await mediator.Send(new AddActionCommand
+                Guid result;
+                try
                 {
-                    GameId = request.GameID,
-                    Player = request.Player,
-                    Action = dto
-                });
+                    (_, result) = await mediator.Send(new AddActionCommand
+                    {
+                        GameId = request.GameID,
+                        Player = request.Player,
+                        Action = dto
+                    });
+                }
+                catch (WrongArgumentsException e)
+                {
+                    // E.g. a Chat Command action without its commands: say which file.
+                    throw WrongArgumentsException.Because($"{action.FullName}: {e.Message}");
+                }
 
                 var actionModel = dbContext.Actions.Find(result)
                     ?? throw new InvalidOperationException($"Action '{result}' not found after adding '{dto.Name}'.");

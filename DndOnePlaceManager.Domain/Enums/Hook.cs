@@ -70,7 +70,10 @@
         [HookMeta("Chat Message", "Fires on every chat message sent by any player.", "Chat", Variables = "Data,Player,Command")]
         ChatMessage,
 
-        [HookMeta("Chat Command", "Fires for a chat slash command that is not built in (/r, /roll, /help). Variables: ChatCommand ('cast'), ChatArgs ('fireball 3'), ChatText, Player. While any action uses this hook, unknown commands are no longer answered with 'Wrong command'.", "Chat", Variables = "ChatCommand,ChatArgs,ChatText,Player")]
+        [HookMeta("Chat Command", "Fires for a chat slash command that the action lists in its hook filter (not a built-in one like /r, /roll, /help). Variables: ChatCommand ('cast'), ChatArgs ('fireball 3'), ChatText, Player. The command line is shown only to its sender and not kept in the chat history; a command no action lists still gets 'Wrong command'.", "Chat",
+            Variables = "ChatCommand,ChatArgs,ChatText,Player",
+            Filter = "Commands this action handles, without '/', separated by commas: e.g. poll, vote. Required.",
+            FilterRequired = true)]
         ChatCommand,
 
         // ── Cards ───────────────────────────────────────────────────────────

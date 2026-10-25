@@ -298,6 +298,9 @@ namespace DndOnePlaceManager.Infrastructure.Migrations
                     b.Property<int>("Hook")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("HookFilter")
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
 

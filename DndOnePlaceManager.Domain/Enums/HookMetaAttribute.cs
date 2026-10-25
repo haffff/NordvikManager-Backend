@@ -26,6 +26,15 @@ namespace DNDOnePlaceManager.Enums
         /// </summary>
         public string Variables { get; set; } = "";
 
+        /// <summary>
+        /// What this hook's filter (ActionModel.HookFilter) means, shown next to the filter field
+        /// in the action editor. Empty: the hook takes no filter. See <see cref="HookFilters"/>.
+        /// </summary>
+        public string Filter { get; set; } = "";
+
+        /// <summary>An action on this hook must have a filter (it never runs from the hook without one).</summary>
+        public bool FilterRequired { get; set; }
+
         public HookMetaAttribute(string name, string description, string category = "General")
         {
             Name = name;

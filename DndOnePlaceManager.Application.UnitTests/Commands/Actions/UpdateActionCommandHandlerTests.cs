@@ -109,5 +109,34 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Actions
 
             PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<DndOnePlaceManager.Domain.Entities.Interfaces.IEntity>(), Permission.Control), Times.Once);
         }
+        [Fact]
+        public async Task Handle_ChatCommandWithoutCommands_ThrowsWrongArgumentsException_AndKeepsTheAction()
+        {
+            var game = BuildGame();
+            var action = SeedAction(game.Id);
+            var dto = UpdateDto(action.Id);
+            dto.Hook = Hook.ChatCommand;
+            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto };
+
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.Equal("Greet", Db.Actions.Find(action.Id)!.Name);
+        }
+
+        [Fact]
+        public async Task Handle_ChatCommand_StoresTheTidiedCommandList_AndOtherHooksClearIt()
+        {
+            var game = BuildGame();
+            var action = SeedAction(game.Id);
+            var dto = UpdateDto(action.Id);
+            dto.Hook = Hook.ChatCommand;
+            dto.HookFilter = "VOTE,/poll";
+            await Handler().Handle(new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto }, CancellationToken.None);
+            Assert.Equal("vote, poll", Db.Actions.Find(action.Id)!.HookFilter);
+
+            dto.Hook = Hook.Install;
+            dto.HookFilter = null;
+            await Handler().Handle(new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto }, CancellationToken.None);
+            Assert.Null(Db.Actions.Find(action.Id)!.HookFilter);
+        }
     }
 }

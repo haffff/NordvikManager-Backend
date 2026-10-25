@@ -88,7 +88,10 @@ namespace DNDOnePlaceManager.Services.Implementations
                     : null;
 
                 var actions = await GetActionsAsync(mediator);
-                var actList = actions.Where(x => x.Hook == hook && x.IsEnabled).ToList();
+                // The hook filter picks which occurrences run an action (HookFilters): a Chat
+                // Command action runs only for the commands it lists.
+                var key = HookFilterKey(hookArg);
+                var actList = actions.Where(x => x.Hook == hook && x.IsEnabled && HookFilters.Accepts(hook, x.HookFilter, key)).ToList();
                 trace?.LogInformation("[hook {Hook}] {Count} enabled action(s): {Names}",
                     hook, actList.Count, string.Join(", ", actList.Select(a => a.Name)));
 
@@ -210,13 +213,17 @@ namespace DNDOnePlaceManager.Services.Implementations
             };
         }
 
-        public async Task<bool> HasEnabledHookAsync(Hook hook)
+        public async Task<bool> HandlesChatCommandAsync(string command)
         {
             using var scope = serviceScopeFactory.CreateScope();
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             var actions = await GetActionsAsync(mediator);
-            return actions.Any(x => x.Hook == hook && x.IsEnabled);
+            return actions.Any(x => x.Hook == Hook.ChatCommand && x.IsEnabled && HookFilters.Accepts(Hook.ChatCommand, x.HookFilter, command));
         }
+
+        // What a hook occurrence is filtered by (see HookFilters): the command of a Chat Command.
+        private static string HookFilterKey(HookArgs.HookArgs hookArg) =>
+            hookArg is HookArgs.ChatCommandHookArgs chat ? chat.ChatCommand ?? string.Empty : string.Empty;
 
         private async Task<List<ActionDto>> GetActionsAsync(IMediator mediator)
         {
