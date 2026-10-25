@@ -2,7 +2,7 @@
 
 namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
 {
-    public class GetAddonsFromRepositoryCommand : CommandBase<List<AddonDto>>
+    public class GetAddonsFromRepositoryCommand : CommandBase<List<RegistryAddonDto>>
     {
     }
 }

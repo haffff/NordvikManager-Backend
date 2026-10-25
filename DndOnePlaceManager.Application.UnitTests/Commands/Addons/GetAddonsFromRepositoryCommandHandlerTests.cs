@@ -24,6 +24,22 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Addons
         }
 
         [Fact]
+        public async Task Handle_KeepsCategoriesReadmeAndDependencies()
+        {
+            _repository.Setup(r => r.GetRepository()).ReturnsAsync(
+                "{\"repository\":[{\"key\":\"poll\",\"name\":\"Poll\",\"categories\":[\"tools\"]," +
+                "\"readme\":\"https://raw.githubusercontent.com/h/X/poll-0.1.0/poll/README.md\"," +
+                "\"dependencies\":[{\"key\":\"basics\",\"version\":\"1.0.0\"}]}]}");
+
+            var result = await Handler().Handle(new GetAddonsFromRepositoryCommand(), CancellationToken.None);
+
+            var poll = Assert.Single(result);
+            Assert.Equal(new[] { "tools" }, poll.Categories);
+            Assert.Equal("https://raw.githubusercontent.com/h/X/poll-0.1.0/poll/README.md", poll.Readme);
+            Assert.Equal("basics", Assert.Single(poll.Dependencies!).Key);
+        }
+
+        [Fact]
         public async Task Handle_EmptyRepositoryArray_ReturnsEmptyList()
         {
             _repository.Setup(r => r.GetRepository()).ReturnsAsync("{\"repository\":[]}");
