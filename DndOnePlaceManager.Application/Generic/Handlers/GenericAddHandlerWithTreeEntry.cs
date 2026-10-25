@@ -42,7 +42,8 @@ namespace DndOnePlaceManager.Application.Generic.Handlers
                 Name = model.Name,
                 EntryType = TreeEntryType ?? typeof(TModel).Name,
                 IsFolder = false,
-                TargetId = result.Item2
+                TargetId = result.Item2,
+                ParentId = request.TreeParentId
             };
 
             await mediator.Send(new AddTreeEntryCommand()

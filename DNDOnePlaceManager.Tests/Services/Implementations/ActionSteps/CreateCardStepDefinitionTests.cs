@@ -1,6 +1,8 @@
 using DndOnePlaceManager.Application.Commands.Security.GetEffectivePermissions;
 using DndOnePlaceManager.Application.Commands.Card.AddCard;
 using DndOnePlaceManager.Application.Commands.Card.GetCard;
+using DndOnePlaceManager.Application.Commands.TreeEntry.EnsureFolderPath;
+using DndOnePlaceManager.Application.DataTransferObjects;
 using DndOnePlaceManager.Application.Commands.Security.GetPermissions;
 using DndOnePlaceManager.Application.DataTransferObjects.Game;
 using DndOnePlaceManager.Domain.Enums;
@@ -186,6 +188,84 @@ namespace DNDOnePlaceManager.Tests.Services.Implementations.ActionSteps
             await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, step);
 
             Assert.Equal(WebSocketCommandNames.TemplateAdd, Assert.Single(player.Sent).Command);
+        }
+
+        // ── Folder ───────────────────────────────────────────────────────────────
+        // CreateCard's Folder puts the card's entry into that folder of the Cards (or
+        // Templates) tree, made if missing, so an addon can keep what it creates together.
+
+        private void FolderResolvesTo(Guid? folderId, List<TreeEntryDto> created, Action<EnsureFolderPathCommand> seen = null) =>
+            _mediator.Setup(m => m.Send(It.IsAny<EnsureFolderPathCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(Guid?, List<TreeEntryDto>)>, CancellationToken>((cmd, _) => seen?.Invoke((EnsureFolderPathCommand)cmd))
+                     .ReturnsAsync((folderId, created));
+
+        [Fact]
+        public async Task Execute_WithAFolder_PutsTheCardInIt()
+        {
+            var folderId = Guid.NewGuid();
+            var (lobby, _) = LobbyWithAPlayer(Guid.NewGuid());
+            EnsureFolderPathCommand asked = null;
+            FolderResolvesTo(folderId, new List<TreeEntryDto>(), c => asked = c);
+            AddCardCommand captured = null;
+            _mediator.Setup(m => m.Send(It.IsAny<AddCardCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, Guid)>, CancellationToken>((cmd, _) => captured = (AddCardCommand)cmd)
+                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+            var step = MakeStep("Old Mill", Guid.NewGuid().ToString());
+            step.Data["Folder"] = "Lore/Trilium";
+
+            await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, step);
+
+            Assert.Equal("Lore/Trilium", asked.Path);
+            Assert.Equal("CardModel", asked.EntryType);
+            Assert.Same(lobby.SystemPlayer, asked.Player);
+            Assert.Equal(lobby.GameId, asked.GameID);
+            Assert.Equal(folderId, captured.TreeParentId);
+        }
+
+        [Fact]
+        public async Task Execute_ATemplateWithAFolder_UsesTheTemplatesTree()
+        {
+            var (lobby, _) = LobbyWithAPlayer(Guid.NewGuid());
+            EnsureFolderPathCommand asked = null;
+            FolderResolvesTo(Guid.NewGuid(), new List<TreeEntryDto>(), c => asked = c);
+            var step = MakeStep("Imported", null);
+            step.Data["IsTemplate"] = true;
+            step.Data["Folder"] = "Imported";
+
+            await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, step);
+
+            Assert.Equal("CardTemplate", asked.EntryType);
+        }
+
+        // Open Cards panels reload their tree for an entry they don't know. The card's own
+        // entry carries its name, and tree_add goes to everyone, so only its tree is named.
+        [Fact]
+        public async Task Execute_WithAFolder_TellsTheTreesToReload_WithoutTheCardsName()
+        {
+            var (lobby, player) = LobbyWithAPlayer(Guid.NewGuid());
+            var lore = new TreeEntryDto { Id = Guid.NewGuid(), Name = "Lore", IsFolder = true, EntryType = "CardModel" };
+            FolderResolvesTo(lore.Id, new List<TreeEntryDto> { lore });
+            var step = MakeStep("Secret note", Guid.NewGuid().ToString());
+            step.Data["Folder"] = "Lore";
+
+            await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, step);
+
+            var tree = Assert.Single(player.Sent, c => c.Command == WebSocketCommandNames.TreeAdd);
+            Assert.Equal(WebSocketCommandNames.ResultOk, tree.Result);
+            Assert.All(tree.Data, x => Assert.Equal("CardModel", x["entryType"]?.ToString()));
+            Assert.Contains(tree.Data, x => x["id"]?.ToString() == lore.Id.ToString() && x["name"]?.ToString() == "Lore");
+            Assert.DoesNotContain("Secret note", tree.Data.ToString());
+        }
+
+        [Fact]
+        public async Task Execute_WithoutAFolder_LeavesTheTreeAlone()
+        {
+            var (lobby, player) = LobbyWithAPlayer(Guid.NewGuid());
+
+            await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, MakeStep("Longsword", Guid.NewGuid().ToString()));
+
+            _mediator.Verify(m => m.Send(It.IsAny<EnsureFolderPathCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.DoesNotContain(player.Sent, c => c.Command == WebSocketCommandNames.TreeAdd);
         }
     }
 }

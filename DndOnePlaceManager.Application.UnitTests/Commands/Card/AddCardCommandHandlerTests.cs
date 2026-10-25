@@ -79,6 +79,45 @@ namespace DndOnePlaceManager.Application.UnitTests.Commands.Card
             VerifyTreeEntry(id, "CardModel");
         }
 
+        // An action can put the card into a folder (CreateCard's Folder): its entry goes there.
+        [Fact]
+        public async Task Handle_WithATreeParent_PutsTheEntryInThatFolder()
+        {
+            var game = SeedGameWithCards();
+            var folderId = Guid.NewGuid();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Properties = new List<PropertyDTO>() },
+                TreeParentId = folderId,
+            };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(
+                It.Is<AddTreeEntryCommand>(c => c.TreeEntryDto.TargetId == id && c.TreeEntryDto.ParentId == folderId),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Handle_WithoutATreeParent_PutsTheEntryAtTheTopLevel()
+        {
+            var game = SeedGameWithCards();
+            var cmd = new AddCardCommand
+            {
+                GameID = game.Id,
+                Player = Player(),
+                Dto = new CardDto { Name = "Goblin", Properties = new List<PropertyDTO>() },
+            };
+
+            var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            _mediator.Verify(m => m.Send(
+                It.Is<AddTreeEntryCommand>(c => c.TreeEntryDto.TargetId == id && c.TreeEntryDto.ParentId == null),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         [Fact]
         public async Task Handle_CustomUiCard_CreatesTreeEntryInCustomViewTree()
         {

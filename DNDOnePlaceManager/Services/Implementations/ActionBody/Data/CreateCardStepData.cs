@@ -21,5 +21,8 @@ namespace DNDOnePlaceManager.Services.Implementations.ActionBody.Data
 
         [Description("If true, the new card is created as a reusable Template (IsTemplate=true) instead of a regular Instance — e.g. for an addon that imports/generates a new card blueprint at runtime. Defaults to false (a normal instance).")]
         public bool IsTemplate { get; set; }
+
+        [Description("Folder of the Cards panel (or Templates, for a template) to put the new card in, e.g. \"Lore/Trilium\". Folders are found by name, ignoring case, and made where missing. Leave empty for the top level.")]
+        public string Folder { get; set; }
     }
 }
