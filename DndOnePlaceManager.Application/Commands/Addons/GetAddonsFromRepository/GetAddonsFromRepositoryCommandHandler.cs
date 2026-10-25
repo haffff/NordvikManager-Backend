@@ -7,7 +7,7 @@ using Newtonsoft.Json.Linq;
 
 namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
 {
-    internal class GetAddonsFromRepositoryCommandHandler : IRequestHandler<GetAddonsFromRepositoryCommand, List<AddonDto>>
+    internal class GetAddonsFromRepositoryCommandHandler : IRequestHandler<GetAddonsFromRepositoryCommand, List<RegistryAddonDto>>
     {
         private readonly IMapper mapper;
         private readonly IAddonRepositoryService addonRepository;
@@ -17,7 +17,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
             this.mapper = mapper;
             this.addonRepository = addonRepository;
         }
-        public async Task<List<AddonDto>> Handle(GetAddonsFromRepositoryCommand request, CancellationToken cancellationToken)
+        public async Task<List<RegistryAddonDto>> Handle(GetAddonsFromRepositoryCommand request, CancellationToken cancellationToken)
         {
             var repoString = await addonRepository.GetRepository();
 
@@ -28,7 +28,7 @@ namespace DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository
             }
             var repoToken = repo["repository"]
                 ?? throw new Exception("Repository JSON is missing the 'repository' array.");
-            return repoToken.ToObject<List<AddonDto>>() ?? new List<AddonDto>();
+            return repoToken.ToObject<List<RegistryAddonDto>>() ?? new List<RegistryAddonDto>();
         }
     }
 }

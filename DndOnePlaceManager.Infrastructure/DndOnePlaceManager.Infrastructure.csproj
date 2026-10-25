@@ -22,4 +22,9 @@
     <Folder Include="Data\Initializers\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- AddonRepositoryService's HttpClient constructor, for the readme tests. -->
+    <InternalsVisibleTo Include="DndOnePlaceManager.Application.UnitTests" />
+  </ItemGroup>
+
 </Project>

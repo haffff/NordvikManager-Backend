@@ -2,6 +2,8 @@
 using DndOnePlaceManager.Application.Commands.Addons.GetAddon;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddons;
 using DndOnePlaceManager.Application.Commands.Addons.GetAddonsFromRepository;
+using DndOnePlaceManager.Application.Commands.Addons.GetAddonCategories;
+using DndOnePlaceManager.Application.Commands.Addons.GetAddonReadme;
 using DndOnePlaceManager.Application.Commands.Addons.InstallAddon;
 using DndOnePlaceManager.Application.Commands.Addons.SetAddonEnabled;
 using DndOnePlaceManager.Application.Commands.Addons.UninstallAddon;
@@ -185,10 +187,57 @@ namespace DNDOnePlaceManager.Tests.Controllers
         // =========================================================================
 
         [Fact]
+        public async Task GetCategories_ReturnsTheRegistrysCategories()
+        {
+            var categories = new List<RegistryCategoryDto> { new() { Key = "tools", Name = "Tools" } };
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCategoriesCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(categories);
+
+            var ok = Assert.IsType<OkObjectResult>(await _controller.GetCategories(Guid.NewGuid()));
+            Assert.Equal(categories, ok.Value);
+        }
+
+        [Fact]
+        public async Task GetReadme_WithoutKey_IsABadRequest()
+        {
+            Assert.IsType<BadRequestObjectResult>(await _controller.GetReadme(Guid.NewGuid(), " "));
+        }
+
+        [Fact]
+        public async Task GetReadme_NoReadme_IsNotFound()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonReadmeCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((AddonReadmeDto?)null);
+
+            Assert.IsType<NotFoundObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "dnd5e"));
+        }
+
+        [Fact]
+        public async Task GetReadme_ReturnsTheMarkdown_ForThatKey()
+        {
+            var readme = new AddonReadmeDto { Key = "poll", Url = "https://raw.githubusercontent.com/h/X/t/README.md", Markdown = "# Poll" };
+            _mediator.Setup(m => m.Send(It.Is<GetAddonReadmeCommand>(c => c.Key == "poll"), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(readme);
+
+            var ok = Assert.IsType<OkObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "poll"));
+            Assert.Equal(readme, ok.Value);
+        }
+
+        [Fact]
+        public async Task GetReadme_FetchFails_IsABadGateway()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonReadmeCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new InvalidOperationException("The readme answered 404."));
+
+            var result = Assert.IsType<ObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "poll"));
+            Assert.Equal(StatusCodes.Status502BadGateway, result.StatusCode);
+        }
+
+        [Fact]
         public async Task GetRepository_ReturnsOk_WithAddonList()
         {
             // Arrange
-            var addons = new List<AddonDto>();
+            var addons = new List<RegistryAddonDto>();
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(addons);
 
