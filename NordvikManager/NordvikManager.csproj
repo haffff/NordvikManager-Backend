@@ -6,6 +6,43 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <!-- Release builds (dotnet publish -r <rid>): one self-contained executable holding the runtime
+       and every DLL, so an unzipped server is just NordvikManager(.exe), appsettings.json,
+       wwwroot/ and BuiltInAddons/. Not trimmed: EF Core, MediatR, Jint and the reflection-based
+       handler/step discovery need the full assemblies. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Native libraries (SQLite) are unpacked to a temp folder on start instead of sitting next to the exe. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <!-- No IIS: web.config would only confuse. -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+    <!-- wwwroot is served by UseStaticFiles, which never picks the precompressed .br/.gz copies. -->
+    <CompressionEnabled>false</CompressionEnabled>
+  </PropertyGroup>
+
+  <!-- Local settings and data never ship. -->
+  <ItemGroup>
+    <Content Update="appsettings.Development.json;appsettings.Production.json" CopyToPublishDirectory="Never" />
+    <Content Remove="data\**" />
+    <None Remove="data\**" />
+  </ItemGroup>
+
+  <!-- Symbols of referenced projects and packages, and the MapStaticAssets manifest (unused,
+       wwwroot goes through UseStaticFiles), would sit next to the exe for nothing. -->
+  <Target Name="TrimReleaseFolder" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="DropStaticWebAssetsEndpointsManifest" AfterTargets="CopyStaticWebAssetsEndpointsManifest" Condition="'$(PublishSingleFile)' == 'true'">
+    <Delete Files="$(PublishDir)$(TargetName).staticwebassets.endpoints.json" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="Jint" Version="4.16.4" />
     <!-- MediatR 13+ is commercial (a license key per installation); 11 is Apache-2.0. Do not upgrade. -->

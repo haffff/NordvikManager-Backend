@@ -19,6 +19,13 @@ namespace NordvikManager.Infrastructure.Services.Backup
         public string FailedMarkerPath => Path.Combine(Folder, "pending-restore.failed.json");
         public string ScheduleFilePath => Path.Combine(Folder, "schedule.json");
 
+        /// <summary>SQLite won't create a missing folder for its file (e.g. data/ on a fresh install).</summary>
+        public void EnsureDatabaseFolder()
+        {
+            if (DatabasePath != "")
+                Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+        }
+
         public static BackupOptions FromConfiguration(IConfiguration configuration)
         {
             var section = configuration.GetSection("Backup");
