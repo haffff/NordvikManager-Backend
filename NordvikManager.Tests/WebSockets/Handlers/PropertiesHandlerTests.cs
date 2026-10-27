@@ -1,0 +1,187 @@
+using NordvikManager.Application.Commands.Properties;
+using NordvikManager.Application.Commands.Resources;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Domain.Enums;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Core;
+using NordvikManager.WebSockets.Handlers;
+using MediatR;
+using Moq;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Tests.WebSockets.Handlers
+{
+    public class PropertiesHandlerTests
+    {
+        private readonly Mock<IMediator> _mediator = new();
+        private readonly PropertiesHandler _handler;
+        private readonly PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "Tester" };
+
+        public PropertiesHandlerTests()
+        {
+            _handler = new PropertiesHandler(_mediator.Object);
+        }
+
+        private static WebSocketCommand MakeCommand(string command, JToken data) =>
+            new WebSocketCommand { Command = command, Data = data };
+
+        // =====================================================================
+        // Update — rewrites Data to the canonical, camelCase-keyed DTO
+        // =====================================================================
+
+        [Fact]
+        public async Task UpdateProperty_RewritesDataToCanonicalDto_OnSuccess()
+        {
+            var updated = new PropertyDTO
+            {
+                Id = Guid.NewGuid(),
+                Name = "strength_attribute",
+                ParentID = Guid.NewGuid(),
+                EntityName = "CardModel",
+                Value = "18",
+            };
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, updated));
+
+            // Incoming client payload uses whatever casing the client happened to send —
+            // that must not leak through to the broadcast.
+            var incoming = JObject.FromObject(new { id = updated.Id, name = updated.Name, value = "17", ParentID = Guid.NewGuid() });
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyUpdate, incoming);
+
+            var response = await _handler.Handle(cmd, _player);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            var dataObj = Assert.IsType<JObject>(cmd.Data);
+            Assert.True(dataObj.ContainsKey(WebSocketCommandNames.DataKeyParentId));
+            Assert.Equal(updated.ParentID, dataObj[WebSocketCommandNames.DataKeyParentId]!.ToObject<Guid>());
+            Assert.Equal("18", dataObj["value"]!.ToObject<string>());
+        }
+
+        // =====================================================================
+        // Protected properties (API keys): the broadcast goes to every client,
+        // so it never carries the value
+        // =====================================================================
+
+        private static PropertyDTO Secret() => new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "trilium_token",
+            ParentID = Guid.NewGuid(),
+            EntityName = "GameModel",
+            Value = "etapi-secret",
+            IsProtected = true,
+        };
+
+        [Fact]
+        public async Task UpdateProperty_Protected_BroadcastsNoValue()
+        {
+            var updated = Secret();
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, updated));
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyUpdate, JObject.FromObject(updated));
+
+            await _handler.Handle(cmd, _player);
+
+            var data = Assert.IsType<JObject>(cmd.Data);
+            Assert.True(data["isProtected"]!.ToObject<bool>());
+            Assert.Equal(JTokenType.Null, data["value"]!.Type);
+            Assert.DoesNotContain("etapi-secret", cmd.Data.ToString());
+        }
+
+        [Fact]
+        public async Task AddProperty_Protected_BroadcastsNoValue()
+        {
+            var added = Secret();
+            _mediator.Setup(m => m.Send(It.IsAny<AddPropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, added));
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyAdd, JObject.FromObject(added));
+
+            await _handler.Handle(cmd, _player);
+
+            Assert.DoesNotContain("etapi-secret", cmd.Data.ToString());
+        }
+
+        // =====================================================================
+        // Remove — bare GUID in, full canonical DTO out
+        // =====================================================================
+
+        [Fact]
+        public async Task RemoveProperty_TakesBareGuidIn_ReturnsFullDtoOut()
+        {
+            var propertyId = Guid.NewGuid();
+            var removed = new PropertyDTO
+            {
+                Id = propertyId,
+                Name = "removed_prop",
+                ParentID = Guid.NewGuid(),
+                EntityName = "CardModel",
+            };
+            _mediator.Setup(m => m.Send(It.IsAny<RemovePropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, removed));
+
+            // The request side sends a bare GUID (CommandFactory.CreatePropertyRemoveCommand
+            // in the frontend) — not an object. RemoveProperty must read it via ToGuid()
+            // rather than assume a PropertyDTO shape.
+            var incoming = new JValue(propertyId);
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyRemove, incoming);
+
+            var response = await _handler.Handle(cmd, _player);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            _mediator.Verify(m => m.Send(
+                It.Is<RemovePropertyCommand>(c => c.Id == propertyId), It.IsAny<CancellationToken>()), Times.Once);
+
+            var dataObj = Assert.IsType<JObject>(cmd.Data);
+            Assert.Equal(removed.Id, dataObj["id"]!.ToObject<Guid>());
+            Assert.Equal(removed.ParentID, dataObj[WebSocketCommandNames.DataKeyParentId]!.ToObject<Guid>());
+        }
+
+        // =====================================================================
+        // AlreadyExists — the one path that still broadcasts non-canonical data
+        // =====================================================================
+
+        [Fact]
+        public async Task AddProperty_LeavesDataUntouched_WhenAlreadyExists()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<AddPropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.AlreadyExists, (PropertyDTO)null!));
+
+            var incoming = JObject.FromObject(new { name = "dup", parentId = Guid.NewGuid(), entityName = "CardModel" });
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyAdd, incoming);
+
+            var response = await _handler.Handle(cmd, _player);
+
+            Assert.Equal(CommandResponse.AlreadyExists, response);
+            // Data reference is untouched — still whatever the client originally sent.
+            Assert.Same(incoming, cmd.Data);
+        }
+
+        [Fact]
+        public async Task AddProperty_RewritesDataToCanonicalDto_OnSuccess()
+        {
+            var added = new PropertyDTO
+            {
+                Id = Guid.NewGuid(),
+                Name = "new_prop",
+                ParentID = Guid.NewGuid(),
+                EntityName = "CardModel",
+                Value = "1",
+            };
+            _mediator.Setup(m => m.Send(It.IsAny<AddPropertyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, added));
+
+            var incoming = JObject.FromObject(new { name = "new_prop", value = "1", parentId = added.ParentID, entityName = "CardModel" });
+            var cmd = MakeCommand(WebSocketCommandNames.PropertyAdd, incoming);
+
+            var response = await _handler.Handle(cmd, _player);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.NotSame(incoming, cmd.Data);
+            var dataObj = Assert.IsType<JObject>(cmd.Data);
+            Assert.Equal(added.Id, dataObj["id"]!.ToObject<Guid>());
+        }
+    }
+}

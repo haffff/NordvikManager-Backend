@@ -1,0 +1,242 @@
+using NordvikManager.Application;
+using NordvikManager.Infrastructure;
+using NordvikManager.Data.Contexts;
+using NordvikManager.Engine.Middlewares;
+using NordvikManager.Services;
+using NordvikManager.Services.Implementations;
+using NordvikManager.Services.Implementations.ActionSteps;
+using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
+using NordvikManager.WebSockets.Handlers;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using System;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace NordvikManager
+{
+    public class Startup
+    {
+        private IConfiguration Configuration { get; }
+
+        public Startup(IConfiguration configuration)
+        {
+            Configuration = configuration;
+        }
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+            var jwtSecret = Configuration["JWTSecret"];
+            if (string.IsNullOrEmpty(jwtSecret))
+            {
+                // Not configured: a random secret per start (logins end on restart). Never printed: anyone
+                // reading the console or a shared screenshot could forge logins with it.
+                jwtSecret = Guid.NewGuid().ToString() + Guid.NewGuid().ToString();
+                Configuration["JWTSecret"] = jwtSecret;
+            }
+
+            services.AddLogging(options => options.AddConsole());
+            services.AddControllers().AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.IgnoreNullValues = true;
+                options.JsonSerializerOptions.AllowTrailingCommas = true;
+                options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+            });
+
+            services.AddDistributedMemoryCache();
+            services.AddSession(options =>
+            {
+                options.IdleTimeout = TimeSpan.FromSeconds(10);
+                options.Cookie.HttpOnly = true;
+                options.Cookie.IsEssential = true;
+            });
+
+            services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
+            services.AddScoped<NordvikManager.Application.Interfaces.IGameEventLogger,
+                               NordvikManager.Services.Implementations.LobbyGameEventLogger>();
+            services.AddSingleton<IMaterialsService, MaterialsService>();
+            services.AddScoped<ILobbyService, LobbyService>();
+            services.AddSingleton<IPlaybackService, PlaybackService>();
+            services.AddScoped<IActionProcessingService, ActionProcessingService>();
+            services.AddScoped<GetUserIntoItemsMiddleWare>();
+            services.AddScoped<HandleExceptionMiddleWare>();
+            services.AddSingleton<SecurityHeadersMiddleWare>();
+            services.AddSingleton<ICentralServerService, CentralServerService>();
+            services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
+            services.AddSingleton<ISignalingService, SignalingService>();
+            services.AddSingleton<RequestDelegateHolder>();
+            services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
+            services.AddHttpContextAccessor();
+            services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
+            services.AddSingleton<ILocalAdminService, LocalAdminService>();
+            services.AddHostedService<ScheduledBackupService>();
+
+            var handlers = Assembly.GetExecutingAssembly().GetTypes();
+            foreach (var handler in handlers)
+            {
+                if (handler.GetInterface("IWebSocketHandler") != null)
+                    services.AddScoped(typeof(IWebSocketHandler), handler);
+            }
+
+            var definitions = Assembly.GetExecutingAssembly().GetTypes();
+            foreach (var definition in definitions)
+            {
+                if (definition.GetInterface("IActionStepDefinition") != null)
+                    services.AddSingleton(typeof(IActionStepDefinition), definition);
+            }
+
+            services.AddEndpointsApiExplorer();
+
+            services.AddSwaggerGen(options =>
+            {
+                options.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo
+                {
+                    Version = "v1",
+                    Title = "Nordvik Manager API",
+                    Description = "API documentation for DND One Place Manager"
+                });
+            });
+
+            // CORS configuration
+            services.AddCors(options =>
+            {
+                options.AddPolicy("SuperPolicy", policy =>
+                {
+                    var clientUrls = Configuration["FrontUrls:Client"];
+                    if (string.IsNullOrEmpty(clientUrls))
+                        clientUrls = "http://localhost:3000,http://localhost:3002";
+
+                    var origins = clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    policy.WithOrigins(origins).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
+                });
+            });
+
+            InfrastructureLayerModule.Register(services, Configuration);
+            ApplicationLayerModule.Register(services, Configuration);
+
+            services.AddAuthorization(options =>
+            {
+                options.AddPolicy("ApiPolicy", policy =>
+                {
+                    policy.AuthenticationSchemes.Add(JwtBearerDefaults.AuthenticationScheme);
+                    policy.AuthenticationSchemes.Add("WebRTCInProcess");
+                    policy.RequireAuthenticatedUser();
+                });
+                options.DefaultPolicy = options.GetPolicy("ApiPolicy");
+            })
+            .AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddScheme<AuthenticationSchemeOptions, WebRTCInProcessAuthHandler>("WebRTCInProcess", _ => { })
+            .AddJwtBearer(options =>
+            {
+                options.MapInboundClaims = false;
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = context =>
+                    {
+                        context.Token = context.Request.Cookies["Authorization"];
+                        return Task.CompletedTask;
+                    }
+                };
+                options.SaveToken = true;
+                options.RequireHttpsMetadata = false;
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = false,
+                    ValidateAudience = false,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+                    NameClaimType = "username",
+                    ClockSkew = TimeSpan.Zero
+                };
+            });
+        }
+
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        {
+            if (env.IsDevelopment())
+                app.UseDeveloperExceptionPage();
+            else
+            {
+                app.UseExceptionHandler("/Error");
+                app.UseHsts();
+            }
+
+            var sessionOptions = new SessionOptions();
+            // Before static files, so index.html and the card sandbox page get their headers.
+            app.UseMiddleware<SecurityHeadersMiddleWare>();
+            app.UseStaticFiles();
+            app.UseRouting();
+
+            // CORS must be applied after routing and before authentication/authorization so the CORS headers are set
+            app.UseCors("SuperPolicy");
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.UseMiddleware<HandleExceptionMiddleWare>();
+            app.UseMiddleware<GetUserIntoItemsMiddleWare>();
+
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapGet("/", async context =>
+                {
+                    context.Response.ContentType = "text/html";
+                    if (File.Exists(Path.Combine(env.WebRootPath, "index.html")))
+                        await context.Response.SendFileAsync(Path.Combine(env.WebRootPath, "index.html"));
+                });
+                endpoints.MapControllerRoute(
+                    name: "default",
+                    pattern: "api/{controller}/{action}/{id?}");
+            });
+
+            if (env.IsDevelopment())
+            {
+                app.UseSwagger();
+                app.UseSwaggerUI(o =>
+                {
+                    o.RoutePrefix = "swagger";
+                    o.SwaggerEndpoint("/swagger/v1/swagger.json", "V1 Docs");
+                });
+            }
+
+            // Capture the fully-built middleware pipeline for WebRTCInProcessDispatcher.
+            // Must be called after all app.Use* / app.UseEndpoints calls.
+            app.ApplicationServices
+               .GetRequiredService<RequestDelegateHolder>()
+               .Pipeline = app.Build();
+
+            ApplicationLayerModule.AfterBuild(app.ApplicationServices);
+
+            // Apply any pending EF Core migrations once at startup — not from DndOneContext's
+            // own constructor, which is a scoped DI service re-constructed per request/WS message.
+            // MySQL has no migrations of its own yet (see DndOneContext's constructor comment)
+            // and already got its schema via EnsureCreated() in that constructor — calling
+            // Migrate() here too would try to apply the SQLite-flavored migrations against it.
+            using (var scope = app.ApplicationServices.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<DndOneContext>();
+                var isMySql = dbContext.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true;
+                if (!isMySql)
+                    dbContext.Database.Migrate();
+            }
+        }
+    }
+}

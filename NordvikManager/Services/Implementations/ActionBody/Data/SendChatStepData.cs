@@ -1,0 +1,37 @@
+using NordvikManager.Models;
+using System.ComponentModel;
+
+namespace NordvikManager.Services.Implementations.ActionBody.Data
+{
+    public class SendChatStepData
+    {
+        [Description("Template type: 'Roll', 'BigNumber', or 'Text'.")]
+        public string Template { get; set; } = "Text";
+
+        [ShowIf("Template", "Roll")]
+        [Description("Variable name (without %) holding the RollDefinition from a previous RollDice step.")]
+        public string? RollVariable { get; set; }
+
+        [ShowIf("Template", "BigNumber")]
+        [Description("The number to display prominently. Supports %variable% substitution (e.g. %rollResult.Result%).")]
+        public string? Number { get; set; }
+
+        [Description("Title shown on the chat card. Supports %variable% substitution (e.g. %rollResult.Result%).")]
+        public string? Title { get; set; }
+
+        [UIType("textarea")]
+        [Description("Message body shown below the main content. Supports %variable% substitution.")]
+        public string? Message { get; set; }
+
+        [Description("Background colour of the chat card (CSS colour, e.g. '#1a1a2e'). Leave empty for default.")]
+        public string? Color { get; set; }
+
+        [Description("Border colour of the chat card (CSS colour, e.g. '#e94560'). Leave empty for default.")]
+        public string? BorderColor { get; set; }
+
+        [UIType("playerid")]
+        [Description("Whisper: send only to this player (name / ID / %variable%). The message is not stored in chat history. " +
+                     "Leave empty to post to everyone.")]
+        public string? Player { get; set; }
+    }
+}

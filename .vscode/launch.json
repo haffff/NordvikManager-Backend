@@ -9,9 +9,9 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/DNDOnePlaceManager/bin/Debug/net8.0/DNDOnePlaceManager.dll",
+            "program": "${workspaceFolder}/NordvikManager/bin/Debug/net8.0/NordvikManager.dll",
             "args": [],
-            "cwd": "${workspaceFolder}/DNDOnePlaceManager",
+            "cwd": "${workspaceFolder}/NordvikManager",
             "stopAtEntry": false,
             "serverReadyAction": {
                 "action": "openExternally",

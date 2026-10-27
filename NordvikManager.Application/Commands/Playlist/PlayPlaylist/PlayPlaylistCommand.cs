@@ -1,0 +1,27 @@
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Domain.Enums;
+
+namespace NordvikManager.Application.Commands.Playlist.PlayPlaylist
+{
+    public class PlayPlaylistCommand : CommandBase<PlayPlaylistResult>
+    {
+        public Guid GameId { get; set; }
+        public PlayerDTO Player { get; set; }
+        public Guid PlaylistId { get; set; }
+    }
+
+    public class PlayPlaylistResult
+    {
+        public CommandResponse Response { get; set; }
+        public PlaybackMode Mode { get; set; }
+        public bool Shuffle { get; set; }
+        public bool Repeat { get; set; }
+        public List<Guid> TrackOrder { get; set; } = new();
+
+        /// <summary>The playlist's volume, 0..1.</summary>
+        public double Volume { get; set; } = 1;
+
+        /// <summary>Tracks with a volume of their own (file volume), by id.</summary>
+        public Dictionary<Guid, double> TrackVolumes { get; set; } = new();
+    }
+}

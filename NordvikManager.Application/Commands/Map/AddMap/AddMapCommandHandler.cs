@@ -1,0 +1,43 @@
+﻿using NordvikManager.Application.Mapping;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Generic.Handlers;
+using NordvikManager.Infrastructure.Interfaces;
+using NordvikManager.Domain.Entities.BattleMap;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+
+namespace NordvikManager.Application.Commands.Map.AddMap
+{
+    internal class AddMapCommandHandler : GenericAddHandlerWithTreeEntry<AddMapCommand, MapModel, MapDTO>
+    {
+        public AddMapCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator) : base(battleMapContext, mapper, mediator)
+        {
+        }
+
+        public override GameModel GetGame(AddMapCommand request)
+        {
+            return dbContext.Games.Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameID);
+        }
+
+        public override MapDTO GetDefault()
+        {
+            return new MapDTO()
+            {
+                GridSize = 50,
+                GridVisible = true,
+                GridColor = "rgba(170, 170, 170, 0.35)", // subtle over battle map images
+                Width = 1200,
+                Height = 700,
+                Name = "New map",
+                Elements = new List<ElementDTO>()
+            };
+        }
+
+        public override void AddToGame(GameModel game, MapModel model, AddMapCommand request)
+        {
+            // Added directly: loading game.Maps to append to it read every map of the game.
+            model.Game = game;
+            dbContext.Maps.Add(model);
+        }
+    }
+}

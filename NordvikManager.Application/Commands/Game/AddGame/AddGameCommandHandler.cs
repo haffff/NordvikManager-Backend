@@ -1,0 +1,274 @@
+using NordvikManager.Application.Mapping;
+using NordvikManager.Application.Commands.Addons.InstallAddon;
+using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Layouts.AddLayout;
+using NordvikManager.Application.Commands.Map.AddMap;
+using NordvikManager.Application.Commands.Properties.AddProperties;
+using NordvikManager.Application.Commands.Resources;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Extension;
+using NordvikManager.Application.Services;
+using NordvikManager.Infrastructure.Interfaces;
+using NordvikManager.Domain.Entities.BattleMap;
+using MediatR;
+using NordvikManager.Infrastructure.Services.Settings;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace NordvikManager.Application.Commands.BattleMap
+{
+    internal class AddGameCommandHandler : HandlerBase<AddGameCommand, Guid?>
+    {
+        IMediator mediator;
+        string? mainRepositoryUrl;
+        ILogger<AddGameCommandHandler> logger;
+        IServiceScopeFactory serviceScopeFactory;
+        IBuiltInAddons builtInAddons;
+
+        public AddGameCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, AddonRegistryOptions addonRegistry, ILogger<AddGameCommandHandler> logger, IServiceScopeFactory serviceScopeFactory, IBuiltInAddons builtInAddons) : base(battleMapContext, mapper)
+        {
+            this.mediator = mediator;
+            this.logger = logger;
+            this.serviceScopeFactory = serviceScopeFactory;
+            this.builtInAddons = builtInAddons;
+            mainRepositoryUrl = addonRegistry.MainRepository;
+        }
+
+        public async override Task<Guid?> Handle(AddGameCommand request, CancellationToken cancellationToken)
+        {
+            await base.Handle(request, cancellationToken);
+            if (request.PasswordRequired && string.IsNullOrWhiteSpace(request.Password))
+                return null;
+
+            if (string.IsNullOrWhiteSpace(request.User?.Id) || !Guid.TryParse(request.User.Id, out _))
+                return null;
+
+            var random = new Random();
+
+            var red = random.Next(0, 255 / 10) * 10;
+            var green = random.Next(0, 255 / 10) * 10;
+            var blue = random.Next(0, 255 / 10) * 10;
+
+            PlayerModel player = new PlayerModel() { Name = "Game Master", CentralServerUserId = request.User?.Id, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
+            PlayerModel system = new PlayerModel() { Name = "System", System = true, User = null, Color = $"rgba({red},{green},{blue},1)", Image = string.Empty };
+
+            GameModel game = new GameModel()
+            {
+                Name = request.Name,
+                Password = request.PasswordRequired ? request.Password : null,
+                Players = new List<PlayerModel>() { player, system },
+                Maps = new List<MapModel>(),
+                IsPublic = request.IsPublic,
+            };
+
+            dbContext.Add(game);
+
+            dbContext.SaveChanges();
+
+            game.SystemPlayerId = system.Id;
+            game.MasterId = player.Id;
+
+            dbContext.SaveChanges();
+
+            game.SetPermissions(player.Id, Domain.Enums.Permission.All);
+            game.SetPermissions(system.Id, Domain.Enums.Permission.All);
+
+            GetPlayerCommand getPlayerCommand = new GetPlayerCommand()
+            {
+                User = request.User,
+                GameID = game.Id,
+            };
+
+            var playerDTO = (await mediator.Send(getPlayerCommand)).Player;
+
+            bool hasImage = request.Image != null;
+
+            if (hasImage)
+            {
+                //get mime type from base64 data prefix 
+                var mimeType = request.Image.Split("base64,")[0].Split("data:")[1].Split(";")[0];
+
+                //remove base64 data prefix if exists — into a copy: the caller sends
+                //request.Image on to the Central Server, which needs the full data URL
+                var imageData = request.Image.Contains("base64,")
+                    ? request.Image.Split("base64,")[1]
+                    : request.Image;
+
+                AddResourceCommand addResourceCommand = new AddResourceCommand()
+                {
+                    Data = imageData,
+                    GameID = game.Id,
+                    Key = "game_image",
+                    Player = playerDTO,
+                    Name = "Game Image",
+                    MimeType = mimeType,
+                };
+
+                var (response, id) = await mediator.Send(addResourceCommand);
+
+                AddPropertiesCommand setImageCommand = new AddPropertiesCommand()
+                {
+                    Player = playerDTO,
+                    GameID = game.Id,
+                    Properties = [
+                    new ()
+                        {
+                            Name = "image",
+                            EntityName = "GameModel",
+                            ParentID = game.Id,
+                            Value = id?.ToString()
+                        }
+                ]
+                };
+
+                await mediator.Send(setImageCommand);
+
+            }
+
+            AddPropertiesCommand propertiesCommand = new AddPropertiesCommand()
+            {
+                Player = playerDTO,
+                GameID = game.Id,
+                Properties = [
+                    new ()
+                    {
+                        Name = "shortDescription",
+                        EntityName = "GameModel",
+                        ParentID = game.Id,
+                        Value = request.Summary
+                    },
+                    new ()
+                    {
+                        Name = "longDescription",
+                        EntityName = "GameModel",
+                        ParentID = game.Id,
+                        Value = request.Description
+                    },
+                    new ()
+                    {
+                        Name = "allowPlayerUseLayouts",
+                        EntityName = "GameModel",
+                        ParentID = game.Id,
+                        Value = request.AllowPlayersToUseLocalLayouts.ToString()
+                    }
+                ]
+            };
+
+            await mediator.Send(propertiesCommand);
+
+            AddMapCommand addMapCommand = new AddMapCommand()
+            {
+                GameID = game.Id,
+                Dto = new MapDTO()
+                {
+                    Name = @"Default",
+                    Width = 1200,
+                    Height = 720,
+                    GridVisible = true,
+                    GridSize = 50
+                },
+                Player = playerDTO,
+            };
+
+            var (result, mapId) = await mediator.Send(addMapCommand);
+
+
+            AddBattleMapCommand addBattleMapCommand = new AddBattleMapCommand()
+            {
+                GameID = game.Id,
+                Dto = new BattleMapDto()
+                {
+                    GameId = game.Id,
+                    Name = "Default",
+                    MapId = mapId,
+                },
+                Player = playerDTO,
+            };
+
+            var (bmresult, battlemapId) = await mediator.Send(addBattleMapCommand);
+
+            AddLayoutCommand addLayoutCommand = new AddLayoutCommand()
+            {
+                Player = playerDTO,
+                GameID = game.Id,
+                Dto = new LayoutDTO()
+                {
+                    Default = true,
+                    Name = "Default",
+                    Value = "{\"id\":1,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":7,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":1000,\"h\":1200},\"contentList\":[],\"currentTabIndex\":0,\"splitPanels\":[{\"id\":6,\"floating\":false,\"rect\":{\"x\":-156,\"y\":642,\"w\":300,\"h\":800},\"contentList\":[7],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":800,\"ephemeral\":false,\"isHeaderHidden\":true,\"isLocked\":false},{\"id\":8,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[3],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"isHeaderHidden\":false,\"isLocked\":false}],\"splitMode\":0,\"splitSize\":0.05,\"preferredWidth\":1000,\"preferredHeight\":1200,\"ephemeral\":false},{\"id\":5,\"floating\":false,\"rect\":{\"x\":0,\"y\":0,\"w\":0,\"h\":0},\"contentList\":[6],\"currentTabIndex\":0,\"splitPanels\":[],\"splitMode\":0,\"splitSize\":0.5,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false}],\"splitMode\":0,\"splitSize\":0.75,\"preferredWidth\":300,\"preferredHeight\":250,\"ephemeral\":false,\"_contents\":[{\"contentId\":7,\"type\":\"ToolsPanel\",\"props\":{}},{\"contentId\":3,\"type\":\"Battlemap\",\"syncId\":\"" + battlemapId + "\",\"mapId\":\"" + mapId + "\",\"props\":{\"syncId\":\"" + battlemapId + "\",\"withID\":\"" + battlemapId + "\"}},{\"contentId\":6,\"type\":\"ChatPanel\",\"props\":{}}]}"
+                }
+            };
+
+            await mediator.Send(addLayoutCommand);
+
+            // Picked addons: a built-in one (shipped with the server, e.g. Basics) is
+            // installed from that copy; the rest come from the registry, if one is set.
+            var selected = request.AddonsSelected ?? Array.Empty<string>();
+            var builtIns = builtInAddons.GetAll().Where(b => selected.Contains(b.Key)).ToList();
+            var featured = mainRepositoryUrl != null
+                ? selected.Where(key => builtIns.All(b => b.Key != key)).ToArray()
+                : Array.Empty<string>();
+
+            if (builtIns.Count > 0 || featured.Length > 0)
+            {
+                var gameId = game.Id;
+                var installingPlayer = playerDTO;
+
+                // Fire-and-forget (mirrors AddonController.RunInstallInBackground) — installing
+                // a featured addon (e.g. dnd5e: many resources/cards/actions, each its own
+                // mediator round-trip) can take a long time. Awaiting it here used to block the
+                // whole AddGame request, which in turn delayed GameListController.AddGame's
+                // later WebRTC session start (StartSessionAsync) long enough to time out, even
+                // though the WebRTC handshake itself was never the slow part.
+                // Hook.Install for whatever gets installed here still runs — once a player
+                // actually joins the game, see ActionProcessingService.RunPendingAddonInstallHooksAsync.
+                _ = Task.Run(async () =>
+                {
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var scopedMediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+
+                    // First, so a featured addon can rely on them.
+                    foreach (var builtIn in builtIns)
+                    {
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonFile = builtIn.Data,
+                                AddonFileName = builtIn.FileName,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install built-in addon '{Addon}' for game {GameId}", builtIn.FileName, gameId);
+                        }
+                    }
+
+                    foreach (var addon in featured)
+                    {
+                        try
+                        {
+                            await scopedMediator.Send(new InstallAddonCommand
+                            {
+                                AddonSourceKey = addon,
+                                GameID = gameId,
+                                Player = installingPlayer,
+                                AutoInstallDeps = true,
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "Failed to install featured addon '{Addon}' for game {GameId}", addon, gameId);
+                        }
+                    }
+                });
+            }
+
+            return game.Id;
+        }
+    }
+}
+

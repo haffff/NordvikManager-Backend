@@ -1,0 +1,28 @@
+﻿using NordvikManager.Domain.Enums;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Application.DataTransferObjects.Game
+{
+    public class PlayerDTO : IGameDataTransferObject
+    {
+        public string? Name { get; set; }
+
+        [JsonProperty("id")]
+        public Guid? Id { get; set; }
+        public bool? IsOwner { get; set; }
+        public bool? System { get; set; }
+        public string? Color { get; set; }
+        public string? Image { get; set; }
+        public Permission? Permission { get; set; }
+        public Dictionary<Guid, Permission>? Permissions { get; set; }
+        /// <summary>Central Server user UUID (JWT sub). Used to match WebRTC peers to lobby players.</summary>
+        public string? CentralServerUserId { get; set; }
+    }
+}
