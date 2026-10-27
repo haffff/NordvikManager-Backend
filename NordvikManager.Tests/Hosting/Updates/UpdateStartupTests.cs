@@ -2,8 +2,8 @@ using NordvikManager.Hosting.Updates;
 
 namespace NordvikManager.Tests.Hosting.Updates
 {
-    // Across the restart: the old version swaps the files after its host stopped; the new
-    // version's first start either finishes the update or puts the old version back.
+    // Across the restart: a helper swaps the files the old server staged; the new version's
+    // first start either finishes the update or has a helper put the old version back.
     public class UpdateStartupTests : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "nm-startup-" + Guid.NewGuid().ToString("N"));
@@ -29,23 +29,36 @@ namespace NordvikManager.Tests.Hosting.Updates
 
         private string Exe => File.ReadAllText(Path.Combine(App, UpdateInstaller.ExecutableName));
 
-        private StagedUpdate Staged(string? backup = "pre-update.zip") => new("0.2.0", "0.3.0", Env("0.2.0").StagingFolder, backup);
+        private void HandOver(string? backup = "pre-update.zip") =>
+            UpdateStartup.HandOver(new StagedUpdate("0.2.0", "0.3.0", Env("0.2.0").StagingFolder, backup), Env("0.2.0"));
 
         [Fact]
         public void ApplyStaged_SwapsTheFiles_AndLeavesANoteForTheNewVersion()
         {
-            Assert.True(UpdateStartup.ApplyStaged(Staged(), Env("0.2.0")));
+            HandOver();
+
+            Assert.True(UpdateStartup.ApplyStaged(Env("0.3.0")));
 
             Assert.Equal("new exe", Exe);
             var pending = UpdateMarkers.ReadPending(Updates);
             Assert.Equal("0.3.0", pending?.ToVersion);
             Assert.Equal("pre-update.zip", pending?.BackupName);
+            Assert.Null(UpdateMarkers.ReadStaged(Updates));
+        }
+
+        [Fact]
+        public void ApplyStaged_DoesNothing_WithoutAHandOver()
+        {
+            Assert.False(UpdateStartup.ApplyStaged(Env("0.3.0")));
+            Assert.Equal("old exe", Exe);
         }
 
         [Fact]
         public void Complete_AfterASuccessfulStart_ReportsTheUpdateAndCleansUp()
         {
-            UpdateStartup.ApplyStaged(Staged(), Env("0.2.0"));
+            HandOver();
+            UpdateStartup.ApplyStaged(Env("0.3.0"));
+            Directory.CreateDirectory(Path.Combine(Updates, "helper-20261027120000"));
 
             var result = UpdateStartup.Complete(Env("0.3.0"));
 
@@ -53,6 +66,9 @@ namespace NordvikManager.Tests.Hosting.Updates
             Assert.Equal("0.2.0", result?.FromVersion);
             Assert.Null(UpdateMarkers.ReadPending(Updates));
             Assert.Empty(Directory.EnumerateFileSystemEntries(App, "*.old"));
+            Assert.Empty(Directory.EnumerateDirectories(Updates, "helper-*"));
+            // What the swap leaves there: the release's own appsettings.json.
+            Assert.False(Directory.Exists(Env("0.3.0").StagingFolder));
         }
 
         [Fact]
@@ -62,14 +78,15 @@ namespace NordvikManager.Tests.Hosting.Updates
         }
 
         [Fact]
-        public async Task RollBack_AfterAFailedStart_PutsTheOldVersionBackAndRestoresTheBackup()
+        public async Task RollBack_AfterAFailedStart_RestoresTheBackupAndPutsTheOldVersionBack()
         {
-            UpdateStartup.ApplyStaged(Staged(), Env("0.2.0"));
+            HandOver();
+            UpdateStartup.ApplyStaged(Env("0.3.0"));
             var restored = new List<string>();
 
-            var rolledBack = await UpdateStartup.RollBackAsync(Env("0.3.0"), new Exception("boom"), name => { restored.Add(name); return Task.CompletedTask; });
+            Assert.True(await UpdateStartup.PrepareRollBackAsync(Env("0.3.0"), new Exception("boom"), name => { restored.Add(name); return Task.CompletedTask; }));
+            UpdateStartup.FinishRollBack(Env("0.3.0"));
 
-            Assert.True(rolledBack);
             Assert.Equal("old exe", Exe);
             Assert.Equal(new[] { "pre-update.zip" }, restored);
             Assert.Null(UpdateMarkers.ReadPending(Updates));
@@ -78,19 +95,40 @@ namespace NordvikManager.Tests.Hosting.Updates
             Assert.Equal("0.3.0", result?.ToVersion);
         }
 
+        // The rolled-back version reports it once it is up; a start that fails (e.g. the port is
+        // still taken) must not swallow the report.
+        [Fact]
+        public async Task Complete_ReportsARollBack_OnTheOldVersionsFirstSuccessfulStart()
+        {
+            HandOver();
+            UpdateStartup.ApplyStaged(Env("0.3.0"));
+            await UpdateStartup.PrepareRollBackAsync(Env("0.3.0"), new Exception("boom"), _ => Task.CompletedTask);
+            UpdateStartup.FinishRollBack(Env("0.3.0"));
+
+            var result = UpdateStartup.Complete(Env("0.2.0"));
+
+            Assert.False(result?.Succeeded);
+            Assert.Equal("0.3.0", result?.ToVersion);
+            Assert.Null(UpdateStartup.Complete(Env("0.2.0")));
+            Assert.Empty(Directory.EnumerateFileSystemEntries(App, "*.failed"));
+        }
+
         [Fact]
         public async Task RollBack_IsNothing_WhenTheStartWasNotRightAfterAnUpdate()
         {
-            Assert.False(await UpdateStartup.RollBackAsync(Env("0.2.0"), new Exception("boom"), _ => Task.CompletedTask));
+            Assert.False(await UpdateStartup.PrepareRollBackAsync(Env("0.2.0"), new Exception("boom"), _ => Task.CompletedTask));
+            UpdateStartup.FinishRollBack(Env("0.2.0"));
             Assert.Equal("old exe", Exe);
         }
 
         [Fact]
-        public async Task RollBack_StillPutsTheProgramBack_WhenTheRestoreFails()
+        public async Task RollBack_SaysSo_WhenTheRestoreFails()
         {
-            UpdateStartup.ApplyStaged(Staged(), Env("0.2.0"));
+            HandOver();
+            UpdateStartup.ApplyStaged(Env("0.3.0"));
 
-            await UpdateStartup.RollBackAsync(Env("0.3.0"), new Exception("boom"), _ => throw new IOException("disk full"));
+            await UpdateStartup.PrepareRollBackAsync(Env("0.3.0"), new Exception("boom"), _ => throw new IOException("disk full"));
+            UpdateStartup.FinishRollBack(Env("0.3.0"));
 
             Assert.Equal("old exe", Exe);
             Assert.Contains("disk full", UpdateMarkers.TakeResult(Updates)?.Message);

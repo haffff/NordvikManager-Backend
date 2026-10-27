@@ -15,8 +15,15 @@ namespace NordvikManager.Hosting.Updates
     /// <summary>The files in data/updates that carry an update across the restart. Old and new versions both read them.</summary>
     public static class UpdateMarkers
     {
+        private const string StagedFile = "staged-update.json";
         private const string PendingFile = "pending-update.json";
         private const string ResultFile = "last-update.json";
+
+        public static void WriteStaged(string folder, StagedUpdate staged) => Write(Path.Combine(folder, StagedFile), staged);
+
+        public static StagedUpdate? ReadStaged(string folder) => Read<StagedUpdate>(Path.Combine(folder, StagedFile));
+
+        public static void DeleteStaged(string folder) => Delete(Path.Combine(folder, StagedFile));
 
         public static void WritePending(string folder, PendingUpdate pending) => Write(Path.Combine(folder, PendingFile), pending);
 

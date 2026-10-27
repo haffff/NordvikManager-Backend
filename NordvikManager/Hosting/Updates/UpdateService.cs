@@ -31,7 +31,9 @@ namespace NordvikManager.Hosting.Updates
         string? CentralServerUrl,
         CurrentBuild Current,
         string? UnsupportedReason,
-        string DownloadPrefix = UpdateChecker.ReleaseDownloadPrefix)
+        string DownloadPrefix = UpdateChecker.ReleaseDownloadPrefix,
+        // Run by systemd: the service would stop the helper with the server, so updates go through --update.
+        bool UnderServiceManager = false)
     {
         public string StagingFolder => Path.Combine(UpdatesFolder, "staged");
     }
@@ -46,6 +48,7 @@ namespace NordvikManager.Hosting.Updates
         UpdateChannel Channel,
         bool NoticesOff,
         bool BackupsSupported,
+        bool UnderServiceManager,
         UpdateOffer? Available,
         DateTimeOffset? LastChecked,
         string? CheckError,
@@ -70,8 +73,7 @@ namespace NordvikManager.Hosting.Updates
         private readonly HttpClient http;
         private readonly Action stopServer;
         private readonly object sync = new();
-        private readonly UpdateResult? lastResult;
-        private UpdateResult? finished;
+        private UpdateResult? lastResult;
 
         private UpdateOffer? available;
         private DateTimeOffset? lastChecked;
@@ -87,18 +89,17 @@ namespace NordvikManager.Hosting.Updates
             this.backups = backups;
             this.http = http;
             this.stopServer = stopServer;
-            // Shown for the run right after an update (banner, Server tab), then gone.
-            lastResult = UpdateMarkers.TakeResult(environment.UpdatesFolder);
         }
 
         public UpdateEnvironment Environment => environment;
 
         public StagedUpdate? ReadyToApply { get; private set; }
 
-        public UpdateResult? LastResult => lastResult ?? finished;
+        /// <summary>How the last update went, for the run right after it (banner, Server tab).</summary>
+        public UpdateResult? LastResult => lastResult;
 
-        /// <summary>This start finished an update (UpdateStartup.Complete).</summary>
-        public void RecordFinishedUpdate(UpdateResult result) => finished = result;
+        /// <summary>From UpdateStartup.Complete once the server is up.</summary>
+        public void RecordLastUpdate(UpdateResult result) => lastResult = result;
 
         public UpdateStatus Status
         {
@@ -113,6 +114,7 @@ namespace NordvikManager.Hosting.Updates
                         ChannelOf(updates.Channel),
                         updates.NoticesOff,
                         backups.IsSupported,
+                        environment.UnderServiceManager,
                         available,
                         lastChecked,
                         checkError,
@@ -162,6 +164,8 @@ namespace NordvikManager.Hosting.Updates
         /// <summary>Starts installing the available update in the background; the Server tab follows Status.</summary>
         public UpdateStatus Start(bool withoutBackup)
         {
+            if (environment.UnderServiceManager)
+                throw new UpdateException("This server runs as a service. Stop the service, run NordvikManager --update, then start it again.");
             var offer = Begin(withoutBackup);
             _ = Task.Run(() => RunAsync(offer, withoutBackup));
             return Status;

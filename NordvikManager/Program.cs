@@ -23,6 +23,10 @@ namespace NordvikManager
 
         public static int Main(string[] args)
         {
+            // A copy of the exe in data/updates, started by the server to swap its files (UpdateStartup).
+            if (args.Length == 4 && args[0] is UpdateStartup.ApplyArgument or UpdateStartup.RollBackArgument)
+                return UpdateStartup.RunAsHelper(args[0], args[1], args[2] == "start", args[3] == "window");
+
             var (browserArgs, noBrowser) = BrowserLauncher.SplitArgs(args);
             var (hostArgs, updateCommand, withoutBackup) = SplitUpdateArgs(browserArgs);
 
@@ -67,22 +71,26 @@ namespace NordvikManager
             }
 
             if (updates.Environment.UnsupportedReason == null && UpdateStartup.Complete(updates.Environment) is { } finished)
-                updates.RecordFinishedUpdate(finished);
+                updates.RecordLastUpdate(finished);
 
             ShowBanner(host, noBrowser, interactive, updates.LastResult);
             host.WaitForShutdown();
 
             // Application Settings → Server → Update: the update is unpacked and the host has
-            // stopped, so nothing holds wwwroot any more. Swap the files and start the new version.
+            // stopped, so nothing holds wwwroot any more. A helper swaps the files and starts the
+            // new version (or this one again if the swap fails).
             var staged = updates.ReadyToApply;
             host.Dispose();
             if (staged == null)
                 return 0;
 
             Console.WriteLine($"  Installing NordvikManager {staged.ToVersion}...");
-            if (!UpdateStartup.ApplyStaged(staged, updates.Environment))
+            UpdateStartup.HandOver(staged, updates.Environment);
+            var helperExit = UpdateStartup.RunHelper(updates.Environment, Path.Combine(staged.StagingFolder, UpdateInstaller.ExecutableName),
+                UpdateStartup.ApplyArgument, start: true, newWindow: OperatingSystem.IsWindows() && interactive);
+            if (helperExit != 0)
                 Console.WriteLine($"  The update couldn't be installed; starting {staged.FromVersion} again.");
-            return UpdateStartup.Relaunch(updates.Environment, interactive);
+            return 0;
         }
 
         private static (string[] Remaining, bool Update, bool WithoutBackup) SplitUpdateArgs(string[] args) => (
@@ -126,13 +134,18 @@ namespace NordvikManager
                 Console.WriteLine($"  Updating to {status.Available.Version}.");
                 try
                 {
-                    updates.InstallAsync(withoutBackup, new SyncProgress<UpdateStep>(step => Console.WriteLine(step switch
+                    updates.InstallAsync(withoutBackup, new SyncProgress<UpdateStep>(step =>
                     {
-                        UpdateStep.Downloading => "  Downloading...",
-                        UpdateStep.BackingUp => "  Backing up your data...",
-                        UpdateStep.Unpacking => "  Unpacking...",
-                        _ => null,
-                    }))).GetAwaiter().GetResult();
+                        var line = step switch
+                        {
+                            UpdateStep.Downloading => "  Downloading...",
+                            UpdateStep.BackingUp => "  Backing up your data...",
+                            UpdateStep.Unpacking => "  Unpacking...",
+                            _ => null,
+                        };
+                        if (line != null)
+                            Console.WriteLine(line);
+                    })).GetAwaiter().GetResult();
                 }
                 catch (UpdateException error)
                 {
@@ -143,12 +156,15 @@ namespace NordvikManager
                 }
             }
 
-            if (!UpdateStartup.ApplyStaged(updates.ReadyToApply!, updates.Environment))
+            var staged = updates.ReadyToApply!;
+            UpdateStartup.HandOver(staged, updates.Environment);
+            if (UpdateStartup.RunHelper(updates.Environment, Path.Combine(staged.StagingFolder, UpdateInstaller.ExecutableName),
+                    UpdateStartup.ApplyArgument, start: false, newWindow: false) != 0)
             {
                 Console.Error.WriteLine("  The new version couldn't be put in place; nothing was changed. See data/updates for details.");
                 return 1;
             }
-            Console.WriteLine($"  Updated to {updates.ReadyToApply!.ToVersion}. Start NordvikManager again to finish.");
+            Console.WriteLine($"  Updated to {staged.ToVersion}. Start NordvikManager again to finish.");
             return 0;
         }
 
@@ -195,8 +211,12 @@ namespace NordvikManager
                 WriteCrashFile(error);
 
                 var backups = new BackupService(BackupOptions.FromConfiguration(configuration), TimeProvider.System);
-                UpdateStartup.RollBackAsync(environment, error, name => backups.StageRestoreAsync(name)).GetAwaiter().GetResult();
-                return UpdateStartup.Relaunch(environment, interactive);
+                UpdateStartup.PrepareRollBackAsync(environment, error, name => backups.StageRestoreAsync(name)).GetAwaiter().GetResult();
+                // This exe is the failed version and is still running, so a copy of it puts the old files back.
+                // Under systemd the service restarts the old version itself.
+                UpdateStartup.RunHelper(environment, Environment.ProcessPath!, UpdateStartup.RollBackArgument,
+                    start: !UpdateStartup.UnderSystemd, newWindow: OperatingSystem.IsWindows() && interactive);
+                return UpdateStartup.UnderSystemd ? UpdateStartup.RestartExitCode : 1;
             }
             catch (Exception rollbackError)
             {

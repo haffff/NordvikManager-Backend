@@ -55,7 +55,7 @@ namespace NordvikManager.Hosting.Updates
             var downloadPrefix = Environment.GetEnvironmentVariable("NORDVIK_UPDATE_DOWNLOAD_PREFIX") is { Length: > 0 } prefix
                 ? prefix
                 : UpdateChecker.ReleaseDownloadPrefix;
-            return new UpdateEnvironment(appFolder, Path.Combine(appFolder, "data", "updates"), centralUrl, Current, reason, downloadPrefix);
+            return new UpdateEnvironment(appFolder, Path.Combine(appFolder, "data", "updates"), centralUrl, Current, reason, downloadPrefix, UpdateStartup.UnderSystemd);
         }
     }
 }

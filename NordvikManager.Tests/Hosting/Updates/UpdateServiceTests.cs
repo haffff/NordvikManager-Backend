@@ -173,6 +173,22 @@ namespace NordvikManager.Tests.Hosting.Updates
             Assert.Null(service.ReadyToApply!.BackupName);
         }
 
+        // systemd would stop the helper that swaps the files together with the server.
+        [Fact]
+        public async Task Start_Refuses_UnderAServiceManager()
+        {
+            var service = new UpdateService(
+                new UpdateEnvironment(Path.Combine(_root, "app"), Path.Combine(_root, "data", "updates"), Central,
+                    new CurrentBuild("0.2.0", null, "win-x64"), UnsupportedReason: null, UnderServiceManager: true),
+                _settings, _backups.Object, new HttpClient(new StubHandler(Respond)), () => _stopped++);
+            await service.CheckAsync();
+
+            var error = Assert.Throws<UpdateException>(() => service.Start(withoutBackup: false));
+
+            Assert.Contains("--update", error.Message);
+            Assert.True(service.Status.UnderServiceManager);
+        }
+
         [Fact]
         public async Task Install_Refuses_WhenThereIsNoUpdate()
         {
@@ -195,13 +211,13 @@ namespace NordvikManager.Tests.Hosting.Updates
         }
 
         [Fact]
-        public void Status_ShowsTheResultOfTheLastUpdate_Once()
+        public void Status_ShowsTheResultOfTheLastUpdate()
         {
-            var folder = Path.Combine(_root, "data", "updates");
-            UpdateMarkers.WriteResult(folder, new UpdateResult("0.2.0", "0.3.0", Succeeded: true, Message: null, DateTime.UtcNow));
+            var service = Service(version: "0.3.0");
 
-            Assert.Equal("0.3.0", Service(version: "0.3.0").Status.LastResult?.ToVersion);
-            Assert.Null(Service(version: "0.3.0").Status.LastResult);
+            service.RecordLastUpdate(new UpdateResult("0.2.0", "0.3.0", Succeeded: true, Message: null, DateTime.UtcNow));
+
+            Assert.Equal("0.3.0", service.Status.LastResult?.ToVersion);
         }
 
         [Fact]
