@@ -28,14 +28,14 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore DNDOnePlaceManager.sln
+        run: dotnet restore NordvikManager.sln
 
       - name: Build
-        run: dotnet build DNDOnePlaceManager.sln --configuration Release --no-restore
+        run: dotnet build NordvikManager.sln --configuration Release --no-restore
 
       - name: Test
         run: >
-          dotnet test DNDOnePlaceManager.sln
+          dotnet test NordvikManager.sln
           --configuration Release
           --no-build
           --verbosity normal

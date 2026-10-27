@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 dotnet build                                                          # Build solution
-dotnet run --project DNDOnePlaceManager                               # Run API (http://localhost:8213)
+dotnet run --project NordvikManager                               # Run API (http://localhost:8213)
 
 dotnet test                                                           # Run all tests
-dotnet test DNDOnePlaceManager.Tests                                  # Integration/controller tests only
-dotnet test DndOnePlaceManager.Application.UnitTests                  # Unit tests only
+dotnet test NordvikManager.Tests                                  # Integration/controller tests only
+dotnet test NordvikManager.Application.UnitTests                  # Unit tests only
 dotnet test --filter "Name~GetGames_ReturnsOk"                        # Single test by name
 dotnet test --filter "ClassName=GameListControllerTests"              # Single test class
 ```
@@ -22,17 +22,17 @@ Frontend (separate repo) can be placed as a build in `wwwroot/` or run via `npm 
 Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 
 ```
-DNDOnePlaceManager (API/Presentation)
-    → DndOnePlaceManager.Application  (commands, handlers, DTOs, services)
-    → DndOnePlaceManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
-    → DndOnePlaceManager.Domain  (entities, interfaces, enums — no external deps)
+NordvikManager (API/Presentation)
+    → NordvikManager.Application  (commands, handlers, DTOs, services)
+    → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
+    → NordvikManager.Domain  (entities, interfaces, enums — no external deps)
 ```
 
-Two test projects: `DNDOnePlaceManager.Tests` (controller/integration) and `DndOnePlaceManager.Application.UnitTests` (handler unit tests).
+Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikManager.Application.UnitTests` (handler unit tests).
 
 **Layer rules — strictly enforced:**
-- `IDbContext` and EF Core queries belong ONLY in `DndOnePlaceManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `DNDOnePlaceManager` (controllers, WebRTC dispatchers, WebSocket handlers, services).
-- The UI/Presentation layer (`DNDOnePlaceManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
+- `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` (controllers, WebRTC dispatchers, WebSocket handlers, services).
+- The UI/Presentation layer (`NordvikManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
 - When you need a new DB operation in a dispatcher or controller, create a Command + Handler pair in `Application/Commands/` and call `mediator.Send()`.
 
 ## CQRS with MediatR
@@ -109,13 +109,13 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 ## Database
 
-Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `DndOnePlaceManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
+Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
 
-**SQLite uses real EF Core Migrations** (`DndOnePlaceManager.Infrastructure/Migrations/`), applied automatically via `Database.Migrate()` once at startup (`Startup.Configure`). **Any change to an entity in `DndOnePlaceManager.Domain` needs a new migration before it reaches anyone's database** — schema changes no longer get picked up by just editing the model:
+**SQLite uses real EF Core Migrations** (`NordvikManager.Infrastructure/Migrations/`), applied automatically via `Database.Migrate()` once at startup (`Startup.Configure`). **Any change to an entity in `NordvikManager.Domain` needs a new migration before it reaches anyone's database** — schema changes no longer get picked up by just editing the model:
 
 ```bash
 # from the repo root — dotnet-ef is a local tool (dotnet-tools.json), no global install needed
-dotnet ef migrations add <DescriptiveName> --project DndOnePlaceManager.Infrastructure/DndOnePlaceManager.Infrastructure.csproj --startup-project DNDOnePlaceManager/DNDOnePlaceManager.csproj --context DndOneContext
+dotnet ef migrations add <DescriptiveName> --project NordvikManager.Infrastructure/NordvikManager.Infrastructure.csproj --startup-project NordvikManager/NordvikManager.csproj --context DndOneContext
 ```
 Commit the generated files under `Migrations/`. Never hand-edit the database schema directly (no more ad-hoc `ALTER TABLE` shims) — always go through a migration.
 
@@ -132,7 +132,7 @@ Key appsettings entries:
 
 ## Protocol version
 
-`DNDOnePlaceManager/WebRTC/ProtocolVersion.cs` (`ProtocolVersion.Current`) is the player↔backend protocol number, sent to the Central Server in the GM's signaling `authenticate`. Central rejects backends below its `MIN_GM_PROTOCOL` (surfaced as `SignalingAuthException` → 409 `{ error }` from session start), and players are switched to the frozen player build for this number. Bump it only for changes an older player client can't handle, together with the frontend's `src/protocol.json` (CI checks they match).
+`NordvikManager/WebRTC/ProtocolVersion.cs` (`ProtocolVersion.Current`) is the player↔backend protocol number, sent to the Central Server in the GM's signaling `authenticate`. Central rejects backends below its `MIN_GM_PROTOCOL` (surfaced as `SignalingAuthException` → 409 `{ error }` from session start), and players are switched to the frozen player build for this number. Bump it only for changes an older player client can't handle, together with the frontend's `src/protocol.json` (CI checks they match).
 
 ## Testing Conventions
 
@@ -146,5 +146,5 @@ Key appsettings entries:
 1. Entity model in `Domain/Entities/` implementing `IEntity` or `INamedEntity`
 2. Command + Handler pair in `Application/Commands/{Feature}/`
 3. DTO in `Application/DataTransferObjects/` + mapping in `Mapping/AppMapper.cs` (and its snapshot pair)
-4. Controller action in `DNDOnePlaceManager/Controllers/` dispatching via `_mediator.Send()`
-5. Tests in `Application.UnitTests/Commands/` (handler) and `DNDOnePlaceManager.Tests/Controllers/` (controller)
+4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`
+5. Tests in `Application.UnitTests/Commands/` (handler) and `NordvikManager.Tests/Controllers/` (controller)

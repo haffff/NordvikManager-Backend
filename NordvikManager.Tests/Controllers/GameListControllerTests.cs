@@ -1,0 +1,444 @@
+using NordvikManager.Infrastructure.Services.Settings;
+using NordvikManager.Application.Commands.BattleMap;
+using NordvikManager.Application.Commands.Game.DeleteGame;
+using NordvikManager.Application.Commands.Game.UpdateGame;
+using NordvikManager.Controllers.Requests;
+using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Addons.GetAddonsFromRepository;
+using NordvikManager.Application.Commands.Application;
+using NordvikManager.Application.Commands.Properties.GetPropertiesByQuery;
+using NordvikManager.Application.DataTransferObjects;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Domain.Enums;
+using NordvikManager.Controllers;
+using NordvikManager.Domain.Entities.Auth;
+using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
+using NordvikManager.Services;
+using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Moq;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Tests.Controllers
+{
+    public class GameListControllerTests
+    {
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
+
+        private readonly Mock<IMediator> _mediator = new();
+        private readonly Mock<IConfiguration> _config = new();
+        private readonly Mock<ILobbyService> _lobbyService = new();
+        private readonly GameListController _controller;
+
+        public GameListControllerTests()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(SomePlayer()));
+
+            _controller = CreateController(_mediator, _config, _lobbyService, RegularUser());
+        }
+        private static GameListController CreateController(
+            Mock<IMediator> mediatorMock,
+            Mock<IConfiguration>? configMock = null,
+            Mock<ILobbyService>? lobbyMock = null,
+            User? contextUser = null)
+        {
+            configMock ??= new Mock<IConfiguration>();
+            lobbyMock ??= new Mock<ILobbyService>();
+            return CreateController(mediatorMock, configMock.Object, lobbyMock.Object, contextUser);
+        }
+
+        private static GameListController CreateController(
+            Mock<IMediator> mediatorMock,
+            IConfiguration config,
+            Mock<ILobbyService>? lobbyMock = null,
+            User? contextUser = null)
+        {
+            lobbyMock ??= new Mock<ILobbyService>();
+            var centralServerService = new Mock<ICentralServerService>().Object;
+            var webRtcSession = new Mock<IWebRTCSessionService>().Object;
+            var httpClientFactory = new Mock<System.Net.Http.IHttpClientFactory>().Object;
+            var controller = new GameListController(mediatorMock.Object, config, lobbyMock.Object, centralServerService, webRtcSession, httpClientFactory, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameListController>.Instance);
+            var httpContext = new DefaultHttpContext();
+            if (contextUser != null)
+                httpContext.Items["User"] = contextUser;
+            controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+            return controller;
+        }
+
+        private static GameListController CreateController(
+            Mock<IMediator> mediatorMock,
+            IConfiguration config,
+            ILobbyService lobbyService,
+            User? contextUser = null)
+        {
+            var centralServerService = new Mock<ICentralServerService>().Object;
+            var webRtcSession = new Mock<IWebRTCSessionService>().Object;
+            var httpClientFactory = new Mock<System.Net.Http.IHttpClientFactory>().Object;
+            var controller = new GameListController(mediatorMock.Object, config, lobbyService, centralServerService, webRtcSession, httpClientFactory, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameListController>.Instance);
+            var httpContext = new DefaultHttpContext();
+            if (contextUser != null)
+                httpContext.Items["User"] = contextUser;
+            controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+            return controller;
+        }
+
+        private static User AdminUser() => new User { Id = "admin-id", UserName = "admin", IsAdmin = true };
+        private static User RegularUser() => new User { Id = "user-id", UserName = "user", IsAdmin = false };
+        private static PlayerDTO SomePlayer() => new PlayerDTO { Id = Guid.NewGuid(), Name = "Player", IsOwner = true! };
+        private static GetPlayerCommandResponse PlayerResponse(PlayerDTO? player) =>
+                   new GetPlayerCommandResponse { Player = player! };
+
+        // =========================================================================
+        // GetGames
+        // =========================================================================
+
+        [Fact]
+        public async Task GetGames_ReturnsOk_WithGameList()
+        {
+            // Arrange
+            var games = new List<GameItemDTO> { new GameItemDTO() };
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameListCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameListCommandResponse { GameItemList = games });
+
+            // Act
+            var result = await _controller.GetGames();
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(games, ok.Value);
+        }
+
+        // =========================================================================
+        // DeleteGame
+        // =========================================================================
+
+        [Fact]
+        public async Task DeleteGame_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var gameId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.DeleteGame(gameId);
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // Local admin: every game on the server
+        // =========================================================================
+
+        private static User LocalAdmin() => new User { Id = "admin-id", UserName = "admin", IsLocalAdmin = true };
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task GetGames_AsksForEveryGame_OnlyForTheLocalAdmin(bool isLocalAdmin)
+        {
+            GetGameListCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameListCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<GetGameListCommandResponse>, CancellationToken>((c, _) => sent = (GetGameListCommand)c)
+                     .ReturnsAsync(new GetGameListCommandResponse { GameItemList = new List<GameItemDTO>() });
+            var controller = CreateController(_mediator, _config, _lobbyService, isLocalAdmin ? LocalAdmin() : RegularUser());
+
+            await controller.GetGames();
+
+            Assert.Equal(isLocalAdmin, sent!.AllGames);
+        }
+
+        [Fact]
+        public async Task DeleteGame_LocalAdmin_DeletesAGameTheyAreNotIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+            RemoveGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (RemoveGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var controller = CreateController(_mediator, _config, _lobbyService, LocalAdmin());
+
+            var result = await controller.DeleteGame(Guid.NewGuid());
+
+            Assert.IsType<OkObjectResult>(result);
+            Assert.True(sent!.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_Player_SendsNameAndDescriptionAsThemselves()
+        {
+            UpdateGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (UpdateGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var gameId = Guid.NewGuid();
+
+            var result = await _controller.UpdateGame(new UpdateGameRequest { GameId = gameId, Name = "New", Description = "About" });
+
+            Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(gameId, sent!.GameId);
+            Assert.Equal("New", sent.Name);
+            Assert.Equal("About", sent.ShortDescription);
+            Assert.NotNull(sent.Player);
+            Assert.False(sent.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_LocalAdmin_EditsAGameTheyAreNotIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+            UpdateGameCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateGameCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<CommandResponse>, CancellationToken>((c, _) => sent = (UpdateGameCommand)c)
+                     .ReturnsAsync(CommandResponse.Ok);
+            var controller = CreateController(_mediator, _config, _lobbyService, LocalAdmin());
+
+            await controller.UpdateGame(new UpdateGameRequest { GameId = Guid.NewGuid(), Name = "New" });
+
+            Assert.True(sent!.AsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task UpdateGame_NeitherPlayerNorLocalAdmin_IsForbidden()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(PlayerResponse(null));
+
+            var result = await _controller.UpdateGame(new UpdateGameRequest { GameId = Guid.NewGuid(), Name = "New" });
+
+            Assert.IsType<ForbidResult>(result);
+        }
+
+        // =========================================================================
+        // GetFeaturedAddons
+        // =========================================================================        [Fact]
+        [Fact]
+        public async Task GetFeaturedAddons_ReturnsOk_WithFilteredAddons()
+        {
+            // Arrange
+            var allAddons = new List<AddonDto>
+            {
+                new AddonDto { Key = "featured-addon" },
+                new AddonDto { Key = "other-addon" }
+            };
+
+            // ConfigurationBinder.Get<T>() is an extension method — Moq can't stub it.
+            // Build a real IConfiguration with the array stored as indexed keys.
+            var realConfig = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["AddonsConfiguration:FeaturedAddons:0"] = "featured-addon"
+                })
+                .Build();
+
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(allAddons);
+
+            // Create a controller that uses the real config
+            var controller = CreateController(_mediator, realConfig, _lobbyService, RegularUser());
+
+            // Act
+            var result = await controller.GetFeaturedAddons(NoBuiltIns(), AddonRegistryOptions.FromConfiguration(realConfig));
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        private static NordvikManager.Application.Services.IBuiltInAddons NoBuiltIns(params NordvikManager.Application.Services.BuiltInAddon[] addons)
+        {
+            var mock = new Mock<NordvikManager.Application.Services.IBuiltInAddons>();
+            mock.Setup(b => b.GetAll()).Returns(addons);
+            return mock.Object;
+        }
+
+        private static IConfiguration FeaturedConfig(params string[] keys) =>
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                .AddInMemoryCollection(keys.Select((k, i) => new KeyValuePair<string, string?>($"AddonsConfiguration:FeaturedAddons:{i}", k)))
+                .Build();
+
+        private static AddonRegistryOptions Registry(params string[] featured) =>
+            AddonRegistryOptions.FromConfiguration(FeaturedConfig(featured));
+
+        [Fact]
+        public async Task GetFeaturedAddons_UsesTheFeaturedListSavedInApplicationSettings()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e" }, new AddonDto { Key = "themes" } });
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
+            var registry = Registry("dnd5e");
+            registry.SetRuntime(new AddonSettings { FeaturedAddons = new List<string> { "themes" } });
+
+            var listed = Listed(await controller.GetFeaturedAddons(NoBuiltIns(), registry));
+
+            Assert.Equal(new[] { "themes" }, listed.Select(a => a.Key));
+        }
+
+        private static List<NordvikManager.Application.DataTransferObjects.FeaturedAddonDto> Listed(IActionResult result) =>
+            Assert.IsAssignableFrom<IEnumerable<NordvikManager.Application.DataTransferObjects.FeaturedAddonDto>>(Assert.IsType<OkObjectResult>(result).Value).ToList();
+
+        [Fact]
+        public async Task GetFeaturedAddons_ListsBuiltInsFirst_FlaggedBuiltIn()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e", Name = "D&D" }, new AddonDto { Key = "basics", Name = "Registry copy" } });
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
+            var builtIns = NoBuiltIns(new NordvikManager.Application.Services.BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", Array.Empty<byte>()));
+
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns, Registry("dnd5e", "basics")));
+
+            Assert.Equal(new[] { "basics", "dnd5e" }, listed.Select(a => a.Key));
+            Assert.True(listed[0].BuiltIn);
+            Assert.Equal("Basics", listed[0].Name); // the shipped one, not the registry's
+            Assert.False(listed[1].BuiltIn);
+        }
+
+        [Fact]
+        public async Task GetFeaturedAddons_RegistryUnreachable_StillListsBuiltIns()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new HttpRequestException("offline"));
+            var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
+            var builtIns = NoBuiltIns(new NordvikManager.Application.Services.BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", Array.Empty<byte>()));
+
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns, Registry("dnd5e")));
+
+            Assert.Equal(new[] { "basics" }, listed.Select(a => a.Key));
+        }
+
+        // =========================================================================
+        // AddGame
+        // =========================================================================
+
+        [Fact]
+        public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsNull()
+        {
+            // Arrange
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((Guid?)null);
+            var controller = CreateController(mediator, contextUser: AdminUser());
+            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
+
+            // Act
+            var result = await controller.AddGame(command);
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task AddGame_ReturnsOk_WhenMediatorReturnsGameId()
+        {
+            // Arrange
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(Guid.NewGuid());
+            var controller = CreateController(mediator, contextUser: RegularUser());
+            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
+
+            // Act
+            var result = await controller.AddGame(command);
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // JoinGame
+        // =========================================================================
+
+        [Fact]
+        public async Task JoinGame_ReturnsBadRequest_WhenMediatorReturnsNull()
+        {
+            // Arrange
+            var gameId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<AddPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((Guid?)null);
+            var command = new AddPlayerCommand { GameID = gameId };
+
+            // Act
+            var result = await _controller.JoinGame(command);
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task JoinGame_ReturnsOk_WhenPlayerJoinsSuccessfully()
+        {
+            // Arrange
+            var gameId = Guid.NewGuid();
+            var playerId = Guid.NewGuid();
+            var player = SomePlayer();
+
+            _mediator.Setup(m => m.Send(It.IsAny<AddPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((Guid?)playerId);
+            // GetPlayerCommand — used inside AddDefaultCharacterSheet
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetPlayerCommandResponse { Player = player });
+            // GetSystemPlayerCommand → returns PlayerDTO (treated as systemPlayer)
+            _mediator.Setup(m => m.Send(It.IsAny<GetSystemPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(player);
+            // GetPropertiesByQueryCommand — return empty list so useDefaultCharacterSheets is null → early exit
+            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesByQueryCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<PropertyDTO>());
+
+            var command = new AddPlayerCommand { GameID = gameId };
+
+            // Act
+            var result = await _controller.JoinGame(command);
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal((Guid?)playerId, ok.Value);
+        }
+
+        // =========================================================================
+        // GetVersionInfo
+        // =========================================================================
+
+        [Fact]
+        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser()
+        {
+            // Arrange
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
+            var controller = CreateController(mediator, contextUser: RegularUser());
+
+            // Act
+            var result = await controller.GetVersionInfo();
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task GetVersionInfo_ReturnsOk_WhenUserIsAdmin()
+        {
+            // Arrange
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
+            var controller = CreateController(mediator, contextUser: AdminUser());
+
+            // Act
+            var result = await controller.GetVersionInfo();
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+    }
+}

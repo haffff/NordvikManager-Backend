@@ -285,7 +285,7 @@ FakesAssemblies/
 
 # Node.js Tools for Visual Studio
 .ntvs_analysis.dat
-DNDOnePlaceManager/clientapp/node_modules/
+NordvikManager/clientapp/node_modules/
 
 # Visual Studio 6 build log
 *.plg
@@ -363,7 +363,7 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/DNDOnePlaceManager/materials/dndMaterials
+/NordvikManager/materials/dndMaterials
 
 *.pdf
 *.docx
@@ -376,11 +376,11 @@ appsettings.Production.json
 *.db-wal
 
 # wwwroot content
-/DNDOnePlaceManager/wwwroot/*
-/DNDOnePlaceManager/wwwroot/static/*
-/DNDOnePlaceManager/wwwroot/static/css/*
-/DNDOnePlaceManager/wwwroot/static/js/*
-/DNDOnePlaceManager/wwwroot/static/media/*
+/NordvikManager/wwwroot/*
+/NordvikManager/wwwroot/static/*
+/NordvikManager/wwwroot/static/css/*
+/NordvikManager/wwwroot/static/js/*
+/NordvikManager/wwwroot/static/media/*
 !wwwroot/Add_Front_Build_Here
 
 .local
@@ -394,4 +394,4 @@ appsettings.Production.json
 
 
 # Runtime data: managed resource files (FileStorage:BasePath) and backups (Backup:Folder)
-/DNDOnePlaceManager/data/
+/NordvikManager/data/

@@ -1,0 +1,19 @@
+﻿using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Domain.Entities.Auth;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Application.Commands.Resources.GetResource
+{
+    public class GetResourceCommand : CommandBase<ResourceDTO>
+    {
+        public Guid? ResourceId { get; set; }
+        public string? Key { get; set; }
+        public PlayerDTO Player { get; set; }
+        /// <summary>The caller runs this server, so may see where its files are.</summary>
+        public bool IsLocalAdmin { get; set; }
+    }
+}

@@ -1,0 +1,588 @@
+using NordvikManager.Application.Commands.Card.GetAllCards;
+using NordvikManager.Application.Commands.Card.GetCard;
+using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Resources;
+using NordvikManager.Application.Commands.Resources.CreateResource;
+using NordvikManager.Application.Commands.Resources.DeleteResourceData;
+using NordvikManager.Application.Commands.Resources.GetResource;
+using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Commands.Resources.Link;
+using NordvikManager.Infrastructure.Interfaces;
+using NordvikManager.Application.Commands.Resources.UpdateResourceData;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Domain.Enums;
+using NordvikManager.Controllers;
+using NordvikManager.Controllers.Requests;
+using NordvikManager.Domain.Entities.Auth;
+using NordvikManager.Services;
+using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Tests.Controllers
+{
+    public class MaterialsControllerTests
+    {
+        // -------------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------------
+
+        private readonly Mock<IMediator> _mediator = new();
+        private readonly MaterialsController _controller;
+
+        public MaterialsControllerTests()
+        {
+            SetupPlayer(_mediator, SomePlayer());
+            _controller = CreateController(_mediator, AnyUser());
+        }
+
+        private static MaterialsController CreateController(Mock<IMediator> mediatorMock, User? contextUser = null)
+        {
+            var lobbyService = new Mock<ILobbyService>().Object;
+            var scopeFactory = new Mock<IServiceScopeFactory>().Object;
+            var controller = new MaterialsController(mediatorMock.Object, lobbyService, scopeFactory);
+            var httpContext = new DefaultHttpContext();
+            if (contextUser != null)
+                httpContext.Items["User"] = contextUser;
+            controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+            return controller;
+        }
+
+        private static User AnyUser() => new User { Id = "user-id", UserName = "user" };
+        private static PlayerDTO SomePlayer() => new PlayerDTO { Id = Guid.NewGuid(), Name = "Player" };
+
+        private static GetPlayerCommandResponse WithPlayer(PlayerDTO? player) =>
+            new GetPlayerCommandResponse { Player = player };
+
+        private void SetupPlayer(Mock<IMediator> mediator, PlayerDTO? player) =>
+            mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(WithPlayer(player));
+
+        // =========================================================================
+        // GetResource
+        // =========================================================================
+
+        [Fact]
+        public async Task GetResource_ReturnsBadRequest_WhenPlayerIsNull()
+        {
+            // Arrange
+            SetupPlayer(_mediator, null);
+
+            // Act
+            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetResource_ReturnsBadRequest_WhenResourceDataIsNull()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(((byte[]?)null, MimeType.JPEG));
+
+            // Act
+            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetResource_ReturnsFile_WhenResourceExists()
+        {
+            // Arrange
+            var bytes = new byte[] { 1, 2, 3 };
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((bytes, MimeType.JPEG));
+
+            // Act
+            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<FileContentResult>(result);
+        }
+
+        // =========================================================================
+        // GetResourceWebRTC — what players fetch over the data channel, with a version
+        // to cache it under (headers don't cross the tunnel, so it's in the body)
+        // =========================================================================
+
+        private static JObject Body(IActionResult result) => JObject.FromObject(Assert.IsType<OkObjectResult>(result).Value!);
+
+        [Fact]
+        public async Task GetResourceWebRTC_ReturnsDataWithItsVersion()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ResourceContent(new byte[] { 1, 2 }, MimeType.MP3, "v1", false));
+
+            var body = Body(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
+
+            Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2 }), body["data"]!.Value<string>());
+            Assert.Equal("audio/mpeg", body["mimeType"]!.Value<string>());
+            Assert.Equal("v1", body["version"]!.Value<string>());
+        }
+
+        [Fact]
+        public async Task GetResourceWebRTC_CachedVersionCurrent_ReturnsNotModifiedWithoutData()
+        {
+            GetResourceContentCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ResourceContent?>, CancellationToken>((c, _) => sent = (GetResourceContentCommand)c)
+                     .ReturnsAsync(new ResourceContent(null, MimeType.MP3, "v1", true));
+
+            var body = Body(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid(), thumbnail: true, ifVersion: "v1"));
+
+            Assert.Equal("v1", sent!.IfVersion);
+            Assert.True(sent.Thumbnail);
+            Assert.True(body["notModified"]!.Value<bool>());
+            Assert.Equal("v1", body["version"]!.Value<string>());
+            Assert.Null(body["data"]);
+        }
+
+        [Fact]
+        public async Task GetResourceWebRTC_Missing_ReturnsNotFound()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((ResourceContent?)null);
+
+            Assert.IsType<NotFoundResult>(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        // =========================================================================
+        // GetResourceMetadata
+        // =========================================================================
+
+        [Fact]
+        public async Task GetResourceMetadata_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var resourceDto = new ResourceDTO { Id = Guid.NewGuid() };
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(resourceDto);
+
+            // Act
+            var result = await _controller.GetResourceMetadata(Guid.NewGuid(), Guid.NewGuid());
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(resourceDto, ok.Value);
+        }
+
+        // =========================================================================
+        // GetTemplates
+        // =========================================================================
+
+        [Fact]
+        public async Task GetTemplates_ReturnsBadRequest_WhenPlayerIsNull()
+        {
+            // Arrange
+            SetupPlayer(_mediator, null);
+
+            // Act
+            var result = await _controller.GetTemplates(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetTemplates_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var cards = new List<CardDto>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, cards));
+
+            // Act
+            var result = await _controller.GetTemplates(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // GetTemplatesFull
+        // =========================================================================
+
+        [Fact]
+        public async Task GetTemplatesFull_ReturnsBadRequest_WhenPlayerIsNull()
+        {
+            // Arrange
+            SetupPlayer(_mediator, null);
+
+            // Act
+            var result = await _controller.GetTemplatesFull(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetTemplatesFull_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var cards = new List<CardDto>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, cards));
+
+            // Act
+            var result = await _controller.GetTemplatesFull(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // GetCards
+        // =========================================================================
+
+        [Fact]
+        public async Task GetCards_ReturnsBadRequest_WhenPlayerIsNull()
+        {
+            // Arrange
+            SetupPlayer(_mediator, null);
+
+            // Act
+            var result = await _controller.GetCards(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetCards_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var cards = new List<CardDto>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, cards));
+
+            // Act
+            var result = await _controller.GetCards(Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        // =========================================================================
+        // GetCard
+        // =========================================================================
+
+        [Fact]
+        public async Task GetCard_ReturnsBadRequest_WhenPlayerIsNull()
+        {
+            // Arrange
+            SetupPlayer(_mediator, null);
+
+            // Act
+            var result = await _controller.GetCard(Guid.NewGuid(), Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<BadRequestResult>(result);
+        }
+
+        [Fact]
+        public async Task GetCard_ReturnsOk_WhenPlayerExists()
+        {
+            // Arrange
+            var card = new CardDto { Id = Guid.NewGuid(), Name = "card" };
+            _mediator.Setup(m => m.Send(It.IsAny<GetCardCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(card);
+
+            // Act
+            var result = await _controller.GetCard(Guid.NewGuid(), Guid.NewGuid());
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(card, ok.Value);
+        }
+
+        // =========================================================================
+        // GetResources
+        // =========================================================================
+
+        [Fact]
+        public async Task GetResources_ReturnsOk_WithResourceList()
+        {
+            // Arrange
+            var resources = new List<ResourceDTO>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, resources));
+
+            // Act
+            var result = await _controller.GetResources(Guid.NewGuid());
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(resources, ok.Value);
+        }
+
+        // =========================================================================
+        // AddResource
+        // =========================================================================
+
+        [Fact]
+        public async Task AddResource_ReturnsOk_WithNewResourceId()
+        {
+            // Arrange
+            var newId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)newId));
+            var request = new AddResourceRequest
+            {
+                Name = "image",
+                MimeType = "image/jpeg",
+                Key = null,
+                Data = "aGVsbG8=" // plain base64, no data: prefix
+            };
+
+            // Act
+            var result = await _controller.AddResource(Guid.NewGuid(), request);
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
+        }
+
+        // =========================================================================
+        // RemoveResource
+        // =========================================================================
+
+        [Fact]
+        public async Task RemoveResource_ReturnsOk_WithCommandResponse()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.RemoveResource(Guid.NewGuid(), Guid.NewGuid());
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(CommandResponse.Ok, ok.Value);
+        }
+
+        // =========================================================================
+        // CreateResource
+        // =========================================================================
+
+        [Fact]
+        public async Task CreateResource_ReturnsOk_WithNewResourceId()
+        {
+            // Arrange
+            var newId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)newId));
+
+            // Act
+            var result = await _controller.CreateResource(Guid.NewGuid(),
+                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
+
+            // Assert
+            var ok = Assert.IsType<OkObjectResult>(result);
+            Assert.NotNull(ok.Value);
+        }
+
+        [Fact]
+        public async Task CreateResource_ReturnsConflict_WhenKeyAlreadyExists()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.AlreadyExists, (Guid?)null));
+
+            // Act
+            var result = await _controller.CreateResource(Guid.NewGuid(),
+                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
+
+            // Assert
+            Assert.IsType<ConflictObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task CreateResource_ThrowsPermissionException_WhenPlayerMissingInDb()
+        {
+            // Arrange — CreateResourceCommandHandler throws PermissionException (403) when
+            // the player row backing the request can no longer be found.
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Read));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.CreateResource(Guid.NewGuid(), new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" }));
+        }
+
+        // =========================================================================
+        // UpdateResourceData
+        // =========================================================================
+
+        [Fact]
+        public async Task UpdateResourceData_ReturnsOk_WhenResourceExists()
+        {
+            // Arrange
+            var id = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)id));
+
+            // Act
+            var result = await _controller.UpdateResourceData(Guid.NewGuid(),
+                new UpdateResourceDataRequest { Id = id, Content = "aGVsbG8=" });
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsPermissionException_WhenNotOwner()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Edit));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
+        }
+
+        [Fact]
+        public async Task UpdateResourceData_ThrowsWrongArgumentsException_WhenContentNotBase64()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new WrongArgumentsException(nameof(UpdateResourceDataRequest.Content)));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
+                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "not-base64!!!" }));
+        }
+
+        // =========================================================================
+        // DeleteResourceData
+        // =========================================================================
+
+        [Fact]
+        public async Task DeleteResourceData_ReturnsOk_WhenResourceExists()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            // Act
+            var result = await _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid());
+
+            // Assert
+            Assert.IsType<OkResult>(result);
+        }
+
+        [Fact]
+        public async Task DeleteResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        [Fact]
+        public async Task DeleteResourceData_ThrowsPermissionException_WhenNotOwner()
+        {
+            // Arrange
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new PermissionException(Permission.Edit));
+
+            // Act & Assert
+            await Assert.ThrowsAsync<PermissionException>(() =>
+                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        // =========================================================================
+        // The host's disk: local admin only
+        // =========================================================================
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task BrowseLocalDirectory_PassesWhetherTheUserIsLocalAdmin(bool isLocalAdmin)
+        {
+            BrowseLocalDirectoryCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<BrowseLocalDirectoryCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<IReadOnlyList<LocalDirectoryEntry>>, CancellationToken>((c, _) => sent = (BrowseLocalDirectoryCommand)c)
+                     .ReturnsAsync(new List<LocalDirectoryEntry>());
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = isLocalAdmin });
+
+            await controller.BrowseLocalDirectory(Guid.NewGuid(), null);
+
+            Assert.Equal(isLocalAdmin, sent!.IsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task LinkDirectory_NotLocalAdmin_IsForbiddenBeforeAnythingStarts()
+        {
+            var result = await _controller.LinkDirectory(Guid.NewGuid(), new LinkDirectoryRequest { LocalDirectoryPath = "C:/" });
+
+            Assert.IsType<ForbidResult>(result);
+        }
+
+        [Fact]
+        public async Task GetResources_PassesWhetherTheUserIsLocalAdmin()
+        {
+            GetResourcesCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, List<ResourceDTO>)>, CancellationToken>((c, _) => sent = (GetResourcesCommand)c)
+                     .ReturnsAsync((CommandResponse.Ok, new List<ResourceDTO>()));
+            var controller = CreateController(_mediator, new User { Id = "user-id", UserName = "user", IsLocalAdmin = true });
+
+            await controller.GetResources(Guid.NewGuid());
+
+            Assert.True(sent!.IsLocalAdmin);
+        }
+
+        // The client builds a token for "place this card's token" here too, so the client and
+        // the server's SpawnToken place tokens the same way.
+        [Fact]
+        public async Task BuildToken_BuildsItAsThePlayer()
+        {
+            var player = SomePlayer();
+            SetupPlayer(_mediator, player);
+            var built = new NordvikManager.Application.Commands.Actions.BuildToken.BuiltToken(new JObject { ["name"] = "Goblin" }, 2);
+            NordvikManager.Application.Commands.Actions.BuildToken.BuildTokenCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<NordvikManager.Application.Commands.Actions.BuildToken.BuildTokenCommand>(), It.IsAny<CancellationToken>()))
+                .Callback<IRequest<NordvikManager.Application.Commands.Actions.BuildToken.BuiltToken>, CancellationToken>((c, _) => sent = (NordvikManager.Application.Commands.Actions.BuildToken.BuildTokenCommand)c)
+                .ReturnsAsync(built);
+            var mapId = Guid.NewGuid();
+            var cardId = Guid.NewGuid();
+
+            var result = await _controller.BuildToken(Guid.NewGuid(), new NordvikManager.Models.BuildTokenRequest { MapId = mapId, CardId = cardId, X = 10, Y = 20 });
+
+            var body = Body(result);
+            Assert.Equal("Goblin", (string)JObject.Parse((string)body["object"]!)["name"]);
+            Assert.Equal(2, (int)body["size"]!);
+            Assert.Equal((mapId, cardId, 10.0, 20.0, player.Id), (sent.MapId, sent.CardId, sent.X, sent.Y, sent.Player.Id));
+        }
+    }
+}

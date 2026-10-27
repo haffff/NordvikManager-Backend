@@ -1,0 +1,45 @@
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Services.Implementations.ActionBody;
+using NordvikManager.Services.Implementations.ActionBody.Data;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Core;
+using MediatR;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Services.Implementations.ActionSteps
+{
+    public class RemovePropertyListItemStepDefinition : IActionStepDefinition
+    {
+        public string Name => "Remove Property List Item";
+        public string Value => "RemovePropertyListItem";
+        public string Category => "Properties";
+        public string Description => "Removes a row from a list-typed property by its id.";
+        public string? Summary => "Remove row {ItemId} from {PropertyName}";
+        public Type DataType => typeof(RemovePropertyListItemStepData);
+
+        public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
+        {
+            var stepData = step.Data.ToObject<RemovePropertyListItemStepData>();
+
+            if (string.IsNullOrWhiteSpace(stepData.PropertyName))
+                throw new ActionProcessException("RemovePropertyListItem: 'PropertyName' is required.");
+            if (string.IsNullOrWhiteSpace(stepData.ItemId))
+                throw new ActionProcessException("RemovePropertyListItem: 'ItemId' is required.");
+            var parentGuid = await PropertyOwner.ResolveAsync(mediator, gameLobby, variables, "RemovePropertyListItem", stepData.Of, stepData.ParentId);
+
+            var propertyId = await PropertyListStepHelper.ResolvePropertyIdAsync(mediator, gameLobby, parentGuid, stepData.PropertyName, "RemovePropertyListItem");
+
+            // Routed through gameLobby.HandleCommand (same WS command PropertiesHandler
+            // handles) rather than a direct mediator.Send — no id needs to come back out,
+            // so this gets the live broadcast for free instead of building one by hand.
+            await gameLobby.HandleCommand(gameLobby.SystemPlayer, new WebSocketCommand
+            {
+                Command = WebSocketCommandNames.PropertyListItemRemove,
+                Data = JObject.FromObject(new { propertyId, itemId = stepData.ItemId }),
+            });
+        }
+    }
+}

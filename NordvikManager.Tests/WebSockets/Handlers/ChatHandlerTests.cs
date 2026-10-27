@@ -1,0 +1,283 @@
+using NordvikManager.Application.Commands.Chat.AddMessage;
+using NordvikManager.Application.Commands.Player.GetGamePlayers;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Services.Interfaces;
+using NordvikManager.Domain.Enums;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Handlers;
+using MediatR;
+using Moq;
+using Newtonsoft.Json.Linq;
+
+namespace NordvikManager.Tests.WebSockets.Handlers
+{
+    // /gr rolls to the GM, /w <player> whispers, /gm whispers to the GM. Each reaches the
+    // sender, the recipient and the GM only (GameLobby delivers to VisibleTo).
+    public class ChatHandlerTests
+    {
+        private readonly Mock<IMediator> _mediator = new();
+        private readonly Mock<IChatService> _chat = new();
+        private readonly ChatHandler _handler;
+        private readonly Guid _gameId = Guid.NewGuid();
+        private readonly PlayerDTO _gm = new() { Id = Guid.NewGuid(), Name = "Dungeon Master", IsOwner = true };
+        private readonly PlayerDTO _alice = new() { Id = Guid.NewGuid(), Name = "Alice" };
+        private readonly PlayerDTO _oldBob = new() { Id = Guid.NewGuid(), Name = "Old Bob" };
+        private readonly PlayerDTO _bob = new() { Id = Guid.NewGuid(), Name = "Bob" };
+        private readonly List<AddMessageCommand> _stored = new();
+
+        public ChatHandlerTests()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGamePlayersCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<PlayerDTO> { _gm, _alice, _oldBob, _bob });
+            _mediator.Setup(m => m.Send(It.IsAny<AddMessageCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, long)>, CancellationToken>((c, _) => _stored.Add((AddMessageCommand)c))
+                     .ReturnsAsync((CommandResponse.Ok, 0L));
+            _chat.Setup(c => c.ParseRollFromUser(It.IsAny<string>(), It.IsAny<string?>())).Returns("{\"type\":\"roll\"}");
+            _handler = new ChatHandler(_mediator.Object, _chat.Object);
+        }
+
+        private async Task<WebSocketCommand> Send(string text, PlayerDTO from)
+        {
+            var command = new WebSocketCommand { Command = "chat_push", Data = new JValue(text), GameId = _gameId, PlayerId = from.Id };
+            await _handler.Handle(command, from);
+            return command;
+        }
+
+        private static Guid[] Ids(params PlayerDTO[] players) => players.Select(p => p.Id!.Value).OrderBy(x => x).ToArray();
+        private static Guid[] Sorted(IEnumerable<Guid>? ids) => (ids ?? Enumerable.Empty<Guid>()).OrderBy(x => x).ToArray();
+
+        [Fact]
+        public async Task GmRoll_GoesToRollerAndGm()
+        {
+            var sent = await Send("/gr 1d20+5", _alice);
+
+            _chat.Verify(c => c.ParseRollFromUser("1d20+5", null));
+            Assert.Equal("{\"type\":\"roll\"}", sent.Data.ToString());
+            Assert.Equal(_gm.Id, sent.RecipientId);
+            Assert.Equal(Ids(_alice, _gm), Sorted(sent.VisibleTo));
+            var stored = Assert.Single(_stored);
+            Assert.Equal(_gm.Id, stored.RecipientId);
+            Assert.Equal(Ids(_alice, _gm), Sorted(stored.VisibleTo));
+        }
+
+        // Co-GMs (Edit on the game; PlayerDTO.Permission is the game permission) get GM chat,
+        // but not whispers between players.
+        private readonly PlayerDTO _coGm = new() { Id = Guid.NewGuid(), Name = "Co", Permission = NordvikManager.Domain.Enums.Permission.Read | NordvikManager.Domain.Enums.Permission.Edit };
+
+        private void WithCoGm() =>
+            _mediator.Setup(m => m.Send(It.IsAny<GetGamePlayersCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new List<PlayerDTO> { _gm, _alice, _oldBob, _bob, _coGm });
+
+        [Fact]
+        public async Task GmRoll_IsSeenByCoGmsToo()
+        {
+            WithCoGm();
+
+            var sent = await Send("/gr 1d20", _alice);
+
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(sent.VisibleTo));
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(Assert.Single(_stored).VisibleTo));
+        }
+
+        [Fact]
+        public async Task GmMessage_IsSeenByCoGmsToo()
+        {
+            WithCoGm();
+
+            var sent = await Send("/gm a secret door?", _alice);
+
+            Assert.Equal(Ids(_alice, _gm, _coGm), Sorted(sent.VisibleTo));
+        }
+
+        [Fact]
+        public async Task Whisper_IsNotSeenByCoGms()
+        {
+            WithCoGm();
+
+            var sent = await Send("/w bob psst", _alice);
+
+            Assert.Equal(Ids(_alice, _bob, _gm), Sorted(sent.VisibleTo));
+        }
+
+        [Fact]
+        public async Task GmRoll_ByTheGm_IsSeenByTheGmOnly()
+        {
+            var sent = await Send("/gr 1d20", _gm);
+
+            Assert.Equal(Ids(_gm), Sorted(sent.VisibleTo));
+        }
+
+        [Fact]
+        public async Task Whisper_GoesToSenderRecipientAndGm_WithoutTheName()
+        {
+            var sent = await Send("/w bob meet me at the inn", _alice);
+
+            Assert.Equal("meet me at the inn", sent.Data.ToString());
+            Assert.Equal(_bob.Id, sent.RecipientId);
+            Assert.Equal(Ids(_alice, _bob, _gm), Sorted(sent.VisibleTo));
+            Assert.False(sent.OnlyToSender);
+            Assert.Equal("meet me at the inn", Assert.Single(_stored).Message);
+        }
+
+        [Fact]
+        public async Task Whisper_MatchesTheLongestName_SoNamesWithSpacesWork()
+        {
+            var sent = await Send("/w OLD BOB hi there", _alice);
+
+            Assert.Equal(_oldBob.Id, sent.RecipientId);
+            Assert.Equal("hi there", sent.Data.ToString());
+        }
+
+        [Fact]
+        public async Task Whisper_ToAnUnknownPlayer_AnswersTheSenderOnly_AndIsNotStored()
+        {
+            var sent = await Send("/w Zed hello", _alice);
+
+            Assert.True(sent.OnlyToSender);
+            Assert.Contains("No player named", sent.Data.ToString());
+            Assert.Empty(_stored);
+        }
+
+        [Fact]
+        public async Task Whisper_WithoutText_AnswersTheSenderOnly()
+        {
+            var sent = await Send("/w Bob", _alice);
+
+            Assert.True(sent.OnlyToSender);
+            Assert.Contains("Nothing to whisper", sent.Data.ToString());
+            Assert.Empty(_stored);
+        }
+
+        [Fact]
+        public async Task GmMessage_GoesToTheGm()
+        {
+            var sent = await Send("/gm can I search the room?", _bob);
+
+            Assert.Equal("can I search the room?", sent.Data.ToString());
+            Assert.Equal(_gm.Id, sent.RecipientId);
+            Assert.Equal(Ids(_bob, _gm), Sorted(sent.VisibleTo));
+        }
+
+        [Fact]
+        public async Task GmMessage_FromTheGm_AnswersTheSenderOnly()
+        {
+            var sent = await Send("/gm note to self", _gm);
+
+            Assert.True(sent.OnlyToSender);
+            Assert.Empty(_stored);
+        }
+
+        [Fact]
+        public async Task Help_ListsTheChatCommands_ToTheSenderOnly()
+        {
+            var sent = await Send("/help", _alice);
+
+            Assert.True(sent.OnlyToSender);
+            foreach (var command in new[] { "/r", "/gr", "/w", "/gm", "/c" })
+                Assert.Contains(command + " ", sent.Data.ToString());
+            Assert.Empty(_stored);
+        }
+
+        [Fact]
+        public async Task PublicMessage_HasNoRecipient()
+        {
+            var sent = await Send("hello", _alice);
+
+            Assert.Null(sent.RecipientId);
+            Assert.Null(sent.VisibleTo);
+            Assert.Null(Assert.Single(_stored).VisibleTo);
+        }
+
+        // Only the server marks a message as a chat template (a roll card, an Html message...).
+        // Whatever a player types, or claims in the command's JSON, is plain text.
+        [Fact]
+        public async Task PlayerText_IsNotATemplate_EvenWhenTheClientClaimsIt()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = new JValue("{\"type\":\"Roll\",\"roll\":{\"result\":20}}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+                IsTemplate = true,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.False(command.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task PlayerObjectData_IsStoredAsText_NotATemplate()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = JObject.Parse("{\"type\":\"Generic\",\"title\":\"hi\"}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.False(command.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Theory]
+        [InlineData("/roll 1d20")]
+        [InlineData("/r 1d20")]
+        [InlineData("/gr 1d20")]
+        public async Task Rolls_AreTemplates(string text)
+        {
+            var sent = await Send(text, _alice);
+
+            Assert.True(sent.IsTemplate);
+            Assert.True(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task Whisper_IsNotATemplate()
+        {
+            var sent = await Send("/w bob {\"type\":\"Roll\"}", _alice);
+
+            Assert.False(sent.IsTemplate);
+            Assert.False(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public async Task ServerMessage_IsATemplate()
+        {
+            var command = new WebSocketCommand
+            {
+                Command = "chat_push",
+                Data = JObject.Parse("{\"type\":\"Html\",\"html\":\"<b>hit</b>\"}"),
+                GameId = _gameId,
+                PlayerId = _alice.Id,
+                FromServer = true,
+            };
+
+            await _handler.Handle(command, _alice);
+
+            Assert.True(command.IsTemplate);
+            Assert.True(Assert.Single(_stored).IsTemplate);
+        }
+
+        [Fact]
+        public void FromServer_CannotBeSetFromJson()
+        {
+            var command = JObject.Parse("{\"command\":\"chat_push\",\"data\":\"x\",\"fromServer\":true,\"FromServer\":true}")
+                .ToObject<WebSocketCommand>()!;
+
+            Assert.False(command.FromServer);
+        }
+
+        [Fact]
+        public void NewCommands_AreBuiltIn_SoActionHooksDontClaimThem()
+        {
+            foreach (var command in new[] { "/gr", "/w", "/gm" })
+                Assert.Contains(command, ChatHandler.BuiltInCommands);
+        }
+    }
+}

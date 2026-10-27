@@ -4,11 +4,11 @@
 
 ```bash
 dotnet build                          # Build solution
-dotnet run --project DNDOnePlaceManager  # Run API (http://localhost:8213)
+dotnet run --project NordvikManager  # Run API (http://localhost:8213)
 
 dotnet test                           # Run all tests
-dotnet test DNDOnePlaceManager.Tests  # Integration tests only
-dotnet test DndOnePlaceManager.Application.UnitTests  # Unit tests only
+dotnet test NordvikManager.Tests  # Integration tests only
+dotnet test NordvikManager.Application.UnitTests  # Unit tests only
 dotnet test --filter "Name~GetGames_ReturnsOk"        # Single test by name
 dotnet test --filter "ClassName=GameListControllerTests"  # Single class
 ```
@@ -18,13 +18,13 @@ dotnet test --filter "ClassName=GameListControllerTests"  # Single class
 Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 
 ```
-DNDOnePlaceManager (API/Presentation)
-    → DndOnePlaceManager.Application  (commands, handlers, DTOs, services)
-    → DndOnePlaceManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
-    → DndOnePlaceManager.Domain  (entities, interfaces, enums — no external deps)
+NordvikManager (API/Presentation)
+    → NordvikManager.Application  (commands, handlers, DTOs, services)
+    → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
+    → NordvikManager.Domain  (entities, interfaces, enums — no external deps)
 ```
 
-Two test projects: `DNDOnePlaceManager.Tests` (controller/integration) and `DndOnePlaceManager.Application.UnitTests` (handler unit tests).
+Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikManager.Application.UnitTests` (handler unit tests).
 
 ## CQRS with MediatR
 
@@ -110,7 +110,7 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext`.
 
-SQLite uses real EF Core Migrations (`DndOnePlaceManager.Infrastructure/Migrations/`), applied via `Database.Migrate()` once at startup. Any entity change needs `dotnet ef migrations add <Name>` (dotnet-ef is a local tool, `dotnet-tools.json`) before it reaches anyone's database — never hand-edit the schema. MySQL doesn't have migrations yet and still uses `Database.EnsureCreated()`; the InMemory test provider also uses `EnsureCreated()` (no migrations support at all there) — both intentional, see `DndOneContext`'s constructor comment.
+SQLite uses real EF Core Migrations (`NordvikManager.Infrastructure/Migrations/`), applied via `Database.Migrate()` once at startup. Any entity change needs `dotnet ef migrations add <Name>` (dotnet-ef is a local tool, `dotnet-tools.json`) before it reaches anyone's database — never hand-edit the schema. MySQL doesn't have migrations yet and still uses `Database.EnsureCreated()`; the InMemory test provider also uses `EnsureCreated()` (no migrations support at all there) — both intentional, see `DndOneContext`'s constructor comment.
 
 ## Configuration
 
@@ -133,5 +133,5 @@ Key appsettings entries:
 1. Entity model in `Domain/Entities/` implementing `IEntity` or `INamedEntity`
 2. Command + Handler pair in `Application/Commands/{Feature}/`
 3. DTO in `Application/DataTransferObjects/` + mapping in `Mapping/AppMapper.cs` (and its snapshot pair)
-4. Controller action in `DNDOnePlaceManager/Controllers/` dispatching via `_mediator.Send()`
-5. Tests in `Application.UnitTests/Commands/` (handler) and `DNDOnePlaceManager.Tests/Controllers/` (controller)
+4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`
+5. Tests in `Application.UnitTests/Commands/` (handler) and `NordvikManager.Tests/Controllers/` (controller)

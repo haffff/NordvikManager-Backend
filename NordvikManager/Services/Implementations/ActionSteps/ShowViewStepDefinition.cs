@@ -1,0 +1,79 @@
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Infrastructure.Interfaces;
+using NordvikManager.Services.Implementations.ActionBody;
+using NordvikManager.Services.Implementations.ActionBody.Data;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Core;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Services.Implementations.ActionSteps
+{
+    public class ShowViewStepDefinition : IActionStepDefinition
+    {
+        private readonly IServiceScopeFactory _scopeFactory;
+
+        public ShowViewStepDefinition(IServiceScopeFactory scopeFactory)
+        {
+            _scopeFactory = scopeFactory;
+        }
+
+        public string Name => "Show View";
+        public string Value => "ShowView";
+        public IReadOnlyList<string> Keywords => new[] { "open", "window", "view", "panel", "dialog" };
+        public string Category => "Client";
+        public string Description => "Shows a view (hidden UI panel/card) to a specific player or broadcasts it to all players.";
+        public string? Summary => "Show view {ViewKey}[ to {Player}]";
+        public Type DataType => typeof(ShowViewStepData);
+
+        public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
+        {
+            var stepData = step.Data.ToObject<ShowViewStepData>();
+
+            if (string.IsNullOrWhiteSpace(stepData.ViewKey))
+                throw new ActionProcessException("ShowView: 'ViewKey' argument is required.");
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+
+            // Views only: whatever else holds the key is not shown in the view's place.
+            var card = await dbContext.Cards
+                .FirstOrDefaultAsync(c => c.Key == stepData.ViewKey && c.GameId == gameLobby.GameId && c.IsCustomUi);
+
+            if (card == null)
+                throw new ActionProcessException($"ShowView: no view with key '{stepData.ViewKey}' found in this game.");
+
+            var payload = new JObject();
+            payload["viewId"] = card.Id.ToString();
+
+            if (!string.IsNullOrWhiteSpace(stepData.Data))
+                payload["data"] = stepData.Data;
+
+            var command = new WebSocketCommand
+            {
+                Command = WebSocketCommandNames.CmdShowView,
+                Data = payload
+            };
+
+            if (!string.IsNullOrWhiteSpace(stepData.Player))
+            {
+                var player = gameLobby.ConnectedPlayers.Keys.FirstOrDefault(
+                    x => x.Name.Trim().ToLower() == stepData.Player.Trim().ToLower() ||
+                         x.Id.Value.ToString() == stepData.Player)
+                    ?? throw new ActionProcessException($"ShowView: player '{stepData.Player}' is not connected.");
+
+                gameLobby.SendToPlayer(command, player);
+            }
+            else
+            {
+                gameLobby.Broadcast(command, gameLobby.SystemPlayer);
+            }
+        }
+    }
+}
