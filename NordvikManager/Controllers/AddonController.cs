@@ -2,6 +2,8 @@
 using NordvikManager.Application.Commands.Actions.ResolveQuery;
 using NordvikManager.Application.Commands.Addons.GetAddons;
 using NordvikManager.Application.Commands.Addons.GetAddonsFromRepository;
+using NordvikManager.Application.Commands.Addons.GetAddonCategories;
+using NordvikManager.Application.Commands.Addons.GetAddonReadme;
 using NordvikManager.Application.Commands.Addons.InstallAddon;
 using NordvikManager.Application.Commands.Addons.SetAddonEnabled;
 using NordvikManager.Application.Commands.Addons.UninstallAddon;
@@ -242,6 +244,37 @@ namespace NordvikManager.Controllers
             var command = new GetAddonsFromRepositoryCommand();
             var dto = await mediator.Send(command);
             return Ok(dto);
+        }
+
+        /// <summary>GET addon/categories — the remote registry's categories ({ key, name, description }).</summary>
+        [Route("categories")]
+        [HttpGet]
+        public async Task<IActionResult> GetCategories([FromQuery] Guid gameId)
+        {
+            await GetPlayer(gameId);
+            return Ok(await mediator.Send(new GetAddonCategoriesCommand()));
+        }
+
+        /// <summary>
+        /// GET addon/readme?key= — an addon's markdown readme ({ key, url, markdown }), read from the
+        /// URL in its registry entry. 404 when it has none; 502 when it can't be read.
+        /// </summary>
+        [Route("readme")]
+        [HttpGet]
+        public async Task<IActionResult> GetReadme([FromQuery] Guid gameId, [FromQuery] string key)
+        {
+            await GetPlayer(gameId);
+            if (string.IsNullOrWhiteSpace(key))
+                return BadRequest(new { error = "key is required." });
+            try
+            {
+                var readme = await mediator.Send(new GetAddonReadmeCommand { Key = key.Trim() });
+                return readme == null ? NotFound(new { error = $"'{key}' has no readme." }) : Ok(readme);
+            }
+            catch (InvalidOperationException e)
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { error = e.Message });
+            }
         }
 
         public class InstallAddonRequest { public string Key { get; set; } }

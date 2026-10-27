@@ -228,10 +228,10 @@ namespace NordvikManager.Tests.Controllers
         public async Task GetFeaturedAddons_ReturnsOk_WithFilteredAddons()
         {
             // Arrange
-            var allAddons = new List<AddonDto>
+            var allAddons = new List<RegistryAddonDto>
             {
-                new AddonDto { Key = "featured-addon" },
-                new AddonDto { Key = "other-addon" }
+                new RegistryAddonDto { Key = "featured-addon" },
+                new RegistryAddonDto { Key = "other-addon" }
             };
 
             // ConfigurationBinder.Get<T>() is an extension method — Moq can't stub it.
@@ -275,7 +275,7 @@ namespace NordvikManager.Tests.Controllers
         public async Task GetFeaturedAddons_UsesTheFeaturedListSavedInApplicationSettings()
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e" }, new AddonDto { Key = "themes" } });
+                     .ReturnsAsync(new List<RegistryAddonDto> { new RegistryAddonDto { Key = "dnd5e" }, new RegistryAddonDto { Key = "themes" } });
             var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
             var registry = Registry("dnd5e");
             registry.SetRuntime(new AddonSettings { FeaturedAddons = new List<string> { "themes" } });
@@ -292,7 +292,7 @@ namespace NordvikManager.Tests.Controllers
         public async Task GetFeaturedAddons_ListsBuiltInsFirst_FlaggedBuiltIn()
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new List<AddonDto> { new AddonDto { Key = "dnd5e", Name = "D&D" }, new AddonDto { Key = "basics", Name = "Registry copy" } });
+                     .ReturnsAsync(new List<RegistryAddonDto> { new RegistryAddonDto { Key = "dnd5e", Name = "D&D" }, new RegistryAddonDto { Key = "basics", Name = "Registry copy" } });
             var controller = CreateController(_mediator, FeaturedConfig(), _lobbyService, RegularUser());
             var builtIns = NoBuiltIns(new NordvikManager.Application.Services.BuiltInAddon("basics", "Basics", "Tokens and notes", "0.1.0", "basics.zip", Array.Empty<byte>()));
 

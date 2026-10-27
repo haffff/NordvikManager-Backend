@@ -11,11 +11,25 @@ namespace NordvikManager.Infrastructure.Services
     /// </summary>
     internal class AddonRepositoryService : IAddonRepositoryService
     {
-        private static readonly HttpClient httpClient = new HttpClient();
+        private static readonly HttpClient sharedHttpClient = new HttpClient();
+        private readonly HttpClient httpClient;
         private readonly string _mainRepository;
 
-        public AddonRepositoryService(AddonRegistryOptions registry)
+        /// <summary>The largest readme served (bytes).</summary>
+        public const int MaxReadmeBytes = 512 * 1024;
+        private static readonly TimeSpan ReadmeTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan ReadmeCacheTime = TimeSpan.FromMinutes(10);
+        // Raw GitHub markdown only, as the registry schema requires: https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>.md
+        private static readonly System.Text.RegularExpressions.Regex ReadmeUrl =
+            new(@"^https://raw\.githubusercontent\.com/[^/]+/[^/]+/[^/]+/.+\.md$", System.Text.RegularExpressions.RegexOptions.Compiled);
+        // Per URL, so a readme moved to a new release's tag is fetched again.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Until, string Markdown)> readmeCache = new();
+
+        public AddonRepositoryService(AddonRegistryOptions registry) : this(registry, sharedHttpClient) { }
+
+        internal AddonRepositoryService(AddonRegistryOptions registry, HttpClient httpClient)
         {
+            this.httpClient = httpClient;
             _mainRepository = registry.MainRepository
                 ?? throw new InvalidOperationException("No addon registry is set: AddonsConfiguration:MainRepository in appsettings, or Application Settings.");
         }
@@ -39,6 +53,45 @@ namespace NordvikManager.Infrastructure.Services
                 return await result.Content.ReadAsByteArrayAsync();
 
             throw new Exception($"Failed to download addon '{key}'. Remote returned {result.StatusCode}.");
+        }
+
+        /// <inheritdoc/>
+        public async Task<AddonReadmeResult?> GetReadmeByKey(string key)
+        {
+            var repository = JObject.Parse(await GetRepository())["repository"];
+            var url = repository?.FirstOrDefault(x => x["key"]?.ToString() == key)?["readme"]?.ToString();
+            if (string.IsNullOrWhiteSpace(url))
+                return null;
+            if (!ReadmeUrl.IsMatch(url))
+                throw new InvalidOperationException($"The readme of '{key}' isn't a markdown file on raw.githubusercontent.com.");
+
+            if (readmeCache.TryGetValue(url, out var cached) && cached.Until > DateTime.UtcNow)
+                return new AddonReadmeResult(url, cached.Markdown);
+
+            using var timeout = new CancellationTokenSource(ReadmeTimeout);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.ParseAdd("NordvikManager");
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            if (response.StatusCode != HttpStatusCode.OK)
+                throw new InvalidOperationException($"The readme of '{key}' answered {(int)response.StatusCode}.");
+            if (response.Content.Headers.ContentLength > MaxReadmeBytes)
+                throw new InvalidOperationException($"The readme of '{key}' is over {MaxReadmeBytes / 1024} KB.");
+
+            // Read at most one byte past the limit, whatever the server claims.
+            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[16 * 1024];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+            {
+                buffer.Write(chunk, 0, read);
+                if (buffer.Length > MaxReadmeBytes)
+                    throw new InvalidOperationException($"The readme of '{key}' is over {MaxReadmeBytes / 1024} KB.");
+            }
+
+            var markdown = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
+            readmeCache[url] = (DateTime.UtcNow + ReadmeCacheTime, markdown);
+            return new AddonReadmeResult(url, markdown);
         }
 
         // ── Private helpers ──────────────────────────────────────────────────
