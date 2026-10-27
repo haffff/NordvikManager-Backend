@@ -61,6 +61,7 @@
         //Sound
         public const string SoundPlay = "sound_play";
         public const string SoundStop = "sound_stop";
+        public const string SoundStopAll = "sound_stop_all";
 
         //Turn order (each broadcasts a TurnOrderNotice; clients fetch what they may see)
         public const string TurnOrderAdd = "turnorder_add";

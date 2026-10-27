@@ -5,6 +5,7 @@ using NordvikManager.Domain.Entities.Resources;
 using NordvikManager.Domain.Entities.Security;
 using NordvikManager.Infrastructure.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace NordvikManager.Data.Contexts
 {
@@ -165,6 +166,17 @@ namespace NordvikManager.Data.Contexts
             modelBuilder.Entity<PlaylistModel>()
                 .HasMany(p => p.Resources)
                 .WithMany(r => r.Playlists);
+
+            // Kept as comma-separated ids in one column (MySQL has no primitive collections).
+            modelBuilder.Entity<PlaylistModel>()
+                .Property(p => p.LoopedResourceIds)
+                .HasConversion(
+                    ids => string.Join(',', ids),
+                    text => text.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(Guid.Parse).ToList(),
+                    new ValueComparer<List<Guid>>(
+                        (a, b) => a!.SequenceEqual(b!),
+                        ids => ids.Aggregate(0, (hash, id) => HashCode.Combine(hash, id)),
+                        ids => ids.ToList()));
 
             // One turn order per map, gone with the map; entries gone with their order.
             // Entries point at their token by ElementId only (no FK): removing a token

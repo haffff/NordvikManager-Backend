@@ -1,4 +1,4 @@
-using NordvikManager.Application.Commands.Soundboard.GetSoundVolume;
+﻿using NordvikManager.Application.Commands.Soundboard.GetSoundPlayback;
 using NordvikManager.Application.Exceptions;
 using NordvikManager.Services.Implementations.ActionBody;
 using NordvikManager.Services.Implementations.ActionBody.Data;
@@ -34,7 +34,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
             // permission-filters the broadcast on those keys, and a Resource may carry
             // per-entity Read rows; this event must reach everyone connected.
             // The GM's volume for this file (no soundboard here).
-            var volume = await mediator.Send(new GetSoundVolumeCommand { GameId = gameLobby.GameId, ResourceId = resourceId });
+            var volume = (await mediator.Send(new GetSoundPlaybackCommand { GameId = gameLobby.GameId, ResourceId = resourceId })).Volume;
 
             var command = new WebSocketCommand
             {

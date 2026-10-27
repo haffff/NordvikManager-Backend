@@ -2,7 +2,7 @@ using NordvikManager.Application.Commands.Playlist.AddPlaylist;
 using NordvikManager.Application.Commands.Playlist.PlayPlaylist;
 using NordvikManager.Application.Commands.Playlist.UpdatePlaylist;
 using NordvikManager.Application.Commands.Resources.UpdateResource;
-using NordvikManager.Application.Commands.Soundboard.GetSoundVolume;
+using NordvikManager.Application.Commands.Soundboard.GetSoundPlayback;
 using NordvikManager.Application.DataTransferObjects;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Domain.Entities;
@@ -103,21 +103,73 @@ namespace NordvikManager.Application.UnitTests.Commands.Playlist
         [Theory]
         [InlineData(true, 0.3)]   // file 0.5 x soundboard 0.6
         [InlineData(false, 0.5)]  // file only
-        public async Task GetSoundVolume_IsTheFilesVolume_TimesItsSoundboards(bool fromSoundboard, double expected)
+        public async Task GetSoundPlayback_IsTheFilesVolume_TimesItsSoundboards(bool fromSoundboard, double expected)
         {
-            var volume = await new GetSoundVolumeCommandHandler(Db, Mapper).Handle(new GetSoundVolumeCommand
+            var playback = await new GetSoundPlaybackCommandHandler(Db, Mapper).Handle(new GetSoundPlaybackCommand
             {
                 GameId = gameId, ResourceId = loud, SoundboardId = fromSoundboard ? soundboardId : null,
             }, CancellationToken.None);
 
-            Assert.Equal(expected, volume, 3);
+            Assert.Equal(expected, playback.Volume, 3);
         }
 
         [Fact]
-        public async Task GetSoundVolume_UnknownFile_IsFullVolume()
+        public async Task GetSoundPlayback_UnknownFile_IsFullVolume_WithoutLoop()
         {
-            Assert.Equal(1, await new GetSoundVolumeCommandHandler(Db, Mapper)
-                .Handle(new GetSoundVolumeCommand { GameId = gameId, ResourceId = Guid.NewGuid() }, CancellationToken.None));
+            var playback = await new GetSoundPlaybackCommandHandler(Db, Mapper)
+                .Handle(new GetSoundPlaybackCommand { GameId = gameId, ResourceId = Guid.NewGuid() }, CancellationToken.None);
+
+            Assert.Equal(1, playback.Volume);
+            Assert.False(playback.Loop);
+        }
+
+        // Rain, a crackling fire: the GM marks a sound on a soundboard to repeat until stopped.
+        private Task UpdateSoundboardLoops(List<Guid>? looped) =>
+            new UpdatePlaylistCommandHandler(Db, Mapper, Permissions, mediator.Object).Handle(new UpdatePlaylistCommand
+            {
+                GameId = gameId, Player = Gm(), PlaylistId = soundboardId, Name = "Effects", Description = "",
+                Kind = PlaylistKind.Soundboard, ResourceIds = new List<Guid> { loud }, LoopedResourceIds = looped,
+            }, CancellationToken.None);
+
+        private List<Guid> Looped(Guid id) => SeedContext().Playlists.AsNoTracking().Single(p => p.Id == id).LoopedResourceIds;
+
+        [Fact]
+        public async Task UpdatePlaylist_SetsItsLoopedSounds_OnlyItsOwn_AndKeepsThemWhenNotGiven()
+        {
+            await UpdateSoundboardLoops(new List<Guid> { loud, normal }); // normal isn't on this soundboard
+            Assert.Equal(new List<Guid> { loud }, Looped(soundboardId));
+
+            await UpdateSoundboardLoops(null);
+            Assert.Equal(new List<Guid> { loud }, Looped(soundboardId));
+
+            await UpdateSoundboardLoops(new List<Guid>());
+            Assert.Empty(Looped(soundboardId));
+        }
+
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(false, false)] // played without its soundboard (an action's Play Sound)
+        public async Task GetSoundPlayback_Loops_WhenItsSoundboardLoopsIt(bool fromSoundboard, bool expected)
+        {
+            await UpdateSoundboardLoops(new List<Guid> { loud });
+
+            var playback = await new GetSoundPlaybackCommandHandler(Db, Mapper).Handle(new GetSoundPlaybackCommand
+            {
+                GameId = gameId, ResourceId = loud, SoundboardId = fromSoundboard ? soundboardId : null,
+            }, CancellationToken.None);
+
+            Assert.Equal(expected, playback.Loop);
+        }
+
+        [Fact]
+        public async Task GetPlaylists_ShowsTheSoundboardsLoopedSounds()
+        {
+            await UpdateSoundboardLoops(new List<Guid> { loud });
+
+            var boards = await new NordvikManager.Application.Commands.Playlist.GetPlaylists.GetPlaylistsCommandHandler(Db, Mapper, Permissions)
+                .Handle(new NordvikManager.Application.Commands.Playlist.GetPlaylists.GetPlaylistsCommand { GameId = gameId, Player = Gm(), Kind = PlaylistKind.Soundboard }, CancellationToken.None);
+
+            Assert.Equal(new List<Guid> { loud }, Assert.Single(boards).LoopedResourceIds);
         }
 
         [Fact]
