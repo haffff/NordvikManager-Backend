@@ -42,9 +42,9 @@ namespace NordvikManager
             var jwtSecret = Configuration["JWTSecret"];
             if (string.IsNullOrEmpty(jwtSecret))
             {
-                // if not configured generate random secret and log it
+                // Not configured: a random secret per start (logins end on restart). Never printed: anyone
+                // reading the console or a shared screenshot could forge logins with it.
                 jwtSecret = Guid.NewGuid().ToString() + Guid.NewGuid().ToString();
-                Console.WriteLine($"JWTSecret not configured, generated random secret: {jwtSecret}");
                 Configuration["JWTSecret"] = jwtSecret;
             }
 

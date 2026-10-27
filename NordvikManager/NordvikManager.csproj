@@ -25,6 +25,11 @@
     <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
+  <!-- What's in the release folder, for the GM. -->
+  <ItemGroup>
+    <None Update="README.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- Local settings and data never ship. -->
   <ItemGroup>
     <Content Update="appsettings.Development.json;appsettings.Production.json" CopyToPublishDirectory="Never" />

@@ -17,6 +17,8 @@ dotnet test --filter "ClassName=GameListControllerTests"              # Single t
 
 Release builds: `dotnet publish NordvikManager/NordvikManager.csproj -c Release -r win-x64 -o <dir>` (never the `.sln`, that drags the test projects in). With a RID the csproj makes one self-contained, untrimmed single-file exe; the folder holds only it, `appsettings.json`, `wwwroot/` and `BuiltInAddons/`, and `data/` appears on first start. Outside Development, `Program.Main` switches the current folder to the exe's folder (`Hosting/AppRoot.cs`), so every relative path in appsettings resolves next to the exe however it was started.
 
+The console is the GM's UI (`Hosting/`): outside Development it shows only warnings plus a startup banner (`StartupBanner`: addresses, Central reachability, data/log folders), opens the browser (`BrowserLauncher`; off with `--no-browser` or `"OpenBrowser": false`), writes the full log to `data/logs/nordvik-<date>.log` (`FileLoggerProvider`), and a failed start prints a plain-language reason (`FatalErrorMessage`) and waits for Enter. Never print secrets to the console.
+
 Frontend (separate repo) can be placed as a build in `wwwroot/` or run via `npm start` from the [frontend repo](https://github.com/haffff/NordvikManagerFrontEnd).
 
 ## Architecture
