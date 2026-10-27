@@ -20,9 +20,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using NordvikManager.Hosting;
+using NordvikManager.Hosting.Updates;
+using NordvikManager.Infrastructure.Interfaces;
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
+using System.Threading;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -83,6 +88,16 @@ namespace NordvikManager
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
             services.AddHostedService<ScheduledBackupService>();
+
+            // Server updates (Hosting/Updates). The download client has no timeout: a release is ~70 MB.
+            services.AddHttpClient(nameof(UpdateService), client => client.Timeout = Timeout.InfiniteTimeSpan);
+            services.AddSingleton(sp => new UpdateService(
+                BuildInfo.UpdateEnvironment(Configuration, AppRoot.EnvironmentName(Environment.GetEnvironmentVariable) == Environments.Development),
+                sp.GetRequiredService<IServerSettingsStore>(),
+                sp.GetRequiredService<IBackupService>(),
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(UpdateService)),
+                () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
+            services.AddHostedService<UpdateCheckService>();
 
             var handlers = Assembly.GetExecutingAssembly().GetTypes();
             foreach (var handler in handlers)

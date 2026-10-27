@@ -12,7 +12,8 @@ namespace NordvikManager.Hosting
         string CentralServerUrl,
         bool? CentralReachable,
         string DataFolder,
-        string? LogFolder);
+        string? LogFolder,
+        Updates.UpdateResult? LastUpdate = null);
 
     /// <summary>
     /// What a GM sees in the console once the server is up: where to open it, whether players can
@@ -47,6 +48,19 @@ namespace NordvikManager.Hosting
             text.AppendLine();
             text.AppendLine(Rule);
             text.AppendLine();
+
+            if (info.LastUpdate is { } update)
+            {
+                if (update.Succeeded)
+                    text.AppendLine($"    Updated from {update.FromVersion} to {update.ToVersion}.");
+                else
+                {
+                    text.AppendLine($"    The update to {update.ToVersion} didn't work, so {update.FromVersion} is back.");
+                    if (update.Message != null)
+                        text.AppendLine($"    {update.Message}");
+                }
+                text.AppendLine();
+            }
 
             if (info.Urls.Count == 0)
                 Line(text, "Open in your browser:", "(no address - check Kestrel in appsettings.json)");

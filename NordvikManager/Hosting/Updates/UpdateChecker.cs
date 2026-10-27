@@ -2,10 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace NordvikManager.Hosting.Updates
 {
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum UpdateChannel
     {
         Stable,

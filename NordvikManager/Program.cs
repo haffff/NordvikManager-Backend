@@ -8,11 +8,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using NordvikManager.Hosting;
+using NordvikManager.Hosting.Updates;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
-using System.Reflection;
 
 namespace NordvikManager
 {
@@ -23,12 +23,14 @@ namespace NordvikManager
 
         public static int Main(string[] args)
         {
-            var (hostArgs, noBrowser) = BrowserLauncher.SplitArgs(args);
+            var (browserArgs, noBrowser) = BrowserLauncher.SplitArgs(args);
+            var (hostArgs, updateCommand, withoutBackup) = SplitUpdateArgs(browserArgs);
 
             // Relative paths in appsettings (data/data.db, data/storage, ...) and the host's content
             // root all follow the current folder, so point it at the executable's folder.
+            var environmentName = AppRoot.EnvironmentName(Environment.GetEnvironmentVariable);
             Directory.SetCurrentDirectory(AppRoot.Resolve(
-                AppRoot.EnvironmentName(Environment.GetEnvironmentVariable),
+                environmentName,
                 AppContext.BaseDirectory,
                 Directory.GetCurrentDirectory()));
 
@@ -36,9 +38,13 @@ namespace NordvikManager
             var interactive = Environment.UserInteractive && !Console.IsInputRedirected && !Console.IsOutputRedirected;
 
             IHost host;
+            UpdateService updates;
             try
             {
                 host = CreateHostBuilder(hostArgs).Build();
+                updates = host.Services.GetRequiredService<UpdateService>();
+                if (updateCommand)
+                    return RunUpdateCommand(host, updates, withoutBackup);
 
                 var backupOptions = host.Services.GetRequiredService<BackupOptions>();
                 backupOptions.EnsureDatabaseFolder();
@@ -53,16 +59,160 @@ namespace NordvikManager
             }
             catch (Exception error)
             {
+                // The first start of a freshly installed update: put the old version back instead.
+                if (TryRollBackUpdate(error, environmentName, interactive) is { } exitCode)
+                    return exitCode;
                 ReportFatal(error, interactive);
                 return 1;
             }
 
-            ShowBanner(host, noBrowser, interactive);
+            if (updates.Environment.UnsupportedReason == null && UpdateStartup.Complete(updates.Environment) is { } finished)
+                updates.RecordFinishedUpdate(finished);
+
+            ShowBanner(host, noBrowser, interactive, updates.LastResult);
             host.WaitForShutdown();
+
+            // Application Settings → Server → Update: the update is unpacked and the host has
+            // stopped, so nothing holds wwwroot any more. Swap the files and start the new version.
+            var staged = updates.ReadyToApply;
+            host.Dispose();
+            if (staged == null)
+                return 0;
+
+            Console.WriteLine($"  Installing NordvikManager {staged.ToVersion}...");
+            if (!UpdateStartup.ApplyStaged(staged, updates.Environment))
+                Console.WriteLine($"  The update couldn't be installed; starting {staged.FromVersion} again.");
+            return UpdateStartup.Relaunch(updates.Environment, interactive);
+        }
+
+        private static (string[] Remaining, bool Update, bool WithoutBackup) SplitUpdateArgs(string[] args) => (
+            Array.FindAll(args, a => a is not ("--update" or "--without-backup")),
+            Array.IndexOf(args, "--update") >= 0,
+            Array.IndexOf(args, "--without-backup") >= 0);
+
+        /// <summary>
+        /// `NordvikManager --update`: for servers run without a browser. Checks, backs up, downloads
+        /// and swaps the files with the server stopped; the next start finishes the update.
+        /// </summary>
+        private static int RunUpdateCommand(IHost host, UpdateService updates, bool withoutBackup)
+        {
+            using (host)
+            {
+                var status = updates.Status;
+                if (!status.Supported)
+                {
+                    Console.Error.WriteLine($"  {status.UnsupportedReason}");
+                    return 1;
+                }
+                if (ServerAlreadyRunning(host))
+                {
+                    Console.Error.WriteLine("  NordvikManager is running. Stop it first (close its window, or stop the service), then run --update again.");
+                    return 1;
+                }
+
+                Console.WriteLine($"  NordvikManager {status.CurrentVersion}: looking for updates ({status.Channel.ToString().ToLowerInvariant()} channel)...");
+                status = updates.CheckAsync().GetAwaiter().GetResult();
+                if (status.CheckError != null)
+                {
+                    Console.Error.WriteLine($"  {status.CheckError}");
+                    return 1;
+                }
+                if (status.Available == null)
+                {
+                    Console.WriteLine("  This is the latest version.");
+                    return 0;
+                }
+
+                Console.WriteLine($"  Updating to {status.Available.Version}.");
+                try
+                {
+                    updates.InstallAsync(withoutBackup, new SyncProgress<UpdateStep>(step => Console.WriteLine(step switch
+                    {
+                        UpdateStep.Downloading => "  Downloading...",
+                        UpdateStep.BackingUp => "  Backing up your data...",
+                        UpdateStep.Unpacking => "  Unpacking...",
+                        _ => null,
+                    }))).GetAwaiter().GetResult();
+                }
+                catch (UpdateException error)
+                {
+                    Console.Error.WriteLine($"  {error.Message}");
+                    if (!status.BackupsSupported && !withoutBackup)
+                        Console.Error.WriteLine("  To go ahead anyway, run it again with --update --without-backup.");
+                    return 1;
+                }
+            }
+
+            if (!UpdateStartup.ApplyStaged(updates.ReadyToApply!, updates.Environment))
+            {
+                Console.Error.WriteLine("  The new version couldn't be put in place; nothing was changed. See data/updates for details.");
+                return 1;
+            }
+            Console.WriteLine($"  Updated to {updates.ReadyToApply!.ToVersion}. Start NordvikManager again to finish.");
             return 0;
         }
 
-        private static void ShowBanner(IHost host, bool noBrowser, bool interactive)
+        // The configured HTTP port answers: another NordvikManager (or something else) holds it.
+        private static bool ServerAlreadyRunning(IHost host)
+        {
+            var configuration = host.Services.GetRequiredService<IConfiguration>();
+            foreach (var endpoint in configuration.GetSection("Kestrel:Endpoints").GetChildren())
+            {
+                if (!Uri.TryCreate(endpoint["Url"]?.Replace("*", "localhost").Replace("+", "localhost").Replace("0.0.0.0", "localhost").Replace("[::]", "localhost"), UriKind.Absolute, out var url))
+                    continue;
+                try
+                {
+                    using var client = new System.Net.Sockets.TcpClient();
+                    if (client.ConnectAsync("localhost", url.Port).Wait(TimeSpan.FromSeconds(1)))
+                        return true;
+                }
+                catch (AggregateException)
+                {
+                    // Nothing listening.
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Exit code after putting the previous version back, or null when this start wasn't right after an update.</summary>
+        private static int? TryRollBackUpdate(Exception error, string environmentName, bool interactive)
+        {
+            try
+            {
+                var configuration = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: true)
+                    .AddJsonFile($"appsettings.{environmentName}.json", optional: true)
+                    .AddEnvironmentVariables()
+                    .Build();
+                var environment = BuildInfo.UpdateEnvironment(configuration, environmentName == Environments.Development);
+                if (environment.UnsupportedReason != null || UpdateMarkers.ReadPending(environment.UpdatesFolder) is not { } pending)
+                    return null;
+
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"  NordvikManager {pending.ToVersion} could not start: {FatalErrorMessage.Describe(error)}");
+                Console.Error.WriteLine($"  Going back to {pending.FromVersion}...");
+                WriteCrashFile(error);
+
+                var backups = new BackupService(BackupOptions.FromConfiguration(configuration), TimeProvider.System);
+                UpdateStartup.RollBackAsync(environment, error, name => backups.StageRestoreAsync(name)).GetAwaiter().GetResult();
+                return UpdateStartup.Relaunch(environment, interactive);
+            }
+            catch (Exception rollbackError)
+            {
+                Console.Error.WriteLine($"  Going back to the previous version failed too: {rollbackError.Message}");
+                return null;
+            }
+        }
+
+        private sealed class SyncProgress<T> : IProgress<T>
+        {
+            private readonly Action<T> report;
+            public SyncProgress(Action<T> report) => this.report = report;
+            public void Report(T value) => report(value);
+        }
+
+        private static void ShowBanner(IHost host, bool noBrowser, bool interactive, UpdateResult lastUpdate)
         {
             var configuration = host.Services.GetRequiredService<IConfiguration>();
             var isDevelopment = host.Services.GetRequiredService<IHostEnvironment>().IsDevelopment();
@@ -75,30 +225,36 @@ namespace NordvikManager
                 centralReachable = CentralStatus.IsReachableAsync(client, centralUrl, TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
 
             Console.WriteLine(StartupBanner.Format(new StartupInfo(
-                Version: AppVersion(),
+                Version: BuildInfo.Version,
                 Urls: urls,
                 CentralServerUrl: centralUrl ?? "",
                 CentralReachable: centralReachable,
                 DataFolder: Path.GetFullPath("data"),
-                LogFolder: isDevelopment ? null : Path.GetFullPath(LogFolder))));
+                LogFolder: isDevelopment ? null : Path.GetFullPath(LogFolder),
+                LastUpdate: lastUpdate)));
 
             if (BrowserLauncher.ShouldOpen(noBrowser, configuration, isDevelopment, interactive) && ServerAddresses.BrowserUrl(urls) is { } url)
                 BrowserLauncher.TryOpen(url);
         }
 
-        private static void ReportFatal(Exception error, bool interactive)
+        private static string WriteCrashFile(Exception error)
         {
-            string crashFile;
             try
             {
                 Directory.CreateDirectory(LogFolder);
-                crashFile = Path.GetFullPath(Path.Combine(LogFolder, $"crash-{DateTime.Now:yyyy-MM-dd-HHmmss}.log"));
+                var crashFile = Path.GetFullPath(Path.Combine(LogFolder, $"crash-{DateTime.Now:yyyy-MM-dd-HHmmss}.log"));
                 File.WriteAllText(crashFile, error.ToString());
+                return crashFile;
             }
             catch (Exception)
             {
-                crashFile = null;
+                return null;
             }
+        }
+
+        private static void ReportFatal(Exception error, bool interactive)
+        {
+            var crashFile = WriteCrashFile(error);
 
             Console.Error.WriteLine();
             Console.Error.WriteLine("  NordvikManager could not start.");
@@ -115,14 +271,6 @@ namespace NordvikManager
                 Console.WriteLine("  Press Enter to close this window.");
                 Console.ReadLine();
             }
-        }
-
-        private static string AppVersion()
-        {
-            var version = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
-            // The SDK appends "+<commit>" to the informational version.
-            var plus = version.IndexOf('+');
-            return plus < 0 ? version : version[..plus];
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
