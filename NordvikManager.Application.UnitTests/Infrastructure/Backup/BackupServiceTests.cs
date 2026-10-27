@@ -17,6 +17,18 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Backup
         // CreateAsync
         // =========================================================================
 
+        // The server updater backs up before it swaps the program; a failed update restores it.
+        [Fact]
+        public async Task CreateAsync_PreUpdateBackup_IsListedWithItsKind()
+        {
+            var service = _env.CreateService();
+
+            var info = await service.CreateAsync(BackupKind.PreUpdate, "to 0.3.0");
+
+            Assert.Contains("-pre-update-", info.Name);
+            Assert.Equal(BackupKind.PreUpdate, Assert.Single(service.List()).Kind);
+        }
+
         [Fact]
         public async Task CreateAsync_WritesZipWithManifestDatabaseAndManagedFiles()
         {

@@ -11,6 +11,8 @@ namespace NordvikManager.Infrastructure.Services.Backup
         PreRestore,
         // Uploaded by the GM (e.g. a backup from another machine).
         Imported,
+        // Taken by the server updater before it swaps the program; a failed update restores it.
+        PreUpdate,
     }
 
     public record BackupInfo(string Name, BackupKind Kind, DateTime CreatedAtUtc, long SizeBytes, string? Label);
