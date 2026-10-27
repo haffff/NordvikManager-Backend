@@ -24,12 +24,27 @@ namespace NordvikManager.Hosting
         private const string Rule = "  ==============================================================";
         private const int LabelWidth = 24;
 
+        // A crescent moon, the NordvikManager mark; the name and version sit beside it.
+        private static readonly string[] Moon =
+        {
+            @"          _..._",
+            @"        .'  .-'",
+            @"       /   /",
+            @"      |   |",
+            @"      |   |",
+            @"       \   \",
+            @"        '.  '-.",
+            @"          '---'",
+        };
+
         public static string Format(StartupInfo info)
         {
             var text = new StringBuilder();
+            var beside = new[] { "", "NordvikManager", $"ver {info.Version}", "", "Server is running." };
             text.AppendLine();
-            text.AppendLine(Rule);
-            text.AppendLine($"    NordvikManager {info.Version} is running");
+            for (var i = 0; i < Moon.Length; i++)
+                text.AppendLine(i < beside.Length && beside[i] != "" ? Moon[i].PadRight(24) + beside[i] : Moon[i]);
+            text.AppendLine();
             text.AppendLine(Rule);
             text.AppendLine();
 

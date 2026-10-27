@@ -18,13 +18,26 @@ namespace NordvikManager.Tests.Hosting
         {
             var text = StartupBanner.Format(Info());
 
-            Assert.Contains("NordvikManager 0.2.0 is running", text);
+            Assert.Contains("NordvikManager", text);
+            Assert.Contains("ver 0.2.0", text);
+            Assert.Contains("Server is running", text);
             Assert.Contains("http://localhost:8213", text);
             Assert.Contains("https://localhost:8214", text);
             Assert.Contains(@"C:\Games\NordvikManager\data", text);
             Assert.Contains(@"C:\Games\NordvikManager\data\logs", text);
             Assert.Contains("Keep this window open", text);
             Assert.Contains("Ctrl+C", text);
+        }
+
+        [Fact]
+        public void Format_StartsWithTheMoonLogo_NameBesideIt()
+        {
+            var lines = StartupBanner.Format(Info()).Split(Environment.NewLine);
+
+            var logo = lines.First(l => l.Contains("_..._"));
+            var name = lines.First(l => l.Contains("NordvikManager"));
+            Assert.True(Array.IndexOf(lines, logo) < Array.IndexOf(lines, name));
+            Assert.Contains(".'  .-'", name);
         }
 
         [Fact]
