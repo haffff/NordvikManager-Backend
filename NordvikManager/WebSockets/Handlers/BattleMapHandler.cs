@@ -1,4 +1,6 @@
-﻿using NordvikManager.Application.Commands.BattleMap;
+﻿using NordvikManager.Application.Commands.Elements.Group;
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Application.Commands.BattleMap;
 using NordvikManager.Application.Commands.Elements;
 using NordvikManager.Application.Commands.Properties.AddProperties;
 using NordvikManager.Application.Commands.Security.CheckPermissions;
@@ -97,131 +99,56 @@ namespace NordvikManager.WebSockets.Handlers
             return result;
         }
 
+        // Data: the parts, placed by the client; each comes back with its new id, map and layer.
         private async Task<CommandResponse> UngroupElements(WebSocketCommand parsedMsg, PlayerDTO player)
         {
-            ElementDTO dto = null;
-            Dictionary<Guid, Permission?> perm = null;
+            if (parsedMsg.ElementIds?.Length != 1 || parsedMsg.Data is not Newtonsoft.Json.Linq.JArray parts)
+                return CommandResponse.WrongArguments;
 
-            foreach (var id in parsedMsg.ElementIds)
+            var children = parts.Select(x => x.ToObject<ElementDTO>()!).ToList();
+            try
             {
-                CheckPermissionsCommand checkCommand = new CheckPermissionsCommand()
+                var (response, ids) = await mediator.Send(new UngroupElementsCommand
                 {
-                    EntityId = id,
+                    GameId = parsedMsg.GameId ?? default,
                     Player = player,
-                    RequiredPermission = Permission.Edit
-                };
-
-                if (!await mediator.Send(checkCommand))
+                    GroupId = parsedMsg.ElementIds[0],
+                    Children = children,
+                });
+                for (var i = 0; i < ids.Count; i++)
                 {
-                    return CommandResponse.NoPermission;
+                    parts[i]["id"] = ids[i];
+                    parts[i]["mapId"] = children[i].MapID;
+                    parts[i]["layer"] = children[i].Layer;
                 }
-
-                GetElementCommand getElementCommand = new GetElementCommand() { Id = id, Player = player };
-                dto = (await mediator.Send(getElementCommand));
-
-                if (dto == null)
-                {
-                    return CommandResponse.WrongArguments;
-                }
-
-                GetPermissionsCommand permissionsCommand = new GetPermissionsCommand()
-                {
-                    Player = player,
-                    EntityId = id
-                };
-
-                var nullablePerm = await mediator.Send(permissionsCommand);
-                perm = new Dictionary<Guid, Permission?>(nullablePerm.Select(x => new KeyValuePair<Guid, Permission?>(x.Key, x.Value)));
-                RemoveElement(id, player);
+                return response;
             }
-
-            var response = CommandResponse.WrongArguments;
-
-            var dtos = parsedMsg.Data;
-            var mapId = dto.MapID;
-
-            var elementDto = new ElementDTO()
+            catch (WrongArgumentsException)
             {
-                MapID = dto.MapID,
-                Layer = dto.Layer
-            };
-
-            foreach (var childDto in dtos)
-            {
-                var newElement = childDto.ToObject<ElementDTO>();
-                newElement.Layer = dto.Layer;
-                newElement.MapID = mapId;
-
-                var (message, oldId, newId) = await AddElement(newElement, player, parsedMsg.GameId ?? default);
-
-                if (message != CommandResponse.Ok)
-                {
-                    return message;
-                }
-
-                childDto["id"] = newId;
-
-                SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand()
-                {
-                    EntityId = newId,
-                    EntityType = @"ElementModel",
-                    GameID = parsedMsg.GameId ?? default,
-                    Permissions = perm,
-                    Player = player,
-                };
-
-                await mediator.Send(setPermissionsCommand);
-
+                return CommandResponse.WrongArguments;
             }
-
-            return response;
         }
 
+        // The parts' rights, properties and the refusal of tokens: GroupElementsCommand.
         private async Task<CommandResponse> GroupElements(WebSocketCommand parsedMsg, PlayerDTO player)
         {
-            Dictionary<Guid, Permission?> perm = null;
-
-            foreach (var id in parsedMsg.ElementIds)
+            try
             {
-                CheckPermissionsCommand checkCommand = new CheckPermissionsCommand()
+                var (response, groupId) = await mediator.Send(new GroupElementsCommand
                 {
-                    EntityId = id,
+                    GameId = parsedMsg.GameId ?? default,
                     Player = player,
-                    RequiredPermission = Permission.Edit
-                };
-
-                if (!await mediator.Send(checkCommand))
-                {
-                    return CommandResponse.NoPermission;
-                }
-
-                GetPermissionsCommand permissionsCommand = new GetPermissionsCommand()
-                {
-                    Player = player,
-                    EntityId = id
-                };
-
-                var nullablePerm = await mediator.Send(permissionsCommand);
-                perm = new Dictionary<Guid, Permission?>(nullablePerm.Select(x => new KeyValuePair<Guid, Permission?>(x.Key, x.Value)));
-
-                RemoveElement(id, player);
+                    ElementIds = parsedMsg.ElementIds?.ToList() ?? new(),
+                    Dto = parsedMsg.Data.ToObject<ElementDTO>(),
+                });
+                if (response == CommandResponse.Ok)
+                    parsedMsg.Data["id"] = groupId;
+                return response;
             }
-
-            (var result, var oldId, var newId) = await AddElement(parsedMsg, player);
-
-            SetPermissionsCommand setPermissionsCommand = new SetPermissionsCommand()
+            catch (WrongArgumentsException)
             {
-                EntityId = newId,
-                Player = player,
-                EntityType = "ElementModel",
-                GameID = parsedMsg.GameId ?? Guid.Empty,
-                Permissions = perm
-            };
-
-            mediator.Send(setPermissionsCommand);
-
-            parsedMsg.Data["id"] = newId;
-            return CommandResponse.Ok;
+                return CommandResponse.WrongArguments;
+            }
         }
 
         private async Task<(CommandResponse, Guid, Guid)> AddElement(WebSocketCommand parsedMsg, PlayerDTO player)
