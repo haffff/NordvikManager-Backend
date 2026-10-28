@@ -41,6 +41,25 @@ namespace NordvikManager.Tests.Hosting
         }
 
         [Fact]
+        public void Format_SaysTheServerWasUpdated()
+        {
+            var text = StartupBanner.Format(Info() with { LastUpdate = new("0.1.0", "0.2.0", true, null, DateTime.UtcNow) });
+
+            Assert.Contains("Updated from 0.1.0 to 0.2.0.", text);
+        }
+
+        [Fact]
+        public void Format_ExplainsAFailedUpdate_InPlainWords()
+        {
+            var failed = new NordvikManager.Hosting.Updates.UpdateResult("0.2.0", "0.3.0", false, "Port 8213 is already in use.", DateTime.UtcNow);
+
+            var text = StartupBanner.Format(Info() with { LastUpdate = failed });
+
+            Assert.Contains("The update to 0.3.0 didn't work, so 0.2.0 is back.", text);
+            Assert.Contains("Port 8213 is already in use.", text);
+        }
+
+        [Fact]
         public void Format_SaysCentralIsConnected_WhenReachable()
         {
             var text = StartupBanner.Format(Info(centralReachable: true));

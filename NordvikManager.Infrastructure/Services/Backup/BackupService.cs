@@ -18,7 +18,7 @@ namespace NordvikManager.Infrastructure.Services.Backup
         private const string TimestampFormat = "yyyyMMdd-HHmmssfff";
 
         private static readonly Regex NamePattern = new(
-            @"^nordvik-backup-(?<ts>\d{8}-\d{9})-(?<kind>manual|scheduled|pre-restore|imported)(?:-(?<label>[a-z0-9-]+))?\.zip$",
+            @"^nordvik-backup-(?<ts>\d{8}-\d{9})-(?<kind>manual|scheduled|pre-restore|pre-update|imported)(?:-(?<label>[a-z0-9-]+))?\.zip$",
             RegexOptions.Compiled);
 
         private readonly BackupOptions options;
@@ -317,6 +317,7 @@ namespace NordvikManager.Infrastructure.Services.Backup
         {
             BackupKind.Scheduled => "scheduled",
             BackupKind.PreRestore => "pre-restore",
+            BackupKind.PreUpdate => "pre-update",
             BackupKind.Imported => "imported",
             _ => "manual",
         };
@@ -325,6 +326,7 @@ namespace NordvikManager.Infrastructure.Services.Backup
         {
             "scheduled" => BackupKind.Scheduled,
             "pre-restore" => BackupKind.PreRestore,
+            "pre-update" => BackupKind.PreUpdate,
             "imported" => BackupKind.Imported,
             _ => BackupKind.Manual,
         };

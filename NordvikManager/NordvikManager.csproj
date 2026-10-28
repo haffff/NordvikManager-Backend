@@ -25,6 +25,11 @@
     <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
+  <!-- The updater orders dev builds of one version (dev.<commit>) by when they were built. -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <AssemblyMetadata Include="BuildTimeUtc" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
+  </ItemGroup>
+
   <!-- What's in the release folder, for the GM. -->
   <ItemGroup>
     <None Update="README.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="PreserveNewest" />

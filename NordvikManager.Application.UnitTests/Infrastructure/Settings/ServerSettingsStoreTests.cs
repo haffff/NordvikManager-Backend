@@ -28,6 +28,29 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Settings
             Assert.Null(Store().LoadError);
         }
 
+        // Server updates: the stable channel with notices on, unless the admin changed it.
+        [Fact]
+        public void Load_FileWithoutUpdates_GivesDefaultUpdateSettings()
+        {
+            Directory.CreateDirectory(_folder);
+            File.WriteAllText(FilePath, "{\"Updates\": null}");
+
+            var updates = Store().Load().Updates;
+
+            Assert.Equal("stable", updates.Channel);
+            Assert.False(updates.NoticesOff);
+        }
+
+        [Fact]
+        public void Update_SavesUpdateSettings()
+        {
+            Store().Update(s => s.Updates = new UpdateSettings { Channel = "dev", NoticesOff = true });
+
+            var updates = Store().Load().Updates;
+            Assert.Equal("dev", updates.Channel);
+            Assert.True(updates.NoticesOff);
+        }
+
         [Fact]
         public void Update_SavesToTheFile_AndANewStoreReadsIt()
         {

@@ -71,6 +71,8 @@ namespace NordvikManager.Infrastructure.Services.Settings
                 settings.Security.ProxyAllowedPrivateHosts ??= new List<string>();
                 settings.Security.SandboxAllowedOrigins ??= new List<string>();
                 settings.Addons ??= new AddonSettings();
+                settings.Updates ??= new UpdateSettings();
+                settings.Updates.Channel ??= "stable";
                 return (settings, null);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)

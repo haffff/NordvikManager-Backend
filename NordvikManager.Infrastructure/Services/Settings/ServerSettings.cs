@@ -12,6 +12,18 @@ namespace NordvikManager.Infrastructure.Services.Settings
         public SecuritySettings Security { get; set; } = new();
 
         public AddonSettings Addons { get; set; } = new();
+
+        public UpdateSettings Updates { get; set; } = new();
+    }
+
+    /// <summary>Server updates from Application Settings → Server (see Hosting/Updates in the web project).</summary>
+    public class UpdateSettings
+    {
+        /// <summary>"stable", or "dev" to be offered dev builds too.</summary>
+        public string Channel { get; set; } = "stable";
+
+        /// <summary>No "update available" notices in the lobby and console; the Server tab still offers updates.</summary>
+        public bool NoticesOff { get; set; }
     }
 
     public class SecuritySettings
