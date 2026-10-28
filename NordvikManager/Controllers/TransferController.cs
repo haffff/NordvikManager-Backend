@@ -114,6 +114,11 @@ namespace NordvikManager.Controllers
             {
                 return BadRequest(new { error = e.Message });
             }
+            catch (ResourceNotFoundException e)
+            {
+                // E.g. the folder it was to go into was deleted meanwhile.
+                return BadRequest(new { error = e.Message });
+            }
         }
     }
 }

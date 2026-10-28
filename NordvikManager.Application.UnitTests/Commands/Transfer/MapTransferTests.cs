@@ -165,6 +165,25 @@ namespace NordvikManager.Application.UnitTests.Commands.Transfer
             Assert.Empty(result.Missing);
         }
 
+        // A property can name a file too (a token's own picture): found, taken or left out like the rest.
+        [Theory]
+        [InlineData(false, true)]
+        [InlineData(true, false)]
+        public async Task PropertiesNamingAFile_AreResolvedLikeTheRest(bool otherGame, bool kept)
+        {
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = tokenId, Element = Db.Find<ElementModel>(tokenId), Name = "tokenImage", Value = goblinImage.ToString(), EntityName = "ElementModel" });
+            Db.SaveChanges();
+
+            var result = await Mediator.Send(new ImportEntityCommand
+            {
+                GameId = otherGame ? OtherGameId : GameId, Player = otherGame ? OtherGm : Gm, Export = (await Export())!,
+            });
+
+            var token = Map(result.Id).Elements!.Single(x => x.Layer == 2);
+            Assert.Equal(kept, token.Properties!.Any(p => p.Name == "tokenImage" && p.Value == goblinImage.ToString()));
+            Assert.Equal("7", token.Properties!.Single(p => p.Name == "hp").Value);
+        }
+
         [Fact]
         public async Task Export_IncludesTheElementsAPlayerCannotSee()
         {

@@ -98,7 +98,7 @@ namespace NordvikManager.Application.Commands.Transfer
                 element.MapID = mapId;
                 element.Permission = null;
                 element.Object = await ImportFabricObject(import, element.Object, cancellationToken);
-                element.Properties = NewProperties(import, element.Properties, id);
+                element.Properties = await WithFiles(import, NewProperties(import, element.Properties, id), cancellationToken);
             }
 
             dto.Id = mapId;
@@ -106,7 +106,7 @@ namespace NordvikManager.Application.Commands.Transfer
             dto.Permission = null;
             dto.Name = import.Request.Name ?? dto.Name;
             dto.Elements = elements;
-            dto.Properties = NewProperties(import, dto.Properties, mapId);
+            dto.Properties = await WithFiles(import, NewProperties(import, dto.Properties, mapId), cancellationToken);
 
             var (_, newId) = await mediator.Send(new AddMapCommand
             {
@@ -255,6 +255,16 @@ namespace NordvikManager.Application.Commands.Transfer
             if (EntityTransferFields.CouldBeKey(property.Value) && import.Files.ListsKey(property.Value!))
                 return await import.Files.KeyAsync(property.Value!, cancellationToken);
             return true;
+        }
+
+        /// <summary>The properties, with those naming a file this game lacks left out.</summary>
+        private static async Task<List<PropertyDTO>> WithFiles(Import import, List<PropertyDTO> properties, CancellationToken cancellationToken)
+        {
+            var kept = new List<PropertyDTO>();
+            foreach (var property in properties)
+                if (await ImportFileValue(import, property, cancellationToken))
+                    kept.Add(property);
+            return kept;
         }
 
         // ── Playlists ────────────────────────────────────────────────────────────

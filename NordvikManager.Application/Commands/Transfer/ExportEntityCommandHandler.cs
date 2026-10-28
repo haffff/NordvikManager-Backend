@@ -73,6 +73,9 @@ namespace NordvikManager.Application.Commands.Transfer
                 refs.AddId((string?)fabric[EntityTransferFields.ResourceId]);
                 refs.AddKey((string?)fabric[EntityTransferFields.ResourceKey]);
             }
+            foreach (var property in (dto.Properties ?? Enumerable.Empty<PropertyDTO>())
+                         .Concat((dto.Elements ?? Enumerable.Empty<ElementDTO>()).SelectMany(e => e.Properties ?? Enumerable.Empty<PropertyDTO>())))
+                refs.AddCandidate(property.Value);
 
             var ids = new List<Guid> { map.Id };
             ids.AddRange(map.Elements?.Select(x => x.Id) ?? Enumerable.Empty<Guid>());
