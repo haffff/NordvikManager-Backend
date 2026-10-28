@@ -44,12 +44,32 @@ namespace NordvikManager.Application.Commands.Transfer
             if (export == null)
                 return null;
 
+            await Complete(request, export, refs, entityIds, cancellationToken);
+
+            if (request.IncludeCards && EntityTransferKinds.IsMap(request.Kind))
+            {
+                export.Cards = new();
+                foreach (var cardId in refs.Cards)
+                {
+                    var cardRefs = new FileRefs();
+                    var (card, cardIds) = await ExportCard(new ExportEntityCommand { GameId = request.GameId, Id = cardId }, cardRefs, cancellationToken);
+                    if (card == null)
+                        continue;
+                    await Complete(request, card, cardRefs, cardIds, cancellationToken);
+                    export.Cards.Add(card);
+                }
+            }
+            return export;
+        }
+
+        // The files it uses and who may do what with it.
+        private async Task Complete(ExportEntityCommand request, EntityExportDto export, FileRefs refs, List<Guid> entityIds, CancellationToken cancellationToken)
+        {
             export.Resources = await ExportResources(request, refs, cancellationToken);
             export.Permissions = await dbContext.Permissions
                 .Where(p => entityIds.Contains(p.ModelID))
                 .Select(p => new ExportedPermissionDto { EntityId = p.ModelID, PlayerId = p.PlayerID, All = p.All, Permission = p.Permission })
                 .ToListAsync(cancellationToken);
-            return export;
         }
 
         // Everything on it, hidden elements too: not through GetMap, which leaves out what
@@ -72,6 +92,8 @@ namespace NordvikManager.Application.Commands.Transfer
                 var fabric = JObject.Parse(element.Object);
                 refs.AddId((string?)fabric[EntityTransferFields.ResourceId]);
                 refs.AddKey((string?)fabric[EntityTransferFields.ResourceKey]);
+                if (Guid.TryParse((string?)fabric[EntityTransferFields.CardId], out var cardId))
+                    refs.Cards.Add(cardId);
             }
             foreach (var property in (dto.Properties ?? Enumerable.Empty<PropertyDTO>())
                          .Concat((dto.Elements ?? Enumerable.Empty<ElementDTO>()).SelectMany(e => e.Properties ?? Enumerable.Empty<PropertyDTO>())))
@@ -160,6 +182,8 @@ namespace NordvikManager.Application.Commands.Transfer
         {
             public HashSet<Guid> Ids { get; } = new();
             public HashSet<string> Keys { get; } = new();
+            /// <summary>A map's: the cards of its tokens.</summary>
+            public HashSet<Guid> Cards { get; } = new();
 
             public void AddId(Guid? id)
             {

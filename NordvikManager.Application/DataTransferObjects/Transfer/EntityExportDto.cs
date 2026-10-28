@@ -28,6 +28,9 @@ namespace NordvikManager.Application.DataTransferObjects.Transfer
 
         /// <summary>Who may do what with the entity (and a map's elements), by their ids in the export.</summary>
         public List<ExportedPermissionDto> Permissions { get; set; } = new();
+
+        /// <summary>A map's: the cards of its tokens, each an export of its own; null when not included.</summary>
+        public List<EntityExportDto>? Cards { get; set; }
     }
 
     public class ExportedResourceDto

@@ -69,8 +69,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Transfer
             Properties = properties.ToList(),
         };
 
-        private Task<EntityExportDto?> Export(bool includeFiles = false) =>
-            Mediator.Send(new ExportEntityCommand { GameId = GameId, Player = Gm, Kind = EntityTransferKinds.Map, Id = mapId, IncludeFiles = includeFiles });
+        private Task<EntityExportDto?> Export(bool includeFiles = false, bool includeCards = false) =>
+            Mediator.Send(new ExportEntityCommand { GameId = GameId, Player = Gm, Kind = EntityTransferKinds.Map, Id = mapId, IncludeFiles = includeFiles, IncludeCards = includeCards });
 
         private MapModel Map(Guid id) => Db.Maps.AsNoTracking()
             .Include(x => x.Properties)
@@ -182,6 +182,45 @@ namespace NordvikManager.Application.UnitTests.Commands.Transfer
             var token = Map(result.Id).Elements!.Single(x => x.Layer == 2);
             Assert.Equal(kept, token.Properties!.Any(p => p.Name == "tokenImage" && p.Value == goblinImage.ToString()));
             Assert.Equal("7", token.Properties!.Single(p => p.Name == "hp").Value);
+        }
+
+        // With its tokens' cards: another game gets the cards too (in a folder named after
+        // the map), and the tokens are theirs again.
+        [Fact]
+        public async Task Import_WithTheTokensCards_IntoAnotherGame_BringsTheCards()
+        {
+            Db.Permissions.Add(Row(goblinCard, OtherGmId, Permission.Read));
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = goblinCard, Card = Db.Find<CardModel>(goblinCard), Name = "hp", Value = "7", EntityName = "CardModel" });
+            Db.SaveChanges();
+            var export = await Export(includeCards: true);
+            Assert.Single(export!.Cards!);
+
+            var result = await Mediator.Send(new ImportEntityCommand { GameId = OtherGameId, Player = OtherGm, Export = export });
+
+            var card = Db.Cards.AsNoTracking().Include(c => c.Properties).Single(c => c.GameId == OtherGameId && c.Name == "Goblin");
+            Assert.Equal("7", card.Properties.Single().Value);
+            var token = Fabric(Map(result.Id).Elements!.Single(x => x.Layer == 2));
+            Assert.Equal(card.Id.ToString(), (string?)token["cardId"]);
+            Assert.Equal(card.Id, Assert.Single(result.Cards!).Id);
+            var entry = Db.TreeEntries.AsNoTracking().Include(x => x.Parent).Single(x => x.TargetId == card.Id);
+            Assert.Equal("Forest", entry.Parent?.Name);
+            Assert.True(Can(OtherGmId, card.Id, Permission.Edit));
+        }
+
+        [Fact]
+        public async Task Duplicate_WithTheTokensCards_InTheSameGame_KeepsUsingThem()
+        {
+            var result = await Mediator.Send(new ImportEntityCommand { GameId = GameId, Player = Gm, Export = (await Export(includeCards: true))! });
+
+            Assert.Equal(1, Db.Cards.Count(c => c.GameId == GameId && c.Name == "Goblin"));
+            Assert.Equal(goblinCard.ToString(), (string?)Fabric(Map(result.Id).Elements!.Single(x => x.Layer == 2))["cardId"]);
+            Assert.Empty(result.Cards ?? new());
+        }
+
+        [Fact]
+        public async Task Export_LeavesTheCardsOut_UnlessAsked()
+        {
+            Assert.Null((await Export())!.Cards);
         }
 
         [Fact]

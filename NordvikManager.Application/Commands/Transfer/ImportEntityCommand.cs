@@ -39,5 +39,7 @@ namespace NordvikManager.Application.Commands.Transfer
     /// <param name="TreeEntry">Its folder-tree entry.</param>
     /// <param name="Missing">The names of the files it uses that this game doesn't have.</param>
     /// <param name="NewFolders">Folders made for <see cref="ImportEntityCommand.FolderPath"/>.</param>
-    public record ImportEntityResult(Guid Id, string Kind, TreeEntryDto? TreeEntry, List<string> Missing, List<TreeEntryDto> NewFolders);
+    /// <param name="Cards">A map's: the cards of its tokens that were made for it.</param>
+    public record ImportEntityResult(Guid Id, string Kind, TreeEntryDto? TreeEntry, List<string> Missing, List<TreeEntryDto> NewFolders,
+        List<ImportEntityResult>? Cards = null);
 }

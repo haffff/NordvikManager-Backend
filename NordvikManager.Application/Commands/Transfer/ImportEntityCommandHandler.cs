@@ -75,7 +75,8 @@ namespace NordvikManager.Application.Commands.Transfer
             await CopyPermissions(import, cancellationToken);
             var entry = await PlaceInTree(import, entryType, id, cancellationToken);
 
-            return new ImportEntityResult(id, export.Kind, entry, import.Files.Missing.ToList(), newFolders);
+            var missing = import.Files.Missing.Concat(import.Cards.SelectMany(c => c.Missing)).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
+            return new ImportEntityResult(id, export.Kind, entry, missing, newFolders, import.Cards);
         }
 
         // ── Maps ─────────────────────────────────────────────────────────────────
@@ -87,6 +88,8 @@ namespace NordvikManager.Application.Commands.Transfer
 
             // New ids first, so whatever refers to one (a fabric object's id, a property's
             // parent) can be pointed at the copy.
+            await ImportTokenCards(import, dto.Name ?? import.Request.Export.Name, cancellationToken);
+
             var mapId = import.NewId(dto.Id);
             var elementIds = elements.Select(e => import.NewId(e.Id)).ToList();
 
@@ -116,6 +119,31 @@ namespace NordvikManager.Application.Commands.Transfer
             // The map gets the usual rights from AddMap; its elements the ones a new element gets.
             await SetPermissions(elements.SelectMany(e => DefaultRows(import, e.Id!.Value)), cancellationToken);
             return newId;
+        }
+
+        // The cards of the map's tokens, when the export has them: the game's own if it has
+        // them (a duplicate), otherwise new ones in a Cards folder named after the map. The
+        // tokens are pointed at them below, as their ids are.
+        private async Task ImportTokenCards(Import import, string? mapName, CancellationToken cancellationToken)
+        {
+            foreach (var card in import.Request.Export.Cards ?? new())
+            {
+                if (!Guid.TryParse((string?)card.Data?["id"], out var oldId))
+                    continue;
+                if (await dbContext.Cards.AnyAsync(c => c.Id == oldId && c.GameId == import.Request.GameId, cancellationToken))
+                    continue;
+
+                var result = await mediator.Send(new ImportEntityCommand
+                {
+                    GameId = import.Request.GameId,
+                    Player = import.Request.Player,
+                    Export = card,
+                    ExpectedKind = EntityTransferKinds.Card,
+                    FolderPath = string.IsNullOrWhiteSpace(mapName) ? null : mapName.Replace("/", " "),
+                }, cancellationToken);
+                import.PointAt(oldId, result.Id);
+                import.Cards.Add(result);
+            }
         }
 
         private async Task<string?> ImportFabricObject(Import import, string? json, CancellationToken cancellationToken)
@@ -427,6 +455,12 @@ namespace NordvikManager.Application.Commands.Transfer
                 }
                 return id;
             }
+
+            /// <summary>Cards made for a map's tokens.</summary>
+            public List<ImportEntityResult> Cards { get; } = new();
+
+            /// <summary>Ids that were <paramref name="old"/> now mean <paramref name="copy"/> (e.g. a token's card).</summary>
+            public void PointAt(Guid old, Guid copy) => idTexts[old.ToString()] = copy.ToString();
 
             /// <summary>A value that is the id of something copied becomes the copy's id.</summary>
             public string? PointAtCopy(string? value) =>

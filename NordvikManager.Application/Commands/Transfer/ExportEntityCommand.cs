@@ -19,5 +19,8 @@ namespace NordvikManager.Application.Commands.Transfer
 
         /// <summary>Put the files it uses into the export too (base64), for another game that lacks them.</summary>
         public bool IncludeFiles { get; set; }
+
+        /// <summary>A map: put its tokens' cards into the export too, so another game gets them.</summary>
+        public bool IncludeCards { get; set; }
     }
 }

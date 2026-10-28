@@ -41,7 +41,7 @@ namespace NordvikManager.Controllers
         [HttpGet]
         [Authorize]
         [Route("Export")]
-        public async Task<IActionResult> Export([FromQuery] Guid gameId, [FromQuery] string kind, [FromQuery] Guid id, [FromQuery] bool includeFiles = false)
+        public async Task<IActionResult> Export([FromQuery] Guid gameId, [FromQuery] string kind, [FromQuery] Guid id, [FromQuery] bool includeFiles = false, [FromQuery] bool includeCards = false)
         {
             var player = (await mediator.Send(new GetPlayerCommand { User = HttpContext.Items["User"] as User, GameID = gameId }))?.Player;
             if (player == null)
@@ -49,7 +49,7 @@ namespace NordvikManager.Controllers
 
             try
             {
-                var export = await mediator.Send(new ExportEntityCommand { GameId = gameId, Player = player, Kind = kind, Id = id, IncludeFiles = includeFiles });
+                var export = await mediator.Send(new ExportEntityCommand { GameId = gameId, Player = player, Kind = kind, Id = id, IncludeFiles = includeFiles, IncludeCards = includeCards });
                 if (export == null)
                     return NotFound();
                 return Content(JsonConvert.SerializeObject(export, Camel), "application/json");

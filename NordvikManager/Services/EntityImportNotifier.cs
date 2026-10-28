@@ -28,6 +28,9 @@ namespace NordvikManager.Services
             if (lobby == null)
                 return;
 
+            foreach (var card in result.Cards ?? new List<ImportEntityResult>())
+                await NotifyAsync(mediator, lobby, player, card);
+
             var kind = result.Kind;
             if (EntityTransferKinds.IsMap(kind))
             {
