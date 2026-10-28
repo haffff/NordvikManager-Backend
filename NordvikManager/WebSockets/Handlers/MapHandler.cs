@@ -66,6 +66,7 @@ namespace NordvikManager.WebSockets.Handlers
             {
                 Player = player,
                 GameID = parsedMsg.GameId ?? default,
+                TreeParentId = CardHandler.TreeParentOf(parsedMsg.Data),
             };
             return await mediator.Send(addMapCmd);
         }

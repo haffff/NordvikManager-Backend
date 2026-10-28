@@ -1,4 +1,4 @@
-using NordvikManager.Application.Commands.Soundboard.GetSoundVolume;
+using NordvikManager.Application.Commands.Soundboard.GetSoundPlayback;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
 using NordvikManager.Application.Commands.Soundboard.PlaySound;
 using NordvikManager.Application.Commands.Soundboard.StopSound;
@@ -35,6 +35,8 @@ namespace NordvikManager.Tests.Controllers
         public SoundboardControllerTests()
         {
             SetupPlayer(_mediator, SomePlayer());
+            _mediator.Setup(m => m.Send(It.IsAny<GetSoundPlaybackCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new SoundPlayback(1, Loop: false));
             _controller = CreateController(_mediator, AnyUser());
         }
 
@@ -230,12 +232,49 @@ namespace NordvikManager.Tests.Controllers
             var resourceId = Guid.NewGuid();
             var soundboardId = Guid.NewGuid();
             _mediator.Setup(m => m.Send(It.IsAny<PlaySoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
-            _mediator.Setup(m => m.Send(It.Is<GetSoundVolumeCommand>(c => c.ResourceId == resourceId && c.SoundboardId == soundboardId), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(0.3);
+            _mediator.Setup(m => m.Send(It.Is<GetSoundPlaybackCommand>(c => c.ResourceId == resourceId && c.SoundboardId == soundboardId), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new SoundPlayback(0.3, Loop: true));
 
             await controller.PlaySound(Guid.NewGuid(), new ResourceIdRequest { ResourceId = resourceId, SoundboardId = soundboardId });
 
             Assert.Equal(0.3, sent!.Data["volume"]!.ToObject<double>());
+            Assert.True(sent.Data["loop"]!.ToObject<bool>());
+        }
+
+        // =========================================================================
+        // StopAllSounds
+        // =========================================================================
+
+        [Fact]
+        public async Task StopAllSounds_BroadcastsStopAll_WhenAllowed()
+        {
+            var connection = new Mock<IPlayerConnection>();
+            WebSocketCommand? sent = null;
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => sent = m as WebSocketCommand).ReturnsAsync(true);
+            var lobby = MakeLobby(_mediator);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            _mediator.Setup(m => m.Send(It.IsAny<StopSoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+
+            var result = await controller.StopAllSounds(Guid.NewGuid());
+
+            Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(WebSocketCommandNames.SoundStopAll, sent!.Command);
+        }
+
+        [Fact]
+        public async Task StopAllSounds_DoesNotBroadcast_WhenDenied()
+        {
+            var connection = new Mock<IPlayerConnection>();
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).ReturnsAsync(true);
+            var lobby = MakeLobby(_mediator);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            _mediator.Setup(m => m.Send(It.IsAny<StopSoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.NoPermission);
+
+            await controller.StopAllSounds(Guid.NewGuid());
+
+            connection.Verify(c => c.SendMessageToPlayer(It.IsAny<object>()), Times.Never);
         }
     }
 }

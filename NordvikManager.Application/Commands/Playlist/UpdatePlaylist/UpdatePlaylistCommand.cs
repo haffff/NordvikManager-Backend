@@ -18,5 +18,8 @@ namespace NordvikManager.Application.Commands.Playlist.UpdatePlaylist
 
         /// <summary>0..1; unchanged when not given.</summary>
         public double? Volume { get; set; }
+
+        /// <summary>Soundboard: its sounds that repeat until stopped; unchanged when not given.</summary>
+        public List<Guid>? LoopedResourceIds { get; set; }
     }
 }

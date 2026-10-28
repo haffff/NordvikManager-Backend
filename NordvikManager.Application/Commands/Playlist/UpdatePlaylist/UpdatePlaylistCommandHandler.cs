@@ -59,6 +59,9 @@ namespace NordvikManager.Application.Commands.Playlist.UpdatePlaylist
             playlist.Resources = resources;
             if (request.Volume.HasValue)
                 playlist.Volume = VolumeRules.Clamp(request.Volume.Value);
+            // Only its own sounds loop; one taken off the board stops looping with it.
+            var looped = request.LoopedResourceIds ?? playlist.LoopedResourceIds;
+            playlist.LoopedResourceIds = looped.Where(id => resources.Any(r => r.Id == id)).Distinct().ToList();
 
             var result = dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.NoChange;
 

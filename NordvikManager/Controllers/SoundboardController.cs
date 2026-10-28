@@ -1,4 +1,4 @@
-using NordvikManager.Application.Commands.Soundboard.GetSoundVolume;
+﻿using NordvikManager.Application.Commands.Soundboard.GetSoundPlayback;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
 using NordvikManager.Application.Commands.Soundboard.PlaySound;
 using NordvikManager.Application.Commands.Soundboard.StopSound;
@@ -47,8 +47,9 @@ namespace NordvikManager.Controllers
 
             if (result == CommandResponse.Ok)
             {
-                // The GM's volume: the file's own, times the soundboard's it was played from.
-                var volume = await mediator.Send(new GetSoundVolumeCommand
+                // The GM's volume (the file's own, times the soundboard's it was played from),
+                // and whether that soundboard loops it.
+                var playback = await mediator.Send(new GetSoundPlaybackCommand
                 {
                     GameId = gameId,
                     ResourceId = request.ResourceId,
@@ -59,7 +60,8 @@ namespace NordvikManager.Controllers
                 {
                     resourceId = request.ResourceId,
                     playedBy = playerResult.Player.Id,
-                    volume,
+                    volume = playback.Volume,
+                    loop = playback.Loop,
                 });
             }
 
@@ -88,6 +90,25 @@ namespace NordvikManager.Controllers
                 await BroadcastSound(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.SoundStop,
                     new { resourceId = request.ResourceId });
             }
+
+            return Ok(new { response = result });
+        }
+
+        // Silence: every sound playing stops for everyone (same permission as stopping one).
+        [HttpPost]
+        [Authorize]
+        [Route("StopAllSounds")]
+        public async Task<IActionResult> StopAllSounds([FromQuery] Guid gameId)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var result = await mediator.Send(new StopSoundCommand { GameId = gameId, Player = playerResult.Player });
+
+            if (result == CommandResponse.Ok)
+                await BroadcastSound(gameId, playerResult.Player, WebSockets.Core.WebSocketCommandNames.SoundStopAll, new { });
 
             return Ok(new { response = result });
         }

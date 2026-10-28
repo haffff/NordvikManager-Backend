@@ -15,6 +15,7 @@ namespace NordvikManager.Application.DataTransferObjects.Game
         public bool Repeat { get; set; }
         public PlaylistKind Kind { get; set; }
         public double Volume { get; set; } = 1;
+        public List<Guid> LoopedResourceIds { get; set; } = new();
         public List<ResourceDTO> Resources { get; set; } = new();
     }
 }

@@ -17,5 +17,11 @@ namespace NordvikManager.Application.Commands.Playlist.AddPlaylist
 
         /// <summary>0..1; full when not given.</summary>
         public double? Volume { get; set; }
+
+        /// <summary>Soundboard: those of its sounds that loop (others are ignored).</summary>
+        public List<Guid> LoopedResourceIds { get; set; } = new();
+
+        /// <summary>The folder (tree entry) it goes into; null for the top level.</summary>
+        public Guid? TreeParentId { get; set; }
     }
 }

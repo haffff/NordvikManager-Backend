@@ -16,5 +16,8 @@ namespace NordvikManager.Controllers.Requests
 
         /// <summary>0..1; full when not given.</summary>
         public double? Volume { get; set; }
+
+        /// <summary>The folder (tree entry) to put it in; null for the top level.</summary>
+        public Guid? TreeParentId { get; set; }
     }
 }

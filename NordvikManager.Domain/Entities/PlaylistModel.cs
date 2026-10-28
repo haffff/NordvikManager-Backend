@@ -28,6 +28,9 @@ namespace NordvikManager.Domain.Entities
         /// <summary>How loud the GM wants it, 0..1 (each player's own volume applies on top).</summary>
         public double Volume { get; set; } = 1;
 
+        /// <summary>Soundboard: its sounds that repeat until stopped (rain, a fire).</summary>
+        public List<Guid> LoopedResourceIds { get; set; } = new();
+
         public List<ResourceModel> Resources { get; set; } = new();
     }
 }

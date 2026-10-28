@@ -160,6 +160,18 @@ namespace NordvikManager.Tests.Controllers
             Assert.NotNull(ok.Value);
         }
 
+        [Fact]
+        public async Task AddPlaylist_IntoAFolder_PassesTheFolder()
+        {
+            var folder = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<AddPlaylistCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+
+            await _controller.AddPlaylist(Guid.NewGuid(), new AddPlaylistRequest { Name = "Battle Music", TreeParentId = folder });
+
+            _mediator.Verify(m => m.Send(It.Is<AddPlaylistCommand>(c => c.TreeParentId == folder), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
         // =========================================================================
         // UpdatePlaylist
         // =========================================================================

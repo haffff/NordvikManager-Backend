@@ -1,3 +1,4 @@
+using NordvikManager.Application.Commands.Soundboard.GetSoundPlayback;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.Exceptions;
 using NordvikManager.Services.Implementations;
@@ -27,6 +28,12 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         private readonly Mock<IMediator> _mediator = new();
         private readonly PlaySoundStepDefinition _play = new();
         private readonly StopSoundStepDefinition _stop = new();
+
+        public SoundStepDefinitionsTests()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetSoundPlaybackCommand>(), It.IsAny<System.Threading.CancellationToken>()))
+                     .ReturnsAsync(new SoundPlayback(1, Loop: false));
+        }
 
         private static ActionStep MakeStep(string type, string resourceId, string player = null) =>
             new ActionStep

@@ -79,6 +79,7 @@ namespace NordvikManager.Controllers
                 Kind        = request.Kind,
                 ResourceIds = request.ResourceIds,
                 Volume      = request.Volume,
+                TreeParentId = request.TreeParentId,
             });
 
             await NotifyPlaylistChange(gameId, playerResult.Player, "add", id);
