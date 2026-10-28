@@ -53,6 +53,7 @@ namespace NordvikManager.Application.Commands.Playlist.AddPlaylist
                 Kind        = request.Kind,
                 Resources   = resources,
                 Volume      = VolumeRules.Clamp(request.Volume ?? 1),
+                LoopedResourceIds = request.LoopedResourceIds.Where(id => resources.Any(r => r.Id == id)).Distinct().ToList(),
             };
 
             await dbContext.Playlists.AddAsync(model, cancellationToken);
@@ -67,6 +68,7 @@ namespace NordvikManager.Application.Commands.Playlist.AddPlaylist
                     EntryType = TreeEntryTypes.ForPlaylist(model.Kind),
                     IsFolder = false,
                     TargetId = model.Id,
+                    ParentId = request.TreeParentId,
                 },
                 GameId = request.GameId,
                 Player = request.Player,
