@@ -62,7 +62,9 @@ namespace NordvikManager.WebSockets.Handlers
                 Player = player,
                 GameID = parsedMsg.GameId ?? default,
                 IsCustomUi = customPanel,
-                IsTemplate = template
+                IsTemplate = template,
+                // A "+ New … here" row of a folder.
+                TreeParentId = TreeParentOf(parsedMsg.Data),
             };
 
             var (card, id) = await mediator.Send(addCardCommand);
@@ -113,6 +115,9 @@ namespace NordvikManager.WebSockets.Handlers
 
             return (card, id);
         }
+
+        internal static Guid? TreeParentOf(Newtonsoft.Json.Linq.JToken? data) =>
+            data is Newtonsoft.Json.Linq.JObject obj && Guid.TryParse(obj["treeParentId"]?.ToString(), out var id) ? id : null;
 
         private async Task<CommandResponse?> DeleteCard(WebSocketCommand parsedMsg, PlayerDTO player)
         {
