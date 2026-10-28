@@ -1,0 +1,64 @@
+{
+  "emptyCollections": {
+    "AdditionalResources": [
+      "00000000-0000-0000-0000-000000000901"
+    ],
+    "Description": "text4",
+    "FirstOpen": true,
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsHidden": true,
+    "Key": "text12",
+    "MainResource": "00000000-0000-0000-0000-000000000005",
+    "Name": "text3",
+    "Owner": null,
+    "Permission": null,
+    "Properties": [],
+    "TemplateId": null
+  },
+  "filled": {
+    "AdditionalResources": [
+      "00000000-0000-0000-0000-000000000901"
+    ],
+    "Description": "text4",
+    "FirstOpen": true,
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsHidden": true,
+    "Key": "text12",
+    "MainResource": "00000000-0000-0000-0000-000000000005",
+    "Name": "text3",
+    "Owner": null,
+    "Permission": null,
+    "Properties": [
+      {
+        "EntityName": "text19",
+        "Id": "00000000-0000-0000-0000-000000000016",
+        "IsProtected": true,
+        "Name": "text17",
+        "ParentID": "00000000-0000-0000-0000-000000000021",
+        "Permission": null,
+        "Value": "text20"
+      }
+    ],
+    "TemplateId": null
+  },
+  "fresh": {
+    "AdditionalResources": [],
+    "Description": null,
+    "FirstOpen": null,
+    "GenericPermission": null,
+    "GmPermission": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsHidden": false,
+    "Key": null,
+    "MainResource": null,
+    "Name": null,
+    "Owner": null,
+    "Permission": null,
+    "Properties": [],
+    "TemplateId": null
+  }
+}

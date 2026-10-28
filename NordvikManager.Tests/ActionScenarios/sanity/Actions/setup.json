@@ -1,0 +1,95 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "setup",
+  "prefix": "sanity",
+  "description": "Player Load: adds the example tools (Tools panel) and the Sanity menu for the player who loads the game; GMs (owner and co-GMs) also get the GM ones.",
+  "hook": 5,
+  "isEnabled": true,
+  "content": [
+    {
+      "id": "f3283248-7ed3-5385-ae83-ad4d662c86f5",
+      "Type": "AddToolbarButton",
+      "Data": {
+        "Label": "Toolbar menu",
+        "Name": "sanity_menu",
+        "UiName": "Sanity",
+        "MenuId": "sanity_menu",
+        "MenuName": "Sanity",
+        "OnlyTriggeringPlayer": true
+      }
+    },
+    {
+      "id": "7555f5cb-6cd0-5833-bda1-7615b1444e79",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu: Bless",
+        "Name": "sanity_bless",
+        "UiName": "Bless (pick up to 3)",
+        "Action": "sanity/bless",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true
+      }
+    },
+    {
+      "id": "c28099eb-7077-50c9-9a64-8709217635ce",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu: Fireball",
+        "Name": "sanity_fireball",
+        "UiName": "Fireball (aim on the map)",
+        "Action": "sanity/fireball",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "ActionArgs": {
+          "radiusSquares": "4",
+          "dice": "8d6"
+        }
+      }
+    },
+    {
+      "id": "1ac73352-a80a-5a2b-8d15-0cd1bb1fb071",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu: Burning Hands",
+        "Name": "sanity_burning_hands",
+        "UiName": "Burning Hands (15 ft cone)",
+        "Action": "sanity/burning_hands",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "ActionArgs": {
+          "lengthSquares": "3",
+          "dice": "3d6"
+        }
+      }
+    },
+    {
+      "id": "27adfe46-b403-5b58-9e57-c03f74bca10c",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Menu (GM): random damage to every token on the map",
+        "Name": "sanity_damage_all",
+        "UiName": "Random damage (all tokens)",
+        "Action": "sanity/damage_all",
+        "Location": "sanity_menu",
+        "OnlyTriggeringPlayer": true,
+        "GmOnly": true,
+        "ActionArgs": {
+          "dice": "1d6"
+        }
+      }
+    },
+    {
+      "id": "a2bd7095-0a8f-5d93-80f1-1c56990cad6b",
+      "Type": "AddMenuItem",
+      "Data": {
+        "Label": "Map right-click (GM): random monster",
+        "Name": "sanity_random_enemy",
+        "UiName": "Random monster here",
+        "Action": "sanity/random_enemy",
+        "Location": "battlemap",
+        "OnlyTriggeringPlayer": true,
+        "GmOnly": true
+      }
+    }
+  ]
+}

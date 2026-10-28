@@ -1,0 +1,37 @@
+﻿using NordvikManager.Domain.Entities;
+using NordvikManager.Domain.Entities.BattleMap;
+using NordvikManager.Domain.Entities.Interfaces;
+using NordvikManager.Domain.Entities.Resources;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
+
+namespace NordvikManager.Domain.Entities.BattleMap
+{
+    public class GameModel : INamedEntity
+    {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public Guid Id { get; set; }
+        public Guid MasterId { get; set; }
+        public Guid SystemPlayerId { get; set; }
+        public List<MapModel> Maps { get; set; }
+        public List<PlayerModel> Players { get; set; }
+        public string? Name { get; set; }
+        [JsonIgnore]
+        public string? Password { get; set; }
+        public bool IsPublic { get; set; }
+        public List<LayoutModel> Layouts { get; set; }
+        public List<BattleMapModel> BattleMaps { get; set; }
+        public bool UseMetric { get; set; }
+        public List<PropertyModel>? Properties { get; set; }
+        public List<CardModel> Cards { get; set; }
+        public List<ActionModel> Actions { get; set; }
+        public List<AddonModel> Addons { get; set; }
+        public List<ResourceModel> Resources { get; set; }
+        public List<TreeEntryModel> TreeEntries { get; set; }
+        public List<PlaylistModel> Playlists { get; set; }
+        /// <summary>ID of the session registered on the Central Server for this game's WebRTC signaling.</summary>
+        public string? CentralSessionId { get; set; }
+    }
+}

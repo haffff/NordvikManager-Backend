@@ -1,0 +1,140 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "burning_hands",
+  "prefix": "sanity",
+  "description": "Menu item: the player picks their character, aims a 15 ft cone from it (Request Point), and the GM confirms the damage to the tokens in it.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "Type": "RequestTargets",
+      "Data": {
+        "Label": "Who casts it",
+        "Message": "Pick your character",
+        "Max": "1",
+        "Output": "caster"
+      },
+      "id": "7ec7baeb-e527-5a8d-9d69-81934878e5fc"
+    },
+    {
+      "Type": "RequestPoint",
+      "Data": {
+        "Label": "Aim",
+        "Message": "Which way? (15 ft cone)",
+        "Shape": "cone",
+        "From": "%caster%",
+        "Radius": "%lengthSquares%",
+        "Output": "point"
+      },
+      "id": "3e4f1d20-e8a5-5a4c-99ea-3220970cee0f"
+    },
+    {
+      "Type": "Find",
+      "Data": {
+        "Label": "Tokens in the cone",
+        "What": "tokens",
+        "Near": "%caster%",
+        "Shape": "cone",
+        "Radius": "%lengthSquares%",
+        "Toward": "%point%",
+        "Output": "hit"
+      },
+      "id": "ec65ee01-c07f-59f6-83a7-82b56b722d25"
+    },
+    {
+      "Type": "ShowMarker",
+      "Data": {
+        "Label": "Show the cone while the GM decides",
+        "Shape": "cone",
+        "At": "%point.from%",
+        "Toward": "%point%",
+        "Radius": "%lengthSquares%",
+        "UntilActionEnds": true
+      },
+      "id": "ca9fbe81-c61f-5194-889c-6abebc10bebb"
+    },
+    {
+      "id": "ca6fdc9c-57ab-5e5f-a681-b529b84a18b2",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Fire damage",
+        "DiceString": "%dice%",
+        "OutputVariable": "fireDamage",
+        "SimpleOutput": true,
+        "PrintToChat": true,
+        "ChatTitle": "%playerName%: Burning Hands"
+      }
+    },
+    {
+      "id": "661ce6cd-b731-544e-8e6b-749cac3fdde4",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Who was hit",
+        "Output": "",
+        "Script": "return { hitCount: vars.hit.length, hitNames: vars.hit.map(function (t) { return t.name; }).join(\", \") || \"nobody\" };"
+      }
+    },
+    {
+      "id": "4a98dec4-e89d-5298-8530-86d50e68b670",
+      "Type": "RequestUserInput",
+      "Data": {
+        "Label": "Ask the GM",
+        "UserID": "%gmId%",
+        "ShowDialog": true,
+        "Options": "yes\nhalf\nno",
+        "StopIfCancelled": false,
+        "Timeout": "00:02:00",
+        "Output": "answer",
+        "Message": "Burning Hands by %playerName%: %fireDamage% fire damage to %hitNames%. Apply it?"
+      }
+    },
+    {
+      "id": "1707a2e1-2444-5824-99f5-93dadcdeb040",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Read the answer",
+        "Output": "",
+        "Script": "var a = String(vars.answer == null ? \"\" : vars.answer).trim().toLowerCase();\nvar dmg = Number(vars.fireDamage) || 0;\nvar final = 0, text;\nif (vars.hitCount === 0) text = \"Burning Hands hit nobody.\";\nelse if ([\"yes\", \"y\", \"tak\", \"t\", \"full\"].indexOf(a) >= 0) { final = dmg; text = \"The GM applied \" + dmg + \" fire damage to \" + vars.hitCount + \" creature(s).\"; }\nelse if ([\"half\", \"h\", \"pol\", \"pół\", \"polowa\", \"połowa\"].indexOf(a) >= 0) { final = Math.floor(dmg / 2); text = \"The GM applied half (\" + final + \") to \" + vars.hitCount + \" creature(s).\"; }\nelse if (a) text = \"The GM didn't apply the damage.\";\nelse text = \"The GM didn't answer: no damage applied.\";\nreturn { damage: final, apply: final > 0 ? 1 : 0, result: text };"
+      }
+    },
+    {
+      "id": "39e54151-1a74-5015-a865-2d5809bd0181",
+      "Type": "If",
+      "Data": {
+        "Label": "Apply when the GM agreed",
+        "Condition": "%apply% = 1",
+        "Then": [
+          {
+            "id": "a587f2d5-3bfc-5b5d-b6b1-48becd925898",
+            "Type": "ForEach",
+            "Data": {
+              "Label": "Each token hit",
+              "Collection": "hit",
+              "ItemName": "target",
+              "Do": [
+                {
+                  "id": "4f827812-c6e2-5bad-b7c5-e91027bf80a9",
+                  "Type": "ExecuteAction",
+                  "Data": {
+                    "Label": "Damage it",
+                    "Value": "sanity/damage_target"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "b4900293-477a-5f69-adc2-ce4f389e513c",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Result",
+        "Template": "Text",
+        "Title": "Burning Hands",
+        "Message": "%result%"
+      }
+    }
+  ]
+}

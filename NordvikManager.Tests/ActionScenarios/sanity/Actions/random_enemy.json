@@ -1,0 +1,127 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "random_enemy",
+  "prefix": "sanity",
+  "description": "Map right-click: places a copy of a random card that has the property 'potworny'.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "3e243ea2-fd2c-5d94-9f06-b87329755588",
+      "Type": "RequirePermission",
+      "Data": {
+        "Label": "GMs only",
+        "EntityId": "%gameId%",
+        "Permission": "Edit",
+        "StopIfDenied": true
+      }
+    },
+    {
+      "id": "5231358a-c57c-592e-b17f-b9d345b31dad",
+      "Type": "Find",
+      "Data": {
+        "Label": "The cards to choose from",
+        "What": "cards",
+        "Property": "potworny",
+        "Output": "pool"
+      }
+    },
+    {
+      "id": "76f28bb5-eb44-5a93-a2b4-16c996dfa786",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "How many",
+        "Output": "",
+        "Script": "return { poolSize: vars.pool.length };"
+      }
+    },
+    {
+      "id": "eeca2b65-f50a-5271-83d5-c20c58625f4a",
+      "Type": "If",
+      "Data": {
+        "Label": "Any to choose from?",
+        "Condition": "%poolSize% = 0",
+        "Then": [
+          {
+            "id": "dcc9d5ae-6d3c-5b1b-ad49-34167c7a73d1",
+            "Type": "SendChat",
+            "Data": {
+              "Label": "Tell the GM",
+              "Template": "Text",
+              "Title": "Random monster",
+              "Player": "%playerId%",
+              "Message": "No card has the property 'potworny'. Add it (any value) to the cards to pick from."
+            }
+          },
+          {
+            "id": "0881528e-0047-5d43-b14f-75f932e651ff",
+            "Type": "Exit",
+            "Data": {
+              "Label": "Nothing to place"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "043e62e1-cc51-5cc0-9623-432777a39dc5",
+      "Type": "RollDice",
+      "Data": {
+        "Label": "Pick one",
+        "DiceString": "1d%poolSize%",
+        "OutputVariable": "pick",
+        "SimpleOutput": true
+      }
+    },
+    {
+      "id": "496c9e64-417d-5d2a-8bf6-cb2e67fae41c",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "The picked card",
+        "Output": "",
+        "Script": "return { picked: vars.pool[Number(vars.pick) - 1] };"
+      }
+    },
+    {
+      "id": "b19f817d-fe4b-5515-8436-ffa1927ce83e",
+      "Type": "CreateCard",
+      "Data": {
+        "Label": "A copy of it",
+        "Name": "%picked.name%",
+        "TemplateId": "%picked.id%",
+        "Output": "monster"
+      }
+    },
+    {
+      "id": "85f91027-53e3-564e-9fdf-ffd79d7f6ecf",
+      "Type": "DeleteProperty",
+      "Data": {
+        "Label": "The copy isn't one to pick from",
+        "ParentId": "%monster%",
+        "PropertyName": "potworny"
+      }
+    },
+    {
+      "id": "e6fb8955-03cb-53fa-af47-046a1787a787",
+      "Type": "SpawnToken",
+      "Data": {
+        "Label": "Its token where the map was clicked",
+        "CardId": "%monster%",
+        "X": "%position.x%",
+        "Y": "%position.y%",
+        "Output": "monsterToken"
+      }
+    },
+    {
+      "id": "eea7b7de-d7b8-51cd-b030-159e935bfdae",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Announce",
+        "Template": "Text",
+        "Title": "Random monster",
+        "Message": "A wild %picked.name% appears!"
+      }
+    }
+  ],
+  "gmPermission": 31
+}

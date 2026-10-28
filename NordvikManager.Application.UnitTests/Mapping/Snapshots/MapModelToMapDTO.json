@@ -1,0 +1,69 @@
+{
+  "emptyCollections": {
+    "Elements": [],
+    "GameID": "00000000-0000-0000-0000-000000000014",
+    "GridColor": "text11",
+    "GridSize": 108,
+    "GridUnitSize": 110,
+    "GridVisible": true,
+    "Height": 107,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Name": "text4",
+    "Path": "text5",
+    "Permission": null,
+    "Properties": [],
+    "Width": 106
+  },
+  "filled": {
+    "Elements": [
+      {
+        "Id": "00000000-0000-0000-0000-000000000005",
+        "IsPublic": true,
+        "Layer": 111,
+        "MapID": "00000000-0000-0000-0000-000000000012",
+        "Object": "{\n  \"type\": \"rect\",\n  \"left\": 12.0,\n  \"visible\": true,\n  \"tokenData\": {\n    \"cardId\": \"c1\"\n  },\n  \"path\": [\n    1,\n    2\n  ],\n  \"fill\": null\n}",
+        "Permission": null,
+        "Properties": [],
+        "Selectable": true,
+        "Visible": null
+      }
+    ],
+    "GameID": "00000000-0000-0000-0000-000000000035",
+    "GridColor": "text20",
+    "GridSize": 117,
+    "GridUnitSize": 119,
+    "GridVisible": true,
+    "Height": 116,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Name": "text13",
+    "Path": "text14",
+    "Permission": null,
+    "Properties": [
+      {
+        "EntityName": "text26",
+        "Id": "00000000-0000-0000-0000-000000000023",
+        "IsProtected": true,
+        "Name": "text24",
+        "ParentID": "00000000-0000-0000-0000-000000000028",
+        "Permission": null,
+        "Value": "text27"
+      }
+    ],
+    "Width": 115
+  },
+  "fresh": {
+    "Elements": [],
+    "GameID": null,
+    "GridColor": null,
+    "GridSize": 0,
+    "GridUnitSize": 0,
+    "GridVisible": false,
+    "Height": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Name": null,
+    "Path": null,
+    "Permission": null,
+    "Properties": [],
+    "Width": null
+  }
+}

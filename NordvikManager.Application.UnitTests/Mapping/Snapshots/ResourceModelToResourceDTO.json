@@ -1,0 +1,38 @@
+{
+  "emptyCollections": {
+    "Data": "AQID",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Key": "text30",
+    "MimeType": "image/jpeg",
+    "Name": "text29",
+    "Path": "text32",
+    "PlayerId": "00000000-0000-0000-0000-000000000033",
+    "PlayerName": "text39",
+    "Storage": 1,
+    "Volume": 0.5
+  },
+  "filled": {
+    "Data": "AQID",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Key": "text41",
+    "MimeType": "image/jpeg",
+    "Name": "text40",
+    "Path": "text43",
+    "PlayerId": "00000000-0000-0000-0000-000000000044",
+    "PlayerName": "text50",
+    "Storage": 1,
+    "Volume": 0.5
+  },
+  "fresh": {
+    "Data": "",
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Key": null,
+    "MimeType": "image/png",
+    "Name": null,
+    "Path": null,
+    "PlayerId": "00000000-0000-0000-0000-000000000000",
+    "PlayerName": null,
+    "Storage": 0,
+    "Volume": null
+  }
+}

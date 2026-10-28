@@ -1,0 +1,94 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Release builds (dotnet publish -r <rid>): one self-contained executable holding the runtime
+       and every DLL, so an unzipped server is just NordvikManager(.exe), appsettings.json,
+       wwwroot/ and BuiltInAddons/. Not trimmed: EF Core, MediatR, Jint and the reflection-based
+       handler/step discovery need the full assemblies. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <!-- Native libraries (SQLite) are unpacked to a temp folder on start instead of sitting next to the exe. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <!-- No IIS: web.config would only confuse. -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+    <!-- wwwroot is served by UseStaticFiles, which never picks the precompressed .br/.gz copies. -->
+    <CompressionEnabled>false</CompressionEnabled>
+  </PropertyGroup>
+
+  <!-- The updater orders dev builds of one version (dev.<commit>) by when they were built. -->
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <AssemblyMetadata Include="BuildTimeUtc" Value="$([System.DateTime]::UtcNow.ToString('o'))" />
+  </ItemGroup>
+
+  <!-- What's in the release folder, for the GM. -->
+  <ItemGroup>
+    <None Update="README.txt" CopyToOutputDirectory="Never" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Local settings and data never ship. -->
+  <ItemGroup>
+    <Content Update="appsettings.Development.json;appsettings.Production.json" CopyToPublishDirectory="Never" />
+    <Content Remove="data\**" />
+    <None Remove="data\**" />
+  </ItemGroup>
+
+  <!-- Symbols of referenced projects and packages, and the MapStaticAssets manifest (unused,
+       wwwroot goes through UseStaticFiles), would sit next to the exe for nothing. -->
+  <Target Name="TrimReleaseFolder" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="DropStaticWebAssetsEndpointsManifest" AfterTargets="CopyStaticWebAssetsEndpointsManifest" Condition="'$(PublishSingleFile)' == 'true'">
+    <Delete Files="$(PublishDir)$(TargetName).staticwebassets.endpoints.json" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="Jint" Version="4.16.4" />
+    <!-- MediatR 13+ is commercial (a license key per installation); 11 is Apache-2.0. Do not upgrade. -->
+    <PackageReference Include="MediatR" Version="[11.0.0]" />
+    <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.1.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.7" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.7" />
+    <PackageReference Include="Swashbuckle.Core" Version="5.6.0" />    
+    <PackageReference Include="System.Collections" Version="4.3.0" />
+    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.5" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
+    <PackageReference Include="SIPSorcery" Version="10.0.3" />
+    <PackageReference Include="SocketIOClient" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Services\Events\" />
+  </ItemGroup>
+
+  <!-- Addons installed into every new game (IBuiltInAddons zips each folder at runtime). -->
+  <ItemGroup>
+    <Content Remove="BuiltInAddons\**" />
+    <None Remove="BuiltInAddons\**" />
+    <None Include="BuiltInAddons\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
+    <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+using NordvikManager.Models;
+using System.ComponentModel;
+
+namespace NordvikManager.Services.Implementations.ActionBody.Data
+{
+    public class DeleteResourceStepData
+    {
+        [Description("Key of the resource to delete. Takes priority over ResourceId when both are set.")]
+        public string Key { get; set; }
+
+        [UIType("resourceid")]
+        [Description("Resource to delete. Pick one, or type a GUID / %variable%. Used when Key is not set.")]
+        public string ResourceId { get; set; }
+    }
+}

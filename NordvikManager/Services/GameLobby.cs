@@ -1,0 +1,568 @@
+﻿using Microsoft.Extensions.Logging;
+using NordvikManager.Application.Commands.Security.CheckPermissions;
+using NordvikManager.Application.Commands.Security.GetEffectivePermissions;
+using NordvikManager.Application.Commands.Security.GetPermissions;
+using NordvikManager.Application.Commands.Properties.GetTokenViewers;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Domain.Enums;
+using NordvikManager.Enums;
+using NordvikManager.Extensions;
+using NordvikManager.Services.Implementations.HookArgs;
+using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Core;
+using NordvikManager.WebSockets.Handlers;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Services.Implementations
+{
+    public class GameLobby : IDisposable
+    {
+        private IServiceScopeFactory serviceScopeFactory;
+        private IServiceScope serviceScope;
+
+        private static readonly HashSet<string> AllowedPassthroughCommands = new HashSet<string>()
+        {
+            WebSocketCommandNames.CmdPreviewStart,
+            WebSocketCommandNames.CmdPreviewUpdate,
+            WebSocketCommandNames.CmdPreviewEnd
+        };        
+        
+        public GameLobby(IServiceScopeFactory serviceScopeFactory)
+        {
+            serviceScope = serviceScopeFactory.CreateScope();
+
+            ActionProcessingService = serviceScope.ServiceProvider.GetRequiredService<IActionProcessingService>();
+            ActionProcessingService.GameLobby = this;
+
+            // Attach the scoped IGameEventLogger to this lobby's EventLog so that
+            // application-layer handlers resolved from this scope can write to it.
+            var eventLogger = serviceScope.ServiceProvider
+                .GetService<NordvikManager.Application.Interfaces.IGameEventLogger>()
+                as LobbyGameEventLogger;
+            eventLogger?.Attach(EventLog);
+
+            // Store in the private field only; the public property delegates to it
+            this.serviceScopeFactory = serviceScopeFactory;
+        }
+
+        public Guid Id { get; set; } = Guid.NewGuid();
+        public Guid GameId { get; set; }
+        public Dictionary<PlayerDTO, List<IPlayerConnection>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<IPlayerConnection>>();
+        public PlayerDTO SystemPlayer { get; set; }
+        public IActionProcessingService ActionProcessingService { get; set; }
+
+        // Delegates to the private field so external callers still work
+        public IServiceScopeFactory ServiceScopeFactory => serviceScopeFactory;        public bool Debug { get; internal set; }
+
+        // Ephemeral playback state, keyed by playlist id — multiple playlists can play
+        // concurrently. Never persisted; lost if the lobby is torn down. ConcurrentDictionary
+        // because PlaylistController's Play/Pause/Stop/Advance/GetCurrentPlayback endpoints
+        // can read/write this from concurrent requests against the same lobby instance.
+        public System.Collections.Concurrent.ConcurrentDictionary<Guid, PlaylistPlaybackState> ActivePlaylistPlaybacks { get; } = new();
+
+        public Implementations.GameEventLog EventLog { get; } = new();
+
+        /// <summary>
+        /// Returns an <see cref="Microsoft.Extensions.Logging.ILogger"/> whose output is
+        /// written to this lobby's <see cref="EventLog"/>.  Pass the owning class type
+        /// as the generic argument to get a named category automatically:
+        /// <code>
+        ///   var log = lobby.CreateLogger&lt;MyService&gt;();
+        /// </code>
+        /// </summary>
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string category)
+            => new Implementations.GameEventLogLogger(EventLog, category);
+
+        /// <inheritdoc cref="CreateLogger(string)"/>
+        public Microsoft.Extensions.Logging.ILogger CreateLogger<T>()
+            => CreateLogger(typeof(T).Name);
+
+        public bool CheckForPlayer(PlayerDTO player)
+        {
+            return ConnectedPlayers.Any(x => x.Key.Id == player.Id);
+        }
+
+        public void Broadcast(object message, PlayerDTO player)
+        {
+            foreach (var connectedPlayer in ConnectedPlayers)
+            {
+                if (connectedPlayer.Key.Id != player.Id)
+                    connectedPlayer.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
+            }
+        }
+
+        /// <summary>To the connected players who may edit the game (the owner and co-GMs).</summary>
+        public async Task SendToGmsAsync(object message)
+        {
+            using var scope = serviceScopeFactory.CreateScope();
+            var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+            foreach (var connected in ConnectedPlayers.ToList())
+                if (await CanEditGameAsync(connected.Key, mediator))
+                    connected.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
+        }
+
+        private async Task<bool> CanEditGameAsync(PlayerDTO player, IMediator mediator) =>
+            player.IsOwner == true || await mediator.Send(new CheckPermissionsCommand
+            {
+                Player = player,
+                EntityId = GameId,
+                RequiredPermission = Permission.Edit,
+            });
+
+        public void SendToPlayer(object message, PlayerDTO player)
+        {
+            if (ConnectedPlayers.ContainsKey(player))
+                ConnectedPlayers[player].ForEach(async ws => await ws.SendMessageToPlayer(message));
+        }
+
+        private async Task<WebSocketCommand> HandleWebSocketCommand(WebSocketCommand message, PlayerDTO player)
+        {
+            try
+            {
+                if (!CheckIfAllowed(message))
+                {
+                    message.Command = WebSocketCommandNames.ErrorGeneric;
+                    message.OnlyToSender = true;
+                    message.Result = WebSocketCommandNames.ResultNotAllowed;
+                    return message;
+                }
+
+                message.PlayerId = player.Id;
+                message.GameId = GameId;
+
+                if (AllowedPassthroughCommands.Contains(message.Command))
+                {
+                    message.Result = WebSocketCommandNames.ResultPass;
+                    return message;
+                }
+
+                if (await TryHandleActionChatCommandAsync(message, player))
+                    return message;
+
+                // Every command gets its own scope, so its own DbContext. Never resolve the
+                // handlers once from the lobby's game-long scope: a failed save would stay
+                // queued in the shared DbContext and fail every later command of the game.
+                using var handlerScope = serviceScopeFactory.CreateScope();
+                (handlerScope.ServiceProvider.GetService<NordvikManager.Application.Interfaces.IGameEventLogger>()
+                    as LobbyGameEventLogger)?.Attach(EventLog);
+
+                foreach (var item in handlerScope.ServiceProvider.GetServices<IWebSocketHandler>())
+                {
+                    var res = await item.Handle(message, player);
+                    if (res != null)
+                    {
+                        // Bug fix: the original code set Result to the enum name then unconditionally
+                        // overwrote it with "Ok" on the very next line — only set "Ok" in the else branch.
+                        if (res != CommandResponse.Ok)
+                        {
+                            message.OnlyToSender = true;
+                            message.Result = Enum.GetName(typeof(CommandResponse), res);
+                        }
+                        else
+                        {
+                            message.Result = WebSocketCommandNames.ResultOk;
+                        }
+                        break;
+                    }
+                }
+
+                return message;
+            }
+            catch (PermissionException e)
+            {
+                EventLog.Log("Error", "Permission", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
+                return MakeErrorCommand(WebSocketCommandNames.ErrorPermission, e.Message, player);
+            }
+            catch (WrongArgumentsException e)
+            {
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
+                return MakeErrorCommand(WebSocketCommandNames.ErrorArguments, e.Message, player);
+            }
+            catch (ResourceNotFoundException e)
+            {
+                EventLog.Log("Warning", "Command", e.Message, player.Name,
+                    new { command = message.Command, data = message.Data });
+                return MakeErrorCommand(WebSocketCommandNames.ErrorResource, e.Message, player);
+            }
+            catch (Exception e)
+            {
+                EventLog.Log("Error", "System", e.Message, player.Name,
+                    new { exceptionType = e.GetType().Name, command = message.Command, data = message.Data });
+                return MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player);
+            }
+        }
+
+        /// <summary>
+        /// Routes a non-built-in slash command ("/cast fireball") to the Hook.ChatCommand actions
+        /// whose hook filter lists it ("cast"). Only claims the message when an enabled action
+        /// does; any other command goes on to ChatHandler, which answers "Wrong command". A
+        /// claimed message is echoed to the sender only and not stored in chat history.
+        /// </summary>
+        private async Task<bool> TryHandleActionChatCommandAsync(WebSocketCommand message, PlayerDTO player)
+        {
+            if (message.Command != WebSocketCommandNames.CmdChatPush || message.Data?.Type != JTokenType.String)
+                return false;
+
+            var text = message.Data.ToString().Trim();
+            if (!text.StartsWith('/') || text.Length < 2)
+                return false;
+
+            var space = text.IndexOf(' ');
+            var name = space < 0 ? text : text[..space];
+            if (ChatHandler.BuiltInCommands.Contains(name))
+                return false;
+
+            if (!await ActionProcessingService.HandlesChatCommandAsync(name[1..]))
+                return false;
+
+            var args = new ChatCommandHookArgs
+            {
+                Player = player,
+                ChatCommand = name[1..],
+                ChatArgs = space < 0 ? string.Empty : text[(space + 1)..].Trim(),
+                ChatText = text,
+            };
+            _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.ChatCommand, args));
+
+            message.OnlyToSender = true;
+            message.Result = WebSocketCommandNames.ResultOk;
+            return true;
+        }
+
+        // Use OrdinalIgnoreCase to avoid a string allocation from .ToLower()
+        private bool CheckIfAllowed(WebSocketCommand message)
+        {
+            return !message.Command.Equals(WebSocketCommandNames.CmdClientScriptExecute, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task<WebSocketCommand> HandleWebSocketCommand(string message, PlayerDTO player)
+        {
+            WebSocketCommand webSocketCommand;
+            try
+            {
+                JObject parsedMsg = JObject.Parse(message);
+                webSocketCommand = parsedMsg.ToObject<WebSocketCommand>();
+            }
+            catch (Exception e)
+            {
+                // Domain exceptions (PermissionException etc.) can't occur during parsing —
+                // those are handled by the WebSocketCommand-object overload this delegates to.
+                EventLog.Log("Error", "System", e.Message, player.Name, new { exceptionType = e.GetType().Name });
+                SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorGeneral, e.Message, player), player);
+                return null;
+            }
+
+            return await HandleWebSocketCommand(webSocketCommand, player);
+        }
+
+        // Extracted helper — eliminates the four identical WebSocketCommand initialiser blocks
+        private WebSocketCommand MakeErrorCommand(string command, string data, PlayerDTO player)
+        {
+            return new WebSocketCommand()
+            {
+                GameId = GameId,
+                PlayerId = player.Id,
+                Command = command,
+                Data = data,
+                OnlyToSender = true
+            };
+        }
+
+        public async Task HandleCommand(PlayerDTO player, string message)
+        {
+            WebSocketCommand webSocketCommand = await HandleWebSocketCommand(message, player);
+            if (webSocketCommand == null)
+                return;
+            await HandlePostCommand(player, webSocketCommand);
+        }
+
+        public async Task HandleCommand(PlayerDTO player, WebSocketCommand message)
+        {
+            WebSocketCommand webSocketCommand = await HandleWebSocketCommand(message, player);
+            await HandlePostCommand(player, webSocketCommand);
+        }
+
+        /// <summary>
+        /// A card value changed (property_add/update/remove) that some players can't read:
+        /// those who can see a token placed for the card that shows it get the change too
+        /// (they could load it already, see GetPropertiesByQuery), e.g. its bars.
+        /// </summary>
+        private async Task SendToTokenViewers(IMediator cmdMediator, WebSocketCommand webSocketCommand, List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>> notReading)
+        {
+            var command = webSocketCommand.Command;
+            if (notReading.Count == 0
+                || (command != WebSocketCommandNames.PropertyAdd && command != WebSocketCommandNames.PropertyUpdate && command != WebSocketCommandNames.PropertyRemove)
+                || webSocketCommand.Data.Type != JTokenType.Object
+                || !Guid.TryParse(webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToString(), out var parentId)
+                || webSocketCommand.Data["name"]?.ToString() is not { Length: > 0 } name)
+                return;
+
+            var viewers = await cmdMediator.Send(new GetTokenViewersCommand
+            {
+                GameId = GameId,
+                CardId = parentId,
+                PropertyName = name,
+                PlayerIds = notReading.Select(p => p.Key.Id ?? Guid.Empty).ToList(),
+            });
+            if (viewers == null || viewers.Count == 0)
+                return;
+
+            webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)Permission.Read;
+            foreach (var item in notReading.Where(p => viewers.Contains(p.Key.Id ?? Guid.Empty)))
+                await item.Value.SendMessageToPlayer(webSocketCommand);
+        }
+
+        /// <summary>
+        /// Broadcasts or routes a processed command to the appropriate connected players.
+        /// </summary>
+        public async Task HandlePostCommand(PlayerDTO player, WebSocketCommand webSocketCommand)
+        {
+            // Renamed from `mediator` to `cmdMediator` to avoid shadowing the instance field
+            using var cmdScope = serviceScopeFactory.CreateScope();
+            var cmdMediator = cmdScope.ServiceProvider.GetRequiredService<IMediator>();
+
+            try
+            {
+                if (await HandleSpecialCommands(player, webSocketCommand, cmdMediator))
+                    return;
+
+                if (webSocketCommand.OnlyToSender)
+                {
+                    if (ConnectedPlayers.ContainsKey(player))
+                        ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
+                }
+                else
+                {
+                    if (webSocketCommand.Result == null)
+                    {
+                        webSocketCommand.OnlyToSender = true;
+                        webSocketCommand.Result = WebSocketCommandNames.ResultCommandNotFound;
+                        if (ConnectedPlayers.ContainsKey(player))
+                            ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
+                        return;
+                    }
+
+                    _ = Task.Run(() => ActionProcessingService.CommandToHook(webSocketCommand));
+
+                    var idToCheck = webSocketCommand.Data.Type == JTokenType.Object
+                        ? webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId] ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId]
+                        : null;
+
+                    if (idToCheck != null && !webSocketCommand.Command.Equals(WebSocketCommandNames.PermissionsUpdate, StringComparison.Ordinal))
+                    {
+                        // Co-GMs come with the owner's rights already in.
+                        var permissionsCommand = new GetEffectivePermissionsCommand()
+                        {
+                            EntityId = webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId]?.ToGuid()
+                                       ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId].ToGuid(),
+                            GameId = GameId,
+                        };
+
+                        var permissions = await cmdMediator.Send(permissionsCommand);
+
+                        if (permissions.Count == 0)
+                        {
+                            foreach (var item in ConnectedPlayers)
+                                item.Value.SendMessageToPlayer(webSocketCommand);
+                            return;
+                        }
+
+                        var notReading = new List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>>();
+                        foreach (var item in ConnectedPlayers)
+                        {
+                            if (permissions.TryGetValue(item.Key.Id ?? Guid.Empty, out var permission) ||
+                                permissions.TryGetValue(Guid.Empty, out permission))
+                            {
+                                if (permission.HasFlag(Permission.Read))
+                                {
+                                    webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)permission;
+                                    item.Value.SendMessageToPlayer(webSocketCommand);
+                                    continue;
+                                }
+                            }
+                            notReading.Add(item);
+                        }
+
+                        await SendToTokenViewers(cmdMediator, webSocketCommand, notReading);
+                    }
+                    else
+                    {
+                        foreach (var item in ConnectedPlayers)
+                            item.Value.SendMessageToPlayer(webSocketCommand);
+                    }
+                }
+
+                // When a player is kicked, remove their in-memory ConnectedPlayers entry so that
+                // a stale entry can't shadow the new player record they create when they rejoin.
+                // Must happen AFTER the broadcast above so the kicked player still receives
+                // the player_kick notification before being removed.
+                if (webSocketCommand.Command == WebSocketCommandNames.PlayerKick
+                    && webSocketCommand.Result == WebSocketCommandNames.ResultOk)
+                {
+                    var kickedId = webSocketCommand.Data.ToGuid();
+                    var kickedEntry = ConnectedPlayers.Keys.FirstOrDefault(p => p.Id == kickedId);
+                    if (kickedEntry != null)
+                        ConnectedPlayers.Remove(kickedEntry);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine(e.Message);
+                cmdScope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                    ?.CreateLogger("GameLobby")
+                    .LogError(e, "HandlePostCommand failed for {Command} from {Player}; nobody received it", webSocketCommand?.Command, player?.Name);
+            }
+        }
+
+        private async Task<bool> HandleSpecialCommands(PlayerDTO player, WebSocketCommand parsedMsg, IMediator cmdMediator)
+        {
+            // Whispers and GM rolls (ChatHandler sets VisibleTo): only to those players, and
+            // not passed to action hooks, so no action sees what wasn't meant for everyone.
+            if (parsedMsg.Command == WebSocketCommandNames.CmdChatPush && parsedMsg.VisibleTo != null && !parsedMsg.OnlyToSender)
+            {
+                foreach (var item in ConnectedPlayers.Where(p => parsedMsg.VisibleTo.Contains(p.Key.Id ?? Guid.Empty)))
+                    item.Value.SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+
+            // PlayerList must be returned only to the requester — not broadcast
+            if (parsedMsg.Command == WebSocketCommandNames.CmdPlayerList)
+            {
+                parsedMsg.Data = JToken.FromObject(ConnectedPlayers.Keys);
+                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+            // Editor → players: open a panel (e.g. the battle map's "Show" menu). Data: { type, syncId,
+            // targetPlayerId? } — only the target when set, otherwise every other player.
+            if (parsedMsg.Command == WebSocketCommandNames.CmdShowPanel)
+            {
+                var canEditGame = player.IsOwner == true || await cmdMediator.Send(new CheckPermissionsCommand
+                {
+                    Player = player,
+                    EntityId = GameId,
+                    RequiredPermission = Permission.Edit,
+                });
+                if (!canEditGame)
+                {
+                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only players who can edit the game can show panels to others.", player), player);
+                    return true;
+                }
+
+                var target = parsedMsg.Data?.Type == JTokenType.Object ? parsedMsg.Data["targetPlayerId"]?.ToString() : null;
+                Guid? targetId = Guid.TryParse(target, out var parsedTarget) ? parsedTarget : null;
+                parsedMsg.Result = WebSocketCommandNames.ResultOk;
+
+                foreach (var item in ConnectedPlayers)
+                {
+                    var isRecipient = targetId != null ? item.Key.Id == targetId : item.Key.Id != player.Id;
+                    if (isRecipient)
+                        item.Value.SendMessageToPlayer(parsedMsg);
+                }
+                return true;
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLoaded)
+            {
+                parsedMsg.OnlyToSender = true;
+                // Intentional fall-through: command continues to normal dispatch
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdClientLayoutReady)
+            {
+                // Layout helper is fully initialised on the client — safe to show views now
+                _ = Task.Run(() => ActionProcessingService.CallHookAsync(Hook.Load, new PlayerHookArgs() { Player = player }));
+                parsedMsg.OnlyToSender = true;
+                return true;
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeGet)
+            {
+                parsedMsg.Data = Debug;
+                parsedMsg.OnlyToSender = true;
+                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugModeSet)
+            {
+                // Debug mode shows every action's variables and pauses it at each step: GMs only.
+                if (!await CanEditGameAsync(player, cmdMediator))
+                {
+                    SendToPlayer(MakeErrorCommand(WebSocketCommandNames.ErrorPermission, "Only players who can edit the game can turn debug mode on or off.", player), player);
+                    return true;
+                }
+                Debug = parsedMsg.Data.Value<bool>();
+                parsedMsg.OnlyToSender = true;
+                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                return true;
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdExecuteAction)
+            {
+                if (parsedMsg.Data == null)
+                {
+                    parsedMsg.Result = WebSocketCommandNames.ResultNoData;
+                    return true;
+                }
+
+                var actionName = parsedMsg.Data[WebSocketCommandNames.DataKeyAction]?.ToString();
+                var argsToken = parsedMsg.Data[WebSocketCommandNames.DataKeyArgs];
+                var sharedVariables = argsToken is JObject argsObj
+                    ? argsObj.ToObject<Dictionary<string, object>>()
+                    : null;
+
+                // The action editor's Run button asks for a per-step trace (sent only to this player).
+                ActionTrace trace = null;
+                if (parsedMsg.Data[WebSocketCommandNames.DataKeyTrace]?.Type == JTokenType.Boolean &&
+                    parsedMsg.Data.Value<bool>(WebSocketCommandNames.DataKeyTrace) &&
+                    Guid.TryParse(parsedMsg.Data[WebSocketCommandNames.DataKeyTraceId]?.ToString(), out var traceId))
+                    trace = new ActionTrace { TraceId = traceId, Player = player };
+
+                _ = Task.Run(() => ActionProcessingService.ExecActionAsync(
+                    actionName,
+                    new HookArgs.CommandHookArgs() { Command = parsedMsg, Data = argsToken as JObject, Player = player },
+                    sharedVariables, trace));
+
+                parsedMsg.OnlyToSender = true;
+                parsedMsg.Result = WebSocketCommandNames.ResultOk;
+                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+
+                return true;
+            }
+
+            if (parsedMsg.Command == WebSocketCommandNames.CmdDebugActionResponse ||
+                parsedMsg.Command == WebSocketCommandNames.CmdInputValue)
+            {
+                if (parsedMsg.Data == null || parsedMsg.InputToken == null)
+                {
+                    parsedMsg.Result = WebSocketCommandNames.ResultNoData;
+                    return true;
+                }
+                // A debug pause is the GM's to continue or stop; players answer their own requests.
+                if (ActionProcessingService.IsDebugToken(parsedMsg.InputToken.Value) && !await CanEditGameAsync(player, cmdMediator))
+                    return true;
+                if (ActionProcessingService.InputHandler.TryRemove(parsedMsg.InputToken.Value, out var tcs))
+                    tcs.TrySetResult(parsedMsg);
+                return true;
+            }
+
+            return false;
+        }
+
+        public void Dispose()
+        {
+            serviceScope.Dispose();
+        }
+    }
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "bless",
+  "prefix": "sanity",
+  "description": "Bless on up to 3 creatures the player picks on the map.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "80a10d8c-1b7b-54d4-9030-df715484945e",
+      "Type": "RequestTargets",
+      "Data": {
+        "Label": "Who gets blessed",
+        "Max": "3",
+        "Message": "Pick up to 3 creatures to bless",
+        "Output": "targets"
+      }
+    },
+    {
+      "id": "ec7e7c7b-3cfb-53a3-a880-a71648e942c5",
+      "Type": "ForEach",
+      "Data": {
+        "Label": "Bless each target",
+        "Collection": "targets",
+        "ItemName": "target",
+        "Do": [
+          {
+            "id": "63024fa6-9bc0-5e4a-9c4b-e5c843e86771",
+            "Type": "SetProperty",
+            "Data": {
+              "Label": "Blessed",
+              "ParentId": "%target.id%",
+              "PropertyName": "sanity_blessed",
+              "PropertyValue": "true"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "06ec0c67-d928-536e-8627-fd2771279de5",
+      "Type": "RunScript",
+      "Data": {
+        "Label": "Their names",
+        "Output": "",
+        "Script": "return { names: vars.targets.map(function (t) { return t.name; }).join(\", \") };"
+      }
+    },
+    {
+      "id": "8d395d80-cd48-582a-80da-e70ab99f7086",
+      "Type": "SendChat",
+      "Data": {
+        "Label": "Announce",
+        "Template": "Text",
+        "Title": "Bless (+1d4 to attacks and saves, 1 minute)",
+        "Message": "%playerName%: Bless on %names%"
+      }
+    }
+  ]
+}

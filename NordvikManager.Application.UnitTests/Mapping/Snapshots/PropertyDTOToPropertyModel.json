@@ -1,0 +1,41 @@
+{
+  "emptyCollections": {
+    "Card": null,
+    "Description": null,
+    "Element": null,
+    "EntityName": "text5",
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsProtected": true,
+    "Map": null,
+    "Name": "text3",
+    "ParentID": "00000000-0000-0000-0000-000000000004",
+    "Value": "text6"
+  },
+  "filled": {
+    "Card": null,
+    "Description": null,
+    "Element": null,
+    "EntityName": "text5",
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsProtected": true,
+    "Map": null,
+    "Name": "text3",
+    "ParentID": "00000000-0000-0000-0000-000000000004",
+    "Value": "text6"
+  },
+  "fresh": {
+    "Card": null,
+    "Description": null,
+    "Element": null,
+    "EntityName": null,
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsProtected": false,
+    "Map": null,
+    "Name": null,
+    "ParentID": "00000000-0000-0000-0000-000000000000",
+    "Value": null
+  }
+}

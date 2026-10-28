@@ -1,0 +1,35 @@
+{
+  "emptyCollections": {
+    "CentralServerUserId": "text10",
+    "Color": "text6",
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000003",
+    "Image": "text7",
+    "Name": "text2",
+    "Resources": null,
+    "System": true,
+    "User": null
+  },
+  "filled": {
+    "CentralServerUserId": "text12",
+    "Color": "text6",
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000003",
+    "Image": "text7",
+    "Name": "text2",
+    "Resources": null,
+    "System": true,
+    "User": null
+  },
+  "fresh": {
+    "CentralServerUserId": null,
+    "Color": null,
+    "Game": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Image": null,
+    "Name": null,
+    "Resources": null,
+    "System": false,
+    "User": null
+  }
+}

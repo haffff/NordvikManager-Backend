@@ -1,0 +1,19 @@
+{
+  "name": "add_token",
+  "hook": 0,
+  "prefix": "basics",
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "b4a51c00-0000-4000-8000-000000000101",
+      "Data": {
+        "Label": "Place a generic token where the map was right-clicked",
+        "Panel": "BattleMap_token",
+        "Command": "CreateToken",
+        "Player": "%playerId%",
+        "Data": "{\"contextId\": \"%battleMapId%\", \"token\": \"basics_token_generic.json\", \"position\": %position%}"
+      },
+      "Type": "RunClientCommand"
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Note</title>
+  <!--
+    The Note template sets app_styles = "true", so the app injects its --nordvik-*
+    variables and nm_ classes before this page's CSS, and the game's theme after it.
+    Only layout lives here; colours come from those variables (with fallbacks).
+  -->
+  <style>
+    html, body { height: 100%; margin: 0; }
+    .note {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 6px;
+    }
+    .note .ql-toolbar.ql-snow,
+    .note .ql-container.ql-snow {
+      border-color: var(--nordvik-border, rgb(65,65,65));
+    }
+    .note .ql-toolbar.ql-snow {
+      border-radius: 4px 4px 0 0;
+      background: var(--nordvik-surface, rgb(38,38,38));
+    }
+    .note .ql-container.ql-snow {
+      flex: 1;
+      min-height: 0;
+      border-radius: 0 0 4px 4px;
+      font: inherit;
+      font-size: 14px;
+    }
+    .note .ql-editor { line-height: 1.5; }
+    .note .ql-editor.ql-blank::before { color: var(--nordvik-text-muted, rgb(140,140,140)); font-style: normal; }
+    /* Toolbar icons and pickers follow the text colour */
+    .note .ql-snow .ql-stroke { stroke: var(--nordvik-text-color, #f0f0f0); }
+    .note .ql-snow .ql-fill { fill: var(--nordvik-text-color, #f0f0f0); }
+    .note .ql-snow .ql-picker { color: var(--nordvik-text-color, #f0f0f0); }
+    .note .ql-snow.ql-toolbar button:hover .ql-stroke,
+    .note .ql-snow.ql-toolbar button.ql-active .ql-stroke,
+    .note .ql-snow .ql-picker-label:hover .ql-stroke { stroke: var(--nordvik-accent-blue, rgb(100,150,230)); }
+    .note .ql-snow.ql-toolbar button:hover .ql-fill,
+    .note .ql-snow.ql-toolbar button.ql-active .ql-fill { fill: var(--nordvik-accent-blue, rgb(100,150,230)); }
+    .note .ql-snow .ql-picker-options,
+    .note .ql-snow .ql-tooltip {
+      background: var(--nordvik-surface-raised, rgb(48,48,48));
+      color: var(--nordvik-text-color, #f0f0f0);
+      border-color: var(--nordvik-border, rgb(65,65,65));
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    .note .ql-snow a { color: var(--nordvik-accent-blue, rgb(100,150,230)); }
+    .note .error { padding: 12px; color: var(--nordvik-accent-red, rgb(220,80,80)); }
+  </style>
+</head>
+<body>
+  <div class="note nm_basePanel">
+    <div id="editor"></div>
+  </div>
+  <script>
+    (function () {
+      const PROP = 'note_text';
+      let saveTimer = null;
+      let lastSaved = '';
+
+      async function start(api) {
+        if (!window.Quill) {
+          document.querySelector('.note').innerHTML = '<div class="error">The note editor (basics_quill.js) didn\'t load.</div>';
+          return;
+        }
+
+        const quill = new window.Quill('#editor', {
+          theme: 'snow',
+          placeholder: 'Write your note here…',
+          readOnly: true,
+          modules: {
+            toolbar: [
+              [{ header: [1, 2, 3, false] }],
+              ['bold', 'italic', 'underline', 'strike'],
+              [{ list: 'ordered' }, { list: 'bullet' }, { list: 'check' }],
+              ['blockquote', 'link'],
+              ['clean'],
+            ],
+          },
+        });
+
+        const html = () => (quill.getLength() <= 1 ? '' : quill.getSemanticHTML());
+        const show = (value) => {
+          quill.setContents(quill.clipboard.convert({ html: value || '' }), 'silent');
+          lastSaved = html();
+        };
+        const save = () => {
+          clearTimeout(saveTimer);
+          saveTimer = null;
+          const value = html();
+          if (value === lastSaved) return;
+          lastSaved = value;
+          api.Properties.Set(PROP, value);
+        };
+
+        await api.Properties.Init(PROP, '');
+        const prop = await api.Properties.Get(PROP);
+        show(prop?.value ?? '');
+        quill.enable(true);
+
+        // Saved half a second after typing stops, and when leaving the editor.
+        quill.on('text-change', (delta, old, source) => {
+          if (source !== 'user') return;
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(save, 500);
+        });
+        quill.on('selection-change', (range) => { if (!range) save(); });
+        window.addEventListener('blur', save);
+
+        // The same note open elsewhere (another window, the GM): take its text,
+        // unless this one is being edited.
+        api.Properties.Subscribe(PROP, (changed) => {
+          if (quill.hasFocus() || saveTimer) return;
+          show(changed?.value ?? '');
+        });
+      }
+
+      // cardapi:ready comes after the page (and the Quill script the app adds
+      // after this one) has loaded, once the host has sent INIT.
+      if (window.CardAPI?.cardId) start(window.CardAPI);
+      else window.addEventListener('cardapi:ready', (e) => start(e.detail || window.CardAPI), { once: true });
+    })();
+  </script>
+</body>
+</html>

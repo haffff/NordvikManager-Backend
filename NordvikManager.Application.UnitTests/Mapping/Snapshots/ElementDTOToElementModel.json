@@ -1,0 +1,144 @@
+{
+  "emptyCollections": {
+    "Details": [
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "type",
+        "Type": "String",
+        "Value": "rect"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "left",
+        "Type": "Integer",
+        "Value": "12"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "visible",
+        "Type": "Boolean",
+        "Value": "True"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "tokenData",
+        "Type": "Object",
+        "Value": "{\n  \"cardId\": \"c1\"\n}"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "path",
+        "Type": "Array",
+        "Value": "[\n  1,\n  2\n]"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "fill",
+        "Type": "Null",
+        "Value": null
+      }
+    ],
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsPublic": true,
+    "Layer": 109,
+    "Map": null,
+    "MapId": "00000000-0000-0000-0000-000000000004",
+    "Properties": [],
+    "Selectable": true
+  },
+  "filled": {
+    "Details": [
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "type",
+        "Type": "String",
+        "Value": "rect"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "left",
+        "Type": "Integer",
+        "Value": "12"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "visible",
+        "Type": "Boolean",
+        "Value": "True"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "tokenData",
+        "Type": "Object",
+        "Value": "{\n  \"cardId\": \"c1\"\n}"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "path",
+        "Type": "Array",
+        "Value": "[\n  1,\n  2\n]"
+      },
+      {
+        "Element": null,
+        "ElementId": "00000000-0000-0000-0000-000000000002",
+        "Id": "00000000-0000-0000-0000-000000000000",
+        "Key": "fill",
+        "Type": "Null",
+        "Value": null
+      }
+    ],
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsPublic": true,
+    "Layer": 117,
+    "Map": null,
+    "MapId": "00000000-0000-0000-0000-000000000004",
+    "Properties": [
+      {
+        "Card": null,
+        "Description": null,
+        "Element": null,
+        "EntityName": "text10",
+        "Game": null,
+        "Id": "00000000-0000-0000-0000-000000000007",
+        "IsProtected": true,
+        "Map": null,
+        "Name": "text8",
+        "ParentID": "00000000-0000-0000-0000-000000000009",
+        "Value": "text11"
+      }
+    ],
+    "Selectable": true
+  },
+  "fresh": {
+    "Details": [],
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsPublic": null,
+    "Layer": 0,
+    "Map": null,
+    "MapId": "00000000-0000-0000-0000-000000000000",
+    "Properties": [],
+    "Selectable": null
+  }
+}

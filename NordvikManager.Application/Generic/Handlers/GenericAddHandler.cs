@@ -1,0 +1,90 @@
+﻿using NordvikManager.Application.Mapping;
+using NordvikManager.Application.Commands;
+using NordvikManager.Application.Commands.Security.CheckPermissions;
+using NordvikManager.Application.DataTransferObjects;
+using NordvikManager.Application.Extension;
+using NordvikManager.Application.Generic.Command;
+using NordvikManager.Application.Guards;
+using NordvikManager.Domain.Entities.Interfaces;
+using NordvikManager.Domain.Enums;
+using NordvikManager.Infrastructure.Interfaces;
+using NordvikManager.Domain.Entities.BattleMap;
+using Microsoft.EntityFrameworkCore;
+
+namespace NordvikManager.Application.Generic.Handlers
+{
+    internal class GenericAddHandler<TCommand, TModel, TDto> : HandlerBase<TCommand, (CommandResponse, Guid)>
+        where TCommand : GenericAddCommand<TDto>
+        where TModel : class, IEntity
+        where TDto : class, IGameDataTransferObject
+    {
+        public GenericAddHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
+        {
+        }
+
+        public virtual bool CheckPermissions(GameModel game, TCommand request)
+        {
+            game.ThrowIfNoPermission(request.Player.Id ?? Guid.Empty, Permission.Edit);
+            return true;
+        }
+
+        public virtual TModel CreateModel(GameModel game, TCommand request)
+        {
+            return mapper.Map<TModel>(request.Dto);
+        }
+
+        public virtual void SetPermissions(GameModel game, TModel model, TCommand request)
+        {
+            model.SetGlobalPermission();
+            model.SetPermissions(request.Player.Id ?? Guid.Empty, Permission.All);
+            model.SetPermissions(game.SystemPlayerId, Permission.All);
+            // The owner (and through their row, every co-GM) keeps full rights on whatever
+            // a player or co-GM adds.
+            if (game.MasterId != Guid.Empty && game.MasterId != request.Player.Id)
+                model.SetPermissions(game.MasterId, Permission.All);
+        }
+
+        public virtual void AddToGame(GameModel game, TModel model, TCommand request)
+        {
+            dbContext.Add(model);
+        }
+
+        /// <summary>
+        /// It has to include players!
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        public virtual GameModel GetGame(TCommand request)
+        {
+            return dbContext.Games.Include(x => x.Players).FirstOrDefault(x => x.Id == request.GameID);
+        }
+
+        public virtual TDto GetDefault()
+        {
+            return null;
+        }
+
+        public async override Task<(CommandResponse, Guid)> Handle(TCommand request, CancellationToken cancellationToken)
+        {
+            await base.Handle(request, cancellationToken);
+
+            var game = GetGame(request);
+            Guard.Argument(game != null, nameof(request.GameID));
+
+            CheckPermissions(game, request);
+
+            request.Dto = request.Dto ?? GetDefault();
+            Guard.Argument(request.Dto != null, nameof(request.Dto));
+
+            var model = CreateModel(game, request);
+
+            AddToGame(game, model, request);
+
+            dbContext.SaveChanges();
+
+            SetPermissions(game, model, request);
+
+            return (CommandResponse.Ok, model.Id);
+        }
+    }
+}

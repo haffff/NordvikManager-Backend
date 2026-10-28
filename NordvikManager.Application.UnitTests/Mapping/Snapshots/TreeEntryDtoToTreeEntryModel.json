@@ -1,0 +1,44 @@
+{
+  "emptyCollections": {
+    "Color": "text10",
+    "EntryType": "text9",
+    "Game": null,
+    "Head": true,
+    "Icon": "text11",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsFolder": true,
+    "Name": "text3",
+    "NewItem": null,
+    "Next": null,
+    "Parent": null,
+    "TargetId": "00000000-0000-0000-0000-000000000008"
+  },
+  "filled": {
+    "Color": "text10",
+    "EntryType": "text9",
+    "Game": null,
+    "Head": true,
+    "Icon": "text11",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsFolder": true,
+    "Name": "text3",
+    "NewItem": null,
+    "Next": null,
+    "Parent": null,
+    "TargetId": "00000000-0000-0000-0000-000000000008"
+  },
+  "fresh": {
+    "Color": null,
+    "EntryType": null,
+    "Game": null,
+    "Head": null,
+    "Icon": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsFolder": false,
+    "Name": null,
+    "NewItem": null,
+    "Next": null,
+    "Parent": null,
+    "TargetId": null
+  }
+}

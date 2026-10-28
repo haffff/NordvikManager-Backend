@@ -1,0 +1,41 @@
+{
+  "emptyCollections": {
+    "AutoConnect": null,
+    "Color": "text120",
+    "EntryType": "text119",
+    "Head": true,
+    "Icon": "text121",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsFolder": true,
+    "Name": "text3",
+    "Next": "00000000-0000-0000-0000-000000000061",
+    "ParentId": "00000000-0000-0000-0000-000000000005",
+    "TargetId": "00000000-0000-0000-0000-000000000118"
+  },
+  "filled": {
+    "AutoConnect": null,
+    "Color": "text120",
+    "EntryType": "text119",
+    "Head": true,
+    "Icon": "text121",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "IsFolder": true,
+    "Name": "text3",
+    "Next": "00000000-0000-0000-0000-000000000061",
+    "ParentId": "00000000-0000-0000-0000-000000000005",
+    "TargetId": "00000000-0000-0000-0000-000000000118"
+  },
+  "fresh": {
+    "AutoConnect": null,
+    "Color": null,
+    "EntryType": null,
+    "Head": null,
+    "Icon": null,
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "IsFolder": false,
+    "Name": null,
+    "Next": null,
+    "ParentId": null,
+    "TargetId": null
+  }
+}

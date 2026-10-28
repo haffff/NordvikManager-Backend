@@ -1,0 +1,29 @@
+{
+  "emptyCollections": {
+    "Default": true,
+    "GameModelId": "00000000-0000-0000-0000-000000000003",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Name": "text25",
+    "Path": null,
+    "Permission": null,
+    "Value": "text24"
+  },
+  "filled": {
+    "Default": true,
+    "GameModelId": "00000000-0000-0000-0000-000000000003",
+    "Id": "00000000-0000-0000-0000-000000000002",
+    "Name": "text36",
+    "Path": null,
+    "Permission": null,
+    "Value": "text35"
+  },
+  "fresh": {
+    "Default": false,
+    "GameModelId": "00000000-0000-0000-0000-000000000000",
+    "Id": "00000000-0000-0000-0000-000000000000",
+    "Name": null,
+    "Path": null,
+    "Permission": null,
+    "Value": null
+  }
+}

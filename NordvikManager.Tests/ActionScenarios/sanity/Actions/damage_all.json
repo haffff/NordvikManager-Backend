@@ -1,0 +1,59 @@
+{
+  "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
+  "name": "damage_all",
+  "prefix": "sanity",
+  "description": "GM: every token on the map the GM is looking at takes a random amount of damage.",
+  "hook": 0,
+  "isEnabled": false,
+  "content": [
+    {
+      "id": "0ec0a603-8aeb-5271-828d-2d00d6da33ed",
+      "Type": "RequirePermission",
+      "Data": {
+        "Label": "GMs only",
+        "EntityId": "%gameId%",
+        "Permission": "Edit",
+        "StopIfDenied": true
+      }
+    },
+    {
+      "id": "0e055dfc-a62b-50fb-b6b8-834403e5f9ac",
+      "Type": "Find",
+      "Data": {
+        "Label": "The tokens on this map",
+        "What": "tokens",
+        "Output": "tokens"
+      }
+    },
+    {
+      "id": "15d438db-b43d-5dd8-9194-abb64d9b7b0f",
+      "Type": "ForEach",
+      "Data": {
+        "Label": "Each token",
+        "Collection": "tokens",
+        "ItemName": "target",
+        "Do": [
+          {
+            "id": "59a4f6a7-09bc-5e44-aaa1-12ae013ad931",
+            "Type": "RollDice",
+            "Data": {
+              "Label": "Damage",
+              "DiceString": "%dice%",
+              "OutputVariable": "damage",
+              "SimpleOutput": true
+            }
+          },
+          {
+            "id": "eaa0cea2-6a77-504c-96eb-f263b5da3535",
+            "Type": "ExecuteAction",
+            "Data": {
+              "Label": "Apply it",
+              "Value": "sanity/damage_target"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "gmPermission": 31
+}

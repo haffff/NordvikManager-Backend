@@ -1,0 +1,44 @@
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Services.Implementations.ActionBody;
+using NordvikManager.Services.Implementations.ActionBody.Data;
+using NordvikManager.WebSockets;
+using NordvikManager.WebSockets.Core;
+using MediatR;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Services.Implementations.ActionSteps
+{
+    public class AddMenuItemStepDefinition : IActionStepDefinition
+    {
+        public string Name => "Add Menu Item";
+        public string Value => "AddMenuItem";
+        public IReadOnlyList<string> Keywords => new[] { "menu", "right-click", "button", "option" };
+        public string Category => "Client";
+        public string Description => "Adds an item that runs an action to one of the app's menus (Game, View, Settings, map right-click > Add, ...) or to a toolbar dropdown made with Add Toolbar Button. Pick the menu in Location.";
+        public string? Summary => "Menu item {UiName}[ → {Action}]";
+        public Type DataType => typeof(MenuButtonStepData);
+
+        public async Task Execute(IMediator mediator, Dictionary<string, object> variables, GameLobby gameLobby, ActionStep step)
+        {
+            var stepData = step.Data.ToObject<MenuButtonStepData>();
+
+            if (string.IsNullOrWhiteSpace(stepData.Name))
+                throw new ActionProcessException("AddMenuItem: 'Name' argument is required.");
+
+            var payload = JObject.FromObject(stepData);
+
+            var command = new WebSocketCommand
+            {
+                Command = WebSocketCommandNames.CmdAddMenuItem,
+                Data = payload
+            };
+
+            await UiDelivery.SendAsync(mediator, gameLobby, variables, "AddMenuItem", command, stepData.OnlyTriggeringPlayer, stepData.GmOnly);
+        }
+    }
+}
