@@ -488,7 +488,8 @@ namespace NordvikManager.Tests.ActionScenarios
 
             NoErrors();
             Assert.DoesNotContain(sent, x => x.Command.Command == "run_client_command");
-            Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
+            var added = Assert.Single(sent, x => x.To == player && x.Command.Command == "element_add").Command;
+            Assert.Equal(mapId.ToString(), (string?)added.Data["mapId"]); // what the browser matches its map against
             using var check = services.CreateScope();
             var after = check.ServiceProvider.GetRequiredService<IDbContext>();
             Assert.Equal(3, after.Cards.Count(c => c.GameId == gameId));
@@ -535,6 +536,42 @@ namespace NordvikManager.Tests.ActionScenarios
             var wall = Assert.Single(found, e => (string?)e["type"] == "rect");
             Assert.Equal(152, (double)wall["w"]!); // 3 squares and its outline, as the map measures it
             Assert.Contains(sent, x => x.To == player && x.Command.Command == "element_add");
+        }
+
+        // The new shape is visible like one a player draws: everyone may see it, the GM may
+        // change it, and the broadcast names its map as "mapId", the key browsers match their
+        // open map against (with "mapID" nobody saw it, the GM included, until a reload).
+        [Fact]
+        public async Task AddElement_EveryoneSeesTheShape()
+        {
+            var action = new ActionDto
+            {
+                Id = Guid.NewGuid(), Name = "wall", Prefix = "test", IsEnabled = true,
+                Content = new JArray(new JObject
+                {
+                    ["Type"] = "AddElement",
+                    ["Data"] = new JObject { ["Shape"] = "rect", ["At"] = "100,50", ["Width"] = "3", ["Height"] = "1" },
+                }).ToString(),
+            };
+
+            await lobby.ActionProcessingService.ExecActionAsync(action,
+                new CommandHookArgs { Player = gm, Data = new JObject(), Command = new WebSocketCommand { Command = "execute_action" } },
+                new Dictionary<string, object> { ["mapId"] = mapId.ToString() });
+
+            NoErrors();
+            using var scope = services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<IDbContext>();
+            var wallId = db.Elements.Where(e => e.MapId == mapId).Select(e => e.Id).ToList()
+                .Except(new[] { goblin, rat, farOrc }).Single();
+            var permissions = scope.ServiceProvider.GetRequiredService<NordvikManager.Application.Services.IPermissionService>();
+            Assert.True(permissions.CheckIfHasPermissions(player, wallId, Permission.Read), "a player can't see it");
+            Assert.True(permissions.CheckIfHasPermissions(gm, wallId, Permission.Read), "the GM can't see it");
+            Assert.True(permissions.CheckIfHasPermissions(gm, wallId, Permission.Edit), "the GM can't change it");
+            foreach (var to in new[] { gm, player })
+            {
+                var added = Assert.Single(sent, x => x.To == to && x.Command.Command == "element_add").Command;
+                Assert.Equal(mapId.ToString(), (string?)added.Data["mapId"]);
+            }
         }
 
         // A cone saved on the map is the triangle Find uses, and Find knows where it is.

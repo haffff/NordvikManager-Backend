@@ -59,7 +59,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 Data = new JObject
                 {
                     ["object"] = token.Object.ToString(Newtonsoft.Json.Formatting.None),
-                    ["mapID"] = mapId,
+                    ["mapId"] = mapId,
                     ["layer"] = (int)token.Object["layer"]!,
                     ["properties"] = new JArray(
                         new JObject { ["name"] = "tokenSize", ["value"] = token.Size.ToString() },
