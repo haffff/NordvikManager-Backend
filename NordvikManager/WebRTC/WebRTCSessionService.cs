@@ -161,6 +161,9 @@ namespace NordvikManager.WebRTC
                 PlayerDTO? playerEntry = null;
                 // chunkId → string slots; lives for the lifetime of this data channel.
                 var chunkBuffers = new Dictionary<string, string?[]>();
+                // What arrives before HandleOpenAsync knows the player: the client sends its
+                // queued requests the moment the channel opens.
+                var earlyMessages = new EarlyMessageBuffer();
 
                 // onmessage below dispatches lobby.HandleCommand fire-and-forget, so back-to-back
                 // commands from this connection (e.g. a tree "Delete All" sending many tree_remove
@@ -194,15 +197,42 @@ namespace NordvikManager.WebRTC
                 async Task HandleOpenAsync()
                 {
                     if (Interlocked.Exchange(ref openHandled, 1) != 0) return;
+                    try
+                    {
+                        if (await ResolvePlayerAsync())
+                            earlyMessages.Open(HandleMessage);
+                        else
+                            FailEarlyMessages("The game could not identify this player.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Resolving the player for socket {SocketId} in game {GameId} failed", args.SocketId, args.GameId);
+                        FailEarlyMessages("The game could not identify this player.");
+                    }
+                }
+
+                // The requests that came in before the player was known get an answer, not silence.
+                void FailEarlyMessages(string reason)
+                {
+                    foreach (var data in earlyMessages.Fail())
+                    {
+                        if (TryParseApiRequest(Encoding.UTF8.GetString(data), out var request))
+                            SendApiError(dataChannel, request!.Id, 503, reason);
+                    }
+                }
+
+                // Sets connection and playerEntry; false when the player can't be resolved.
+                async Task<bool> ResolvePlayerAsync()
+                {
                     if (!Guid.TryParse(args.GameId, out var gameId))
                     {
                         SendChannelError(dataChannel, "err: invalid game id");
-                        return;
+                        return false;
                     }
                     if (!_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
                     {
                         SendChannelError(dataChannel, "err: no lobby found");
-                        return;
+                        return false;
                     }
 
                     playerEntry = lobby.ConnectedPlayers.Keys
@@ -239,7 +269,7 @@ namespace NordvikManager.WebRTC
                                 "WebRTC data channel opened for userId={UserId} but player could not be created in game {GameId}",
                                 args.UserId, gameId);
                             SendChannelError(dataChannel, "err: no player found");
-                            return;
+                            return false;
                         }
 
                         connection = new WebRTCPlayerConnection(dataChannel);
@@ -256,6 +286,7 @@ namespace NordvikManager.WebRTC
                     _logger.LogInformation(
                         "Data channel open player={Name} game={GameId} socketId={SocketId} elapsed={Elapsed}ms",
                         playerEntry.Name, gameId, args.SocketId, elapsed);
+                    return true;
                 }
 
                 dataChannel.onopen += () => _ = HandleOpenAsync();
@@ -271,16 +302,26 @@ namespace NordvikManager.WebRTC
 
                 dataChannel.onmessage += (_, _, data) =>
                 {
-                    if (connection == null || playerEntry == null)
+                    switch (earlyMessages.Receive(data))
                     {
-                        // The player isn't resolved yet (HandleOpenAsync still running): the
-                        // message is dropped and its sender never gets an answer.
-                        var dropped = Encoding.UTF8.GetString(data);
-                        _logger.LogWarning(
-                            "[AddonOp] DROPPED message from socket {SocketId} before its player was known ({Length} chars): {Head}",
-                            args.SocketId, dropped.Length, dropped.Length > 160 ? dropped[..160] : dropped);
-                        return;
+                        case EarlyMessageBuffer.Route.Handle:
+                            HandleMessage(data);
+                            break;
+                        case EarlyMessageBuffer.Route.Dropped:
+                            // The player couldn't be resolved, or far too much came before it was.
+                            var dropped = Encoding.UTF8.GetString(data);
+                            _logger.LogWarning(
+                                "DROPPED message from socket {SocketId}: its player is unknown ({Length} chars): {Head}",
+                                args.SocketId, dropped.Length, dropped.Length > 160 ? dropped[..160] : dropped);
+                            break;
                     }
+                };
+
+                // A message from the resolved player (connection and playerEntry are set).
+                void HandleMessage(byte[] data)
+                {
+                    if (connection == null || playerEntry == null)
+                        return;
                     if (!Guid.TryParse(args.GameId, out var gameId))
                         return;
 
@@ -304,7 +345,7 @@ namespace NordvikManager.WebRTC
                     // Otherwise route as a real-time game command
                     if (_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
                         _ = HandleCommandInOrderAsync(lobby, playerEntry, text);
-                };
+                }
             };
 
             pc.onicecandidate += candidate =>
@@ -557,6 +598,14 @@ namespace NordvikManager.WebRTC
             if (dc.readyState == RTCDataChannelState.open)
                 dc.send(JsonConvert.SerializeObject(
                     new { command = WebSocketCommandNames.ErrorGeneric, data = message }));
+        }
+
+        // An api-response the client's WebRTCWebHelper resolves its pending request with.
+        private static void SendApiError(RTCDataChannel dc, string requestId, int status, string message)
+        {
+            if (dc.readyState == RTCDataChannelState.open)
+                dc.send(JsonConvert.SerializeObject(
+                    new { type = "api-response", id = requestId, status, body = new { error = message } }));
         }
 
         private static bool TryParseApiRequest(string text, out WebRTCApiRequest? request)
