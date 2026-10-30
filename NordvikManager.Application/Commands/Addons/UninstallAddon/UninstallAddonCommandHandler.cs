@@ -41,7 +41,11 @@ namespace NordvikManager.Application.Commands.Addons.UninstallAddon
             // for why chaining multiple collection .Include()s without it is a
             // cartesian-explosion risk, same shape here for a single addon's own
             // Views/Resources/Templates/Actions counts.
-            var addon = dbContext.Addons
+            // Only this game's addons: the permission check above was for this game, and
+            // another game can have an addon with the same key.
+            var addon = dbContext.Games
+                .Where(x => x.Id == request.GameID)
+                .SelectMany(x => x.Addons, (g, a) => a)
                 .Include(x => x.Views)
                 .Include(x => x.Resources)
                 .Include(x => x.Templates)

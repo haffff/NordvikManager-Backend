@@ -23,15 +23,6 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             return id;
         }
 
-        // A second game (BuildGame would add the same player twice).
-        private GameModel OtherGame()
-        {
-            var game = new GameModel { Id = Guid.NewGuid(), Name = "Other", SystemPlayerId = Guid.NewGuid(), Maps = new List<MapModel>(), Players = new List<PlayerModel>() };
-            Db.Games.Add(game);
-            Db.SaveChanges();
-            return game;
-        }
-
         private void DenyEditOn(GameModel game) =>
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(It.IsAny<Guid>(), It.Is<IEntity>(e => e.Id == game.Id), Permission.Edit))
                            .Returns(false);

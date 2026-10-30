@@ -21,8 +21,11 @@ namespace NordvikManager.Application.Commands.Addons.SetAddonEnabled
 
             game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
-            var addon = dbContext.Addons.FirstOrDefault(x =>
-                x.Id.ToString() == request.AddonId || x.Key == request.AddonId);
+            // Only this game's addons: another game can have an addon with the same key.
+            var addon = dbContext.Games
+                .Where(x => x.Id == request.GameID)
+                .SelectMany(x => x.Addons, (g, a) => a)
+                .FirstOrDefault(x => x.Id.ToString() == request.AddonId || x.Key == request.AddonId);
 
             Guard.NotFound(addon, "Addon", request.AddonId);
 

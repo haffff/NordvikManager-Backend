@@ -41,6 +41,20 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Handle_AddonOfAnotherGame_IsNotFoundAndUnchanged(bool byId)
+        {
+            var game = BuildGame();
+            var otherGame = OtherGame();
+            var otherAddon = SeedAddon(otherGame, "dnd5e", enabled: true);
+            var cmd = new SetAddonEnabledCommand { GameID = game.Id, Player = Player(), AddonId = byId ? otherAddon.Id.ToString() : "dnd5e", Enabled = false };
+
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.True(SeedContext().Addons.Single(a => a.Id == otherAddon.Id).IsEnabled);
+        }
+
         [Fact]
         public async Task Handle_AddonNotFound_ThrowsResourceNotFoundException()
         {
