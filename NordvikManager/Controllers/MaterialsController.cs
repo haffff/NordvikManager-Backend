@@ -564,6 +564,7 @@ namespace NordvikManager.Controllers
 
             var player = playerResult.Player;
             var operationId = Guid.NewGuid();
+            OperationProgressPublisher.Begin(operationId, player);
 
             // Fire-and-forget: the request's own DI scope (and its IDbContext) is disposed the
             // moment this action returns, so the background walk resolves its own IMediator/

@@ -397,6 +397,7 @@ namespace NordvikManager.Controllers
             // soon as the answer is sent (at once over WebRTC), and building the background
             // scope from it crashed with ObjectDisposedException whenever that came first.
             var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            NordvikManager.Services.OperationProgressPublisher.Begin(operationId, player);
             log.LogInformation("[uninstall] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
@@ -538,6 +539,7 @@ namespace NordvikManager.Controllers
             // soon as the answer is sent (at once over WebRTC), and building the background
             // scope from it crashed with ObjectDisposedException whenever that came first.
             var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+            NordvikManager.Services.OperationProgressPublisher.Begin(operationId, player);
             log.LogInformation("[install] op={OperationId} queued", operationId);
             _ = Task.Run(async () =>
             {
