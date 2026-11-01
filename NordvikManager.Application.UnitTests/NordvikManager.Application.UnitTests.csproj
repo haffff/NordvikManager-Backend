@@ -29,6 +29,7 @@
 
   <ItemGroup>
     <None Update="Commands/Actions/area-cases.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Commands/Actions/token-build-cases.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
