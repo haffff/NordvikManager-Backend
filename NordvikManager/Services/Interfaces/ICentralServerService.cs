@@ -60,6 +60,9 @@ namespace NordvikManager.Services.Interfaces
     /// The CentralToken is only used server-side for proxied calls;
     /// it is never the GM Backend's auth token.
     /// </summary>
+    /// <summary>A refreshed Central access token and the refresh token that replaces the old one.</summary>
+    public record CentralTokens(string AccessToken, string? RefreshToken);
+
     public class CentralLoginResult
     {
         /// <summary>Central Server JWT — used only for server-to-server proxied calls.</summary>
@@ -86,12 +89,23 @@ namespace NordvikManager.Services.Interfaces
         /// too old to know the route. The password isn't sent.
         /// </summary>
         Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
+        /// <summary>
+        /// Central's GM signaling ticket for a session: what signaling re-authenticates with
+        /// after the socket reconnects, long after the access token expired. Null when Central
+        /// refuses, is unreachable, or is too old to know the route.
+        /// </summary>
+        Task<string?> GetSignalingTicketAsync(string centralToken, string sessionId);
         Task<CentralLoginResult?> LoginAsync(string username, string password);
         /// <summary>
         /// Exchanges a Central Server refresh token for a new access token.
         /// Returns the new access token, or null if the refresh token is invalid/expired.
         /// </summary>
-        Task<string?> RefreshTokenAsync(string refreshToken);
+        /// <summary>
+        /// Trades a Central refresh token for new tokens. Central rotates refresh tokens (the one
+        /// given is revoked), so the new refresh token must be stored too. Refreshing the same
+        /// token again within a minute returns the same result instead of a refused second try.
+        /// </summary>
+        Task<CentralTokens?> RefreshTokenAsync(string refreshToken);
         Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode);
         Task<bool> CheckRegistrationKeyAsync(string key);
         Task<string?> GetUserNameAsync(string centralToken, string userId);

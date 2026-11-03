@@ -468,20 +468,12 @@ namespace NordvikManager.Controllers
             if (string.IsNullOrEmpty(refreshToken))
                 return null;
 
-            var newToken = await _centralServerService.RefreshTokenAsync(refreshToken);
-            if (newToken == null)
+            var tokens = await _centralServerService.RefreshTokenAsync(refreshToken);
+            if (tokens == null)
                 return null;
 
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                IsEssential = true,
-                SameSite = SameSiteMode.None,
-                Secure = true
-            };
-            Response.Cookies.Append("CentralToken", newToken, cookieOptions);
-
-            return newToken;
+            CentralAuthCookies.WriteRefreshed(Response, tokens);
+            return tokens.AccessToken;
         }
     }
 }

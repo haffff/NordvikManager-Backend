@@ -59,6 +59,8 @@ namespace NordvikManager.WebRTC
         // TCS per socketId — completed when OnPeerJoined finishes creating the RTCPeerConnection.
         // Used by offer/ICE handlers to wait for the connection without polling.
         private readonly ConcurrentDictionary<string, TaskCompletionSource<RTCPeerConnection?>> _peerReadySignals = new();
+        // The lobby connection each peer opened, so a peer going away removes exactly that one.
+        private readonly PeerLobbyConnections _lobbyConnections;
 
         public WebRTCSessionService(
             ISignalingService signaling,
@@ -75,6 +77,8 @@ namespace NordvikManager.WebRTC
             _centralServerService = centralServerService;
             _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
+
+            _lobbyConnections = new PeerLobbyConnections(RemoveDataChannelConnectionAsync);
 
             _fallbackIceServers = BuildFallbackIceServers(configuration);
             _iceServers = _fallbackIceServers;
@@ -107,17 +111,52 @@ namespace NordvikManager.WebRTC
                 _logger.LogWarning("Could not fetch ICE servers from Central Server — using fallback STUN config.");
             }
 
-            await _signaling.ConnectAsync(gameId.ToString(), centralSessionId, centralToken);
+            // The ticket outlives the access token, so signaling can re-authenticate when its socket
+            // reconnects on its own. An older Central has no ticket: the access token it is.
+            var ticket = await _centralServerService.GetSignalingTicketAsync(centralToken, centralSessionId);
+            if (ticket == null)
+                _logger.LogWarning("No GM signaling ticket from the Central Server — signaling can't re-authenticate after the access token expires.");
+
+            await _signaling.ConnectAsync(gameId.ToString(), centralSessionId, ticket ?? centralToken);
         }
 
-        public Task StopSessionAsync(Guid gameId)
-            => _signaling.DisconnectAsync(gameId.ToString());
+        public async Task StopSessionAsync(Guid gameId)
+        {
+            var game = gameId.ToString();
+            await _signaling.DisconnectAsync(game);
+            // Players' data channels run peer to peer and outlive signaling, so close them too:
+            // their clients see the channel close and wait for the game to come back.
+            foreach (var socketId in _peerMeta.Where(kv => kv.Value.GameId == game).Select(kv => kv.Key).ToList())
+            {
+                CleanupPeer(socketId);
+                await _lobbyConnections.ReleaseAsync(socketId);
+            }
+        }
 
         private TaskCompletionSource<RTCPeerConnection?> GetOrCreateReadySignal(string socketId)
             => _peerReadySignals.GetOrAdd(socketId, _ =>
                 new TaskCompletionSource<RTCPeerConnection?>(TaskCreationOptions.RunContinuationsAsynchronously));
 
         private Task OnPeerJoined(PeerJoinedArgs args)
+        {
+            EnsurePeer(args);
+            return Task.CompletedTask;
+        }
+
+        // Peer-joined and the player's offer can both set up its peer connection (the offer when
+        // this backend never saw the peer join), concurrently: the first one does, the other
+        // gets that connection.
+        private readonly object _peerCreateLock = new();
+
+        private RTCPeerConnection? EnsurePeer(PeerJoinedArgs args)
+        {
+            lock (_peerCreateLock)
+            {
+                return _peerConnections.TryGetValue(args.SocketId, out var existing) ? existing : CreatePeer(args);
+            }
+        }
+
+        private RTCPeerConnection? CreatePeer(PeerJoinedArgs args)
         {
             _peerConnectStartMs[args.SocketId] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -132,7 +171,7 @@ namespace NordvikManager.WebRTC
                 _logger.LogError(ex, "Failed to create RTCPeerConnection for peer {SocketId} in game {GameId}", args.SocketId, args.GameId);
                 TryNotifyPlayerWebRTCError(args.GameId, args.UserId, "WebRTC connection could not be established");
                 GetOrCreateReadySignal(args.SocketId).TrySetResult(null);
-                return Task.CompletedTask;
+                return null;
             }
 
             _logger.LogInformation("Peer connection created for socketId={SocketId} user={User} game={GameId}",
@@ -140,18 +179,29 @@ namespace NordvikManager.WebRTC
 
             _peerConnections[args.SocketId] = pc;
             _peerMeta[args.SocketId] = (args.GameId, args.UserId);
+            // Peer-joined also comes for a player whose signaling socket reconnected while its
+            // data channel stayed open: no offer follows, so don't keep that connection around.
+            _ = CloseIfNeverOfferedAsync(args.SocketId, pc);
             _pendingLocalCandidates[args.SocketId] = new List<(string, string?, int?)>();
             GetOrCreateReadySignal(args.SocketId).TrySetResult(pc);
 
+            // This peer connection's lobby connection, once its data channel opened.
+            IPlayerConnection? lobbyConnection = null;
+
+            // 'disconnected' gets a grace period to recover; the player client reconnects by
+            // itself, so nothing is sent to the player (its other tabs would show the error).
+            // Only this connection is let go: the player may have re-offered on the same socket.
+            var stateWatcher = new PeerStateWatcher(PeerStateWatcher.DefaultGrace, () =>
+            {
+                _logger.LogInformation("WebRTC peer {SocketId} in game {GameId} is gone — releasing it", args.SocketId, args.GameId);
+                CleanupPeer(args.SocketId, pc);
+                if (lobbyConnection != null)
+                    _ = _lobbyConnections.ReleaseAsync(args.SocketId, lobbyConnection);
+            });
             pc.onconnectionstatechange += state =>
             {
                 _logger.LogInformation("WebRTC peer connection state → {State} for socket {SocketId} in game {GameId}", state, args.SocketId, args.GameId);
-                if (state == RTCPeerConnectionState.failed || state == RTCPeerConnectionState.disconnected)
-                {
-                    TryNotifyPlayerWebRTCError(args.GameId, args.UserId, $"WebRTC connection {state}");
-                    CleanupPeer(args.SocketId);
-                    RemoveDataChannelConnection(args.GameId, args.UserId);
-                }
+                stateWatcher.OnStateChanged(state);
             };
 
             pc.ondatachannel += dataChannel =>
@@ -281,6 +331,9 @@ namespace NordvikManager.WebRTC
                         lobby.ConnectedPlayers[playerEntry].Add(connection);
                     }
 
+                    _lobbyConnections.Track(args.SocketId, args.GameId, args.UserId, connection);
+                    lobbyConnection = connection;
+
                     var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                         - (_peerConnectStartMs.TryGetValue(args.SocketId, out var t) ? t : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                     _logger.LogInformation(
@@ -298,7 +351,10 @@ namespace NordvikManager.WebRTC
                     _ = HandleOpenAsync();
 
                 dataChannel.onclose += () =>
-                    RemoveDataChannelConnection(args.GameId, args.UserId);
+                {
+                    if (connection != null)
+                        _ = _lobbyConnections.ReleaseAsync(args.SocketId, connection);
+                };
 
                 dataChannel.onmessage += (_, _, data) =>
                 {
@@ -338,6 +394,12 @@ namespace NordvikManager.WebRTC
                     // Check if this is a tunneled REST request
                     if (TryParseApiRequest(text, out var apiRequest))
                     {
+                        if (WebRTCHeartbeat.ReplyFor(apiRequest!) is { } heartbeatReply)
+                        {
+                            if (dataChannel.readyState == RTCDataChannelState.open)
+                                dataChannel.send(heartbeatReply);
+                            return;
+                        }
                         _ = _apiDispatcher.DispatchAsync(apiRequest!, playerEntry, gameId, connection);
                         return;
                     }
@@ -372,16 +434,34 @@ namespace NordvikManager.WebRTC
                 }
             };
 
-            return Task.CompletedTask;
+            return pc;
         }
 
         private async Task OnOfferReceived(WebRTCSignalArgs args)
         {
             _logger.LogDebug("Processing WebRTC offer from socketId={SocketId} game={GameId}", args.FromSocketId, args.GameId);
 
-            // peer-joined and webrtc-offer are dispatched concurrently on the thread pool by SocketIOClient.
-            // Wait up to 2 s for the peer connection that OnPeerJoined is creating in parallel.
-            var pc = await WaitForPeerConnectionAsync(args.FromSocketId);
+            RTCPeerConnection? pc;
+            if (args.UserId != null)
+            {
+                // Central says who sent it, so the peer connection can be set up here when
+                // peer-joined never came (the player joined before this backend reached signaling).
+                // A connection that already negotiated is the player's previous one: it re-offers
+                // on the same signaling socket after its connection dropped, so start over.
+                if (_peerConnections.TryGetValue(args.FromSocketId, out var previous) && previous.remoteDescription != null)
+                {
+                    _logger.LogInformation("New offer from socket {SocketId}: replacing its previous peer connection", args.FromSocketId);
+                    CleanupPeer(args.FromSocketId);
+                    await _lobbyConnections.ReleaseAsync(args.FromSocketId);
+                }
+                pc = EnsurePeer(new PeerJoinedArgs(args.GameId, args.UserId, args.Username ?? args.UserId, args.FromSocketId));
+            }
+            else
+            {
+                // An older Central relays no sender: wait for the peer connection peer-joined
+                // is creating in parallel (SocketIOClient dispatches both on the thread pool).
+                pc = await WaitForPeerConnectionAsync(args.FromSocketId);
+            }
 
             if (pc == null)
             {
@@ -474,8 +554,16 @@ namespace NordvikManager.WebRTC
 
         private Task OnPeerLeft(PeerLeftArgs args)
         {
+            // The player's signaling socket left (it may just be reconnecting). Its data channel
+            // runs peer to peer, so an established connection stays; its own state ends it.
+            if (_peerConnections.TryGetValue(args.SocketId, out var pc)
+                && !PeerStateWatcher.ShouldCloseOnSignalingLeave(pc.connectionState))
+            {
+                _logger.LogInformation("Signaling socket {SocketId} left; keeping its {State} peer connection", args.SocketId, pc.connectionState);
+                return Task.CompletedTask;
+            }
             CleanupPeer(args.SocketId);
-            return Task.CompletedTask;
+            return _lobbyConnections.ReleaseAsync(args.SocketId);
         }
 
         /// <summary>
@@ -520,8 +608,26 @@ namespace NordvikManager.WebRTC
             _pendingLocalCandidates[socketId] = null;
         }
 
-        private void CleanupPeer(string socketId)
+        private static readonly TimeSpan UnofferedPeerTimeout = TimeSpan.FromSeconds(60);
+
+        private async Task CloseIfNeverOfferedAsync(string socketId, RTCPeerConnection pc)
         {
+            await Task.Delay(UnofferedPeerTimeout);
+            if (pc.remoteDescription != null)
+                return;
+            _logger.LogInformation("No offer from socket {SocketId} within {Timeout}; closing its peer connection", socketId, UnofferedPeerTimeout);
+            CleanupPeer(socketId, pc);
+        }
+
+        // `only`: clean up only if that is still the socket's peer connection (not one that
+        // replaced it); otherwise just close it.
+        private void CleanupPeer(string socketId, RTCPeerConnection? only = null)
+        {
+            if (only != null && !(_peerConnections.TryGetValue(socketId, out var current) && ReferenceEquals(current, only)))
+            {
+                only.close();
+                return;
+            }
             _logger.LogInformation("Cleaning up peer socketId={SocketId}", socketId);
             if (_peerConnections.TryRemove(socketId, out var pc))
                 pc.close();
@@ -552,25 +658,20 @@ namespace NordvikManager.WebRTC
             });
         }
 
-        private void RemoveDataChannelConnection(string gameIdStr, string userId)
+        // Removes exactly this connection (see PeerLobbyConnections), not the user's first one.
+        private Task RemoveDataChannelConnectionAsync(string gameIdStr, string userId, IPlayerConnection connection)
         {
             if (!Guid.TryParse(gameIdStr, out var gameId))
-                return;
+                return Task.CompletedTask;
             if (!_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
-                return;
+                return Task.CompletedTask;
 
             var playerEntry = lobby.ConnectedPlayers.Keys
                 .FirstOrDefault(p => p.CentralServerUserId == userId);
 
-            if (playerEntry == null)
-                return;
-
-            var toRemove = lobby.ConnectedPlayers[playerEntry]
-                .OfType<WebRTCPlayerConnection>()
-                .FirstOrDefault();
-
-            if (toRemove != null)
-                _ = LobbyConnectionHelper.DisconnectPlayerAsync(lobby, playerEntry, toRemove);
+            return playerEntry == null
+                ? Task.CompletedTask
+                : LobbyConnectionHelper.DisconnectPlayerAsync(lobby, playerEntry, connection);
         }
 
         private static List<RTCIceServer> BuildFallbackIceServers(IConfiguration configuration)
