@@ -86,6 +86,12 @@ namespace NordvikManager.Services.Interfaces
         /// too old to know the route. The password isn't sent.
         /// </summary>
         Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
+        /// <summary>
+        /// Central's GM signaling ticket for a session: what signaling re-authenticates with
+        /// after the socket reconnects, long after the access token expired. Null when Central
+        /// refuses, is unreachable, or is too old to know the route.
+        /// </summary>
+        Task<string?> GetSignalingTicketAsync(string centralToken, string sessionId);
         Task<CentralLoginResult?> LoginAsync(string username, string password);
         /// <summary>
         /// Exchanges a Central Server refresh token for a new access token.

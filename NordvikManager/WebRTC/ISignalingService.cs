@@ -8,8 +8,12 @@ namespace NordvikManager.WebRTC
         /// <summary>Returns true if the Socket.io client for this game is currently connected.</summary>
         bool IsConnected(string gameId);
 
-        /// <summary>Connects to the Central Server session and starts listening for WebRTC events.</summary>
-        Task ConnectAsync(string gameId, string centralSessionId, string centralToken);
+        /// <summary>
+        /// Connects to the Central Server session and starts listening for WebRTC events. The
+        /// credential (GM signaling ticket, or access token) is kept to re-authenticate after the
+        /// socket drops; the connection is brought back on its own until DisconnectAsync.
+        /// </summary>
+        Task ConnectAsync(string gameId, string centralSessionId, string credential);
 
         /// <summary>Disconnects and cleans up the Socket.io client for a game.</summary>
         Task DisconnectAsync(string gameId);

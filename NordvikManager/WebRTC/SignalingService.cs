@@ -30,8 +30,13 @@ namespace NordvikManager.WebRTC
         private readonly string _centralServerUrl;
         private readonly ILogger<SignalingService> _logger;
         private readonly ConcurrentDictionary<string, SioClient> _clients = new();
-        // gameId → centralSessionId (needed to authenticate)
-        private readonly ConcurrentDictionary<string, string> _sessionIds = new();
+        // gameId → what to (re)authenticate with: present while the session wants signaling,
+        // removed by DisconnectAsync (which also stops a reconnect in progress).
+        private readonly ConcurrentDictionary<string, (string SessionId, string Credential)> _sessions = new();
+        // gameId → one connect at a time per game (StartSession and the reconnect loop can overlap)
+        private readonly ConcurrentDictionary<string, SemaphoreSlim> _connectLocks = new();
+        // gameId present while a reconnect loop runs for it
+        private readonly ConcurrentDictionary<string, bool> _reconnecting = new();
         // gameId is present here only after the Central Server sends back 'authenticated'
         private readonly ConcurrentDictionary<string, bool> _authenticated = new();
 
@@ -61,7 +66,31 @@ namespace NordvikManager.WebRTC
         public bool IsConnected(string gameId)
             => _clients.TryGetValue(gameId, out var client) && client.Connected && _authenticated.ContainsKey(gameId);
 
-        public async Task ConnectAsync(string gameId, string centralSessionId, string centralToken)
+        /// <param name="credential">
+        /// Central's GM signaling ticket for the session (or, from an older Central, the access
+        /// token). It is kept to re-authenticate whenever the socket reconnects.
+        /// </param>
+        public async Task ConnectAsync(string gameId, string centralSessionId, string credential)
+        {
+            _sessions[gameId] = (centralSessionId, credential);
+            await ConnectLockedAsync(gameId, centralSessionId, credential, requireAuthenticated: false);
+        }
+
+        private async Task ConnectLockedAsync(string gameId, string centralSessionId, string centralToken, bool requireAuthenticated)
+        {
+            var gate = _connectLocks.GetOrAdd(gameId, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync();
+            try
+            {
+                await ConnectCoreAsync(gameId, centralSessionId, centralToken, requireAuthenticated);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
+        private async Task ConnectCoreAsync(string gameId, string centralSessionId, string centralToken, bool requireAuthenticated)
         {
             if (_clients.TryGetValue(gameId, out var existing))
             {
@@ -75,19 +104,14 @@ namespace NordvikManager.WebRTC
                 try { await existing.DisconnectAsync(); } catch { /* best-effort */ }
             }
 
-            _sessionIds[gameId] = centralSessionId;
-
             // Completed when "authenticated" is received; failed on auth-error or disconnect-before-auth.
             // This lets StartSession wait until the GM is actually registered before responding to the client.
             var authTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions
-            {
-                ExtraHeaders = new Dictionary<string, string>
-                {
-                    ["Cookie"] = $"Authorization={centralToken}"
-                }
-            });
+            var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions());
+            // Set when Central refused this connection (an auth-error): it must not reconnect,
+            // e.g. after the owner opened the game as GM from another connection.
+            var refused = false;
 
             // On connected, authenticate as GM for the session
             client.OnConnected += async (sender, e) =>
@@ -103,10 +127,18 @@ namespace NordvikManager.WebRTC
             client.OnDisconnected += (sender, reason) =>
             {
                 _logger.LogWarning("Signaling disconnected from Central Server for game {GameId}: {Reason}", gameId, reason);
-                _authenticated.TryRemove(gameId, out _);
                 // If we disconnect before getting "authenticated", unblock ConnectAsync so the
                 // caller doesn't wait forever on a connection that already died.
+                var wasAuthenticated = authTcs.Task.IsCompletedSuccessfully;
                 authTcs.TrySetException(new Exception($"Signaling disconnected before authentication for game {gameId}: {reason}"));
+                // A replaced client (reconnect, StopSession) must not touch the current one's state.
+                if (!_clients.TryGetValue(gameId, out var current) || !ReferenceEquals(current, client))
+                    return;
+                _authenticated.TryRemove(gameId, out _);
+                // A connection that was up dropped: bring it back. (One that never got up is the
+                // caller's failure to handle, and a refused one must stay down.)
+                if (wasAuthenticated && !refused)
+                    _ = ReconnectAsync(gameId);
             };
 
             // authenticated: Central Server confirms GM registration — mark as truly connected
@@ -131,6 +163,7 @@ namespace NordvikManager.WebRTC
                     msg = "unknown";
                     _logger.LogError("Signaling auth-error for game {GameId}", gameId);
                 }
+                refused = true;
                 _authenticated.TryRemove(gameId, out _);
                 // Central's message is meant for the GM (e.g. "server is outdated") — keep it as-is.
                 authTcs.TrySetException(new SignalingAuthException(msg));
@@ -224,7 +257,18 @@ namespace NordvikManager.WebRTC
                 }
             });
 
-            await client.ConnectAsync();
+            try
+            {
+                await client.ConnectAsync();
+            }
+            catch
+            {
+                // Central unreachable: drop this client so it can't come up on its own later
+                // and authenticate next to the client a retry makes.
+                refused = true;
+                try { await client.DisconnectAsync(); } catch { /* best-effort */ }
+                throw;
+            }
             _clients[gameId] = client;
 
             // Block until the Central Server sends "authenticated" so that StartSession doesn't
@@ -244,6 +288,13 @@ namespace NordvikManager.WebRTC
                 try { await client.DisconnectAsync(); } catch { /* best-effort */ }
                 throw;
             }
+            catch (OperationCanceledException) when (requireAuthenticated)
+            {
+                // A reconnect attempt that doesn't get through counts as failed, so it's retried.
+                _clients.TryRemove(new KeyValuePair<string, SioClient>(gameId, client));
+                try { await client.DisconnectAsync(); } catch { /* best-effort */ }
+                throw new TimeoutException($"Signaling authentication timed out for game {gameId}");
+            }
             catch (OperationCanceledException)
             {
                 _logger.LogWarning(
@@ -254,11 +305,43 @@ namespace NordvikManager.WebRTC
             }
         }
 
+        // Runs at most once per game at a time, until signaling is back, Central refuses it,
+        // or the session is stopped (DisconnectAsync removes it from _sessions).
+        private async Task ReconnectAsync(string gameId)
+        {
+            if (!_reconnecting.TryAdd(gameId, true))
+                return;
+            try
+            {
+                var outcome = await SignalingReconnect.RunAsync(
+                    () => _sessions.TryGetValue(gameId, out var s)
+                        ? ConnectLockedAsync(gameId, s.SessionId, s.Credential, requireAuthenticated: true)
+                        : Task.CompletedTask,
+                    () => _sessions.ContainsKey(gameId) && !IsConnected(gameId),
+                    delay => Task.Delay(delay),
+                    (attempt, ex) => _logger.LogWarning("Signaling reconnect attempt {Attempt} for game {GameId} failed: {Error}", attempt, gameId, ex.Message));
+
+                if (outcome == SignalingReconnect.Outcome.Connected)
+                    _logger.LogInformation("Signaling reconnected to Central Server for game {GameId}", gameId);
+                else if (outcome == SignalingReconnect.Outcome.Refused)
+                    _logger.LogError("Central Server refused the signaling reconnect for game {GameId}; reopen the game to start it again", gameId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Signaling reconnect for game {GameId} stopped", gameId);
+            }
+            finally
+            {
+                _reconnecting.TryRemove(gameId, out _);
+            }
+        }
+
         public async Task DisconnectAsync(string gameId)
         {
+            // First, so a reconnect in progress stops and a dropping client doesn't start one.
+            _sessions.TryRemove(gameId, out _);
             if (_clients.TryRemove(gameId, out var client))
                 await client.DisconnectAsync();
-            _sessionIds.TryRemove(gameId, out _);
             _authenticated.TryRemove(gameId, out _);
         }
 

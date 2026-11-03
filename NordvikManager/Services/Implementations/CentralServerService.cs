@@ -158,6 +158,24 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
+        public async Task<string?> GetSignalingTicketAsync(string centralToken, string sessionId)
+        {
+            var body = JsonConvert.SerializeObject(new { sessionId });
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/signalingticket",
+                        new StringContent(body, Encoding.UTF8, "application/json")));
+                if (!response.IsSuccessStatusCode) return null;
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                return json["ticket"]?.Value<string>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public async Task<string?> RefreshTokenAsync(string refreshToken)
         {
             var client = _httpClientFactory.CreateClient();
