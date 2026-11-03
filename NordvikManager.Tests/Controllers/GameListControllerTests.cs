@@ -1,6 +1,8 @@
 using NordvikManager.Infrastructure.Services.Settings;
 using NordvikManager.Application.Commands.BattleMap;
 using NordvikManager.Application.Commands.Game.DeleteGame;
+using NordvikManager.Application.Commands.Game.GetGameCentralSessionId;
+using NordvikManager.Application.Commands.Game.GetGameSessionDetails;
 using NordvikManager.Application.Commands.Game.UpdateGame;
 using NordvikManager.Controllers.Requests;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
@@ -134,6 +136,89 @@ namespace NordvikManager.Tests.Controllers
 
             // Assert
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        // Deleting a game deletes its Central session too, or Central keeps it for good.
+        [Fact]
+        public async Task DeleteGame_DeletesTheGamesCentralSession()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(c => c.DeleteSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("central-session-1");
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            var result = await ControllerWithCentral(central).DeleteGame(Guid.NewGuid());
+
+            Assert.IsType<OkObjectResult>(result);
+            central.Verify(c => c.DeleteSessionAsync(It.IsAny<string>(), "central-session-1"), Times.Once);
+        }
+
+        [Fact]
+        public async Task DeleteGame_KeepsTheCentralSession_WhenTheGameWasNotDeleted()
+        {
+            var central = new Mock<ICentralServerService>();
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("central-session-1");
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.NoPermission);
+
+            await ControllerWithCentral(central).DeleteGame(Guid.NewGuid());
+
+            central.Verify(c => c.DeleteSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task DeleteGame_StillSucceeds_WhenCentralRefusesTheDelete()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(c => c.DeleteSessionAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("central-session-1");
+            _mediator.Setup(m => m.Send(It.IsAny<RemoveGameCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(CommandResponse.Ok);
+
+            Assert.IsType<OkObjectResult>(await ControllerWithCentral(central).DeleteGame(Guid.NewGuid()));
+        }
+
+        // AssignSession makes a new Central session; the one it replaces mustn't be left behind.
+        [Fact]
+        public async Task AssignSession_ReplacesTheCentralSession_AndDeletesTheOldOne()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>())).ReturnsAsync("central-session-2");
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game", PasswordRequired = true, Password = "pw" });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("central-session-1");
+
+            var result = await ControllerWithCentral(central, LocalAdmin()).AssignSession(Guid.NewGuid());
+
+            Assert.IsType<OkObjectResult>(result);
+            central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.Is<GameItemDTO>(g => g.Password == "pw")), Times.Once);
+            central.Verify(c => c.DeleteSessionAsync(It.IsAny<string>(), "central-session-1"), Times.Once);
+        }
+
+        private GameListController ControllerWithCentral(Mock<ICentralServerService> central, User? user = null)
+        {
+            var controller = new GameListController(_mediator.Object, _config.Object, _lobbyService.Object, central.Object,
+                new Mock<IWebRTCSessionService>().Object, new Mock<System.Net.Http.IHttpClientFactory>().Object,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<GameListController>.Instance);
+            var httpContext = new DefaultHttpContext();
+            httpContext.Items["User"] = user ?? RegularUser();
+            httpContext.Request.Headers.Cookie = $"CentralToken={ValidCentralToken()}";
+            controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+            return controller;
+        }
+
+        private static string ValidCentralToken()
+        {
+            var key = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(new byte[32]);
+            var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
+                expires: DateTime.UtcNow.AddMinutes(15),
+                signingCredentials: new Microsoft.IdentityModel.Tokens.SigningCredentials(key, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256));
+            return new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().WriteToken(token);
         }
 
         // =========================================================================

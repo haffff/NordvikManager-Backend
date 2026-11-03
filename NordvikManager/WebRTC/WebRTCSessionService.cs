@@ -1,5 +1,6 @@
 ﻿using NordvikManager.Application.Commands.BattleMap;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Player.CheckUserBanned;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Domain.Entities.Auth;
 using NordvikManager.Enums;
@@ -244,6 +245,7 @@ namespace NordvikManager.WebRTC
                 // to 'open' between assigning onopen and the readyState check below, which would
                 // otherwise call HandleOpenAsync twice and create a duplicate lobby connection.
                 var openHandled = 0;
+                var banned = false;
                 async Task HandleOpenAsync()
                 {
                     if (Interlocked.Exchange(ref openHandled, 1) != 0) return;
@@ -251,25 +253,28 @@ namespace NordvikManager.WebRTC
                     {
                         if (await ResolvePlayerAsync())
                             earlyMessages.Open(HandleMessage);
+                        else if (banned)
+                            FailEarlyMessages(403, "You are banned from this server.");
                         else
-                            FailEarlyMessages("The game could not identify this player.");
+                            FailEarlyMessages(503, "The game could not identify this player.");
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Resolving the player for socket {SocketId} in game {GameId} failed", args.SocketId, args.GameId);
-                        FailEarlyMessages("The game could not identify this player.");
+                        FailEarlyMessages(503, "The game could not identify this player.");
                     }
                 }
 
                 // The requests that came in before the player was known get an answer, not silence.
-                void FailEarlyMessages(string reason)
+                void FailEarlyMessages(int status, string reason)
                 {
                     foreach (var data in earlyMessages.Fail())
                     {
                         if (TryParseApiRequest(Encoding.UTF8.GetString(data), out var request))
-                            SendApiError(dataChannel, request!.Id, 503, reason);
+                            SendApiError(dataChannel, request!.Id, status, reason);
                     }
                 }
+
 
                 // Sets connection and playerEntry; false when the player can't be resolved.
                 async Task<bool> ResolvePlayerAsync()
@@ -283,6 +288,20 @@ namespace NordvikManager.WebRTC
                     {
                         SendChannelError(dataChannel, "err: no lobby found");
                         return false;
+                    }
+
+                    // The player client never logs in here, so this is where a ban applies to it.
+                    using (var banScope = _serviceScopeFactory.CreateScope())
+                    {
+                        var banMediator = banScope.ServiceProvider.GetRequiredService<IMediator>();
+                        if (!string.IsNullOrEmpty(args.UserId)
+                            && await banMediator.Send(new CheckUserBannedCommand { CentralUserId = args.UserId }))
+                        {
+                            _logger.LogInformation("Refused banned user {UserId} in game {GameId}", args.UserId, gameId);
+                            banned = true;
+                            SendChannelError(dataChannel, "err: banned");
+                            return false;
+                        }
                     }
 
                     playerEntry = lobby.ConnectedPlayers.Keys
@@ -306,9 +325,9 @@ namespace NordvikManager.WebRTC
                         if (response.Player == null)
                         {
                             // Auto-create the player — same path as joining a game for the first time.
-                            // The password gate is skipped here: reaching this point already required
-                            // passing the Central Server's join check for this session, and this
-                            // fallback has no channel to prompt the player for a password anyway.
+                            // The password gate is skipped here: Central signaling only lets the
+                            // session's owner and members (who passed its join check, password
+                            // included) connect as players, and this path can't prompt for one anyway.
                             await mediator.Send(new AddPlayerCommand { GameID = gameId, User = user, SkipPasswordCheck = true });
                             response = await mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });
                         }

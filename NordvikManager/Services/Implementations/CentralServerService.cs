@@ -126,28 +126,83 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
-        public async Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session)
+        public async Task<CentralSessionUpdate> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session)
         {
-            var body = JsonConvert.SerializeObject(new
+            var fields = new JObject
             {
-                sessionId,
-                name = session.Name,
-                summary = session.ShortDescription,
-                description = session.LongDescription,
-                image = session.Image,
-                isPublic = session.IsPublic,
-            });
+                ["sessionId"] = sessionId,
+                ["name"] = session.Name,
+                ["summary"] = session.ShortDescription,
+                ["description"] = session.LongDescription,
+                ["image"] = session.Image,
+                ["isPublic"] = session.IsPublic,
+            };
+            // Heals a session made without the password (Central then can't check it on join).
+            // Left out, Central keeps what it has.
+            if (!string.IsNullOrEmpty(session.Password))
+                fields["password"] = session.Password;
+            var body = fields.ToString(Formatting.None);
             try
             {
                 // Content built per attempt: a retry after a token refresh can't reuse a sent one.
                 var response = await SendAuthenticatedAsync(centralToken,
                     client => client.PostAsync($"{_centralServerUrl}/api/gamelist/updategame",
                         new StringContent(body, Encoding.UTF8, "application/json")));
+                if (response.IsSuccessStatusCode) return CentralSessionUpdate.Updated;
+                return await IsSessionNotFoundAsync(response) ? CentralSessionUpdate.Missing : CentralSessionUpdate.Failed;
+            }
+            catch
+            {
+                return CentralSessionUpdate.Failed;
+            }
+        }
+
+        // Central's own "no such session" answer. A Central too old for the route answers 404
+        // too, but with Express's HTML page; that one must not count as a missing session.
+        private static async Task<bool> IsSessionNotFoundAsync(HttpResponseMessage response)
+        {
+            if (response.StatusCode != HttpStatusCode.NotFound || response.Content == null) return false;
+            try
+            {
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                return json["error"]?.Value<string>() == "Session not found";
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteSessionAsync(string centralToken, string sessionId)
+        {
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.DeleteAsync($"{_centralServerUrl}/api/gamelist/DeleteGame?gameId={Uri.EscapeDataString(sessionId)}"));
                 return response.IsSuccessStatusCode;
             }
             catch
             {
                 return false;
+            }
+        }
+
+        public async Task<CentralJoinResult> JoinSessionAsync(string centralToken, string sessionId, string? password)
+        {
+            var body = JsonConvert.SerializeObject(new { gameID = sessionId, password });
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/join",
+                        new StringContent(body, Encoding.UTF8, "application/json")));
+                if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Conflict)
+                    return CentralJoinResult.Joined;
+                var status = (int)response.StatusCode;
+                return status >= 400 && status < 500 ? CentralJoinResult.Refused : CentralJoinResult.Failed;
+            }
+            catch
+            {
+                return CentralJoinResult.Failed;
             }
         }
 
