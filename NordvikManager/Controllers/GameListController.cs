@@ -132,7 +132,22 @@ namespace NordvikManager.Controllers
                 AsLocalAdmin = user?.IsLocalAdmin == true,
             };
 
+            // Read before the game (and with it the id) is gone.
+            var centralSessionId = await mediator.Send(new GetGameCentralSessionIdCommand { GameID = gameId });
+
             var res = await mediator.Send(removeGameCommand);
+
+            // The game's Central session goes too, or it stays listed in Central's database for
+            // good. Best effort: Central lets only the session's owner (or a Central admin) delete it.
+            if (res == NordvikManager.Domain.Enums.CommandResponse.Ok && !string.IsNullOrEmpty(centralSessionId))
+            {
+                var centralToken = await GetOrRefreshCentralTokenAsync();
+                if (string.IsNullOrEmpty(centralToken)
+                    || !await _centralServerService.DeleteSessionAsync(centralToken, centralSessionId))
+                {
+                    _logger.LogWarning("Game {GameId} was deleted, but its Central session {CentralSessionId} could not be deleted", gameId, centralSessionId);
+                }
+            }
 
             return Ok(res);
         }
@@ -293,30 +308,14 @@ namespace NordvikManager.Controllers
             if (string.IsNullOrEmpty(centralToken))
                 return BadRequest(new { error = "No CentralToken cookie. Please log in to the Central Server first." });
 
-            var details = await mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
-            if (details == null)
+            // A new session (with the game's password); the one it replaces is deleted on Central.
+            var central = await new CentralSessionSync(mediator, _centralServerService).ReplaceAsync(gameId, centralToken);
+            if (central.Details == null)
                 return NotFound(new { error = "Game not found." });
 
-            var sessionId = await _centralServerService.CreateSessionAsync(
-                centralToken,
-                new GameItemDTO
-                {
-                    Name = details.Name,
-                    ShortDescription = details.Summary,
-                    LongDescription = details.Description,
-                    Image = details.Image,
-                    PasswordRequired = details.PasswordRequired,
-                    IsPublic = details.IsPublic
-                });
-
+            var sessionId = central.SessionId;
             if (sessionId == null)
                 return StatusCode(502, new { error = "Central Server did not return a session ID. Please try again later." });
-
-            await mediator.Send(new SetGameCentralSessionCommand
-            {
-                GameId = gameId,
-                CentralSessionId = sessionId
-            });
 
             try
             {

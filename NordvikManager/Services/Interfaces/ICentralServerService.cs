@@ -63,6 +63,26 @@ namespace NordvikManager.Services.Interfaces
     /// <summary>A refreshed Central access token and the refresh token that replaces the old one.</summary>
     public record CentralTokens(string AccessToken, string? RefreshToken);
 
+    /// <summary>What re-sending a session's details to Central came to.</summary>
+    public enum CentralSessionUpdate
+    {
+        Updated,
+        /// <summary>Central no longer has the session (expired or deleted): make a new one.</summary>
+        Missing,
+        /// <summary>Refused, unreachable, or a Central too old to know the route.</summary>
+        Failed,
+    }
+
+    /// <summary>What joining a Central session as a player came to.</summary>
+    public enum CentralJoinResult
+    {
+        /// <summary>Joined now, already a member, or the owner.</summary>
+        Joined,
+        /// <summary>Central said no (wrong password, no such session, ...).</summary>
+        Refused,
+        Failed,
+    }
+
     public class CentralLoginResult
     {
         /// <summary>Central Server JWT — used only for server-to-server proxied calls.</summary>
@@ -85,10 +105,16 @@ namespace NordvikManager.Services.Interfaces
         Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session);
         /// <summary>
         /// Re-sends an existing session's listed details (name, descriptions, cover image,
-        /// public flag) to the Central Server; false when it refuses, is unreachable, or is
-        /// too old to know the route. The password isn't sent.
+        /// public flag, and the password when the game has one) to the Central Server.
         /// </summary>
-        Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
+        Task<CentralSessionUpdate> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
+        /// <summary>Deletes a Central session (its owner or a Central admin only); false when refused or unreachable.</summary>
+        Task<bool> DeleteSessionAsync(string centralToken, string sessionId);
+        /// <summary>
+        /// Joins the token's user to a Central session as a player, with the game's password.
+        /// Central signaling only lets members (and the owner) connect as players.
+        /// </summary>
+        Task<CentralJoinResult> JoinSessionAsync(string centralToken, string sessionId, string? password);
         /// <summary>
         /// Central's GM signaling ticket for a session: what signaling re-authenticates with
         /// after the socket reconnects, long after the access token expired. Null when Central

@@ -13,5 +13,12 @@ namespace NordvikManager.WebRTC
 
         /// <summary>Stops the WebRTC session and closes all peer connections for a game.</summary>
         Task StopSessionAsync(Guid gameId);
+
+        /// <summary>
+        /// A ban: tells each of the Central user's open game connections they are banned, then
+        /// closes them. The client stops reconnecting on that message; a new connection would be
+        /// refused anyway.
+        /// </summary>
+        Task DisconnectUserAsync(string centralUserId);
     }
 }

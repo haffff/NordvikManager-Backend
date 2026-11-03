@@ -1,5 +1,6 @@
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Services.Implementations;
+using NordvikManager.Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Moq;
@@ -8,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -58,9 +60,9 @@ namespace NordvikManager.Tests.Services
         {
             var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
 
-            var ok = await Service(handler).UpdateSessionAsync("token", "session-1", Details());
+            var result = await Service(handler).UpdateSessionAsync("token", "session-1", Details());
 
-            Assert.True(ok);
+            Assert.Equal(CentralSessionUpdate.Updated, result);
             Assert.Equal(HttpMethod.Post, handler.Request!.Method);
             Assert.Equal("http://central/api/gamelist/updategame", handler.Request.RequestUri!.ToString());
             var body = JObject.Parse(handler.Body!);
@@ -73,20 +75,102 @@ namespace NordvikManager.Tests.Services
         }
 
         [Fact]
-        public async Task UpdateSessionAsync_ReturnsFalse_WhenCentralRefusesOrIsOlder()
+        public async Task UpdateSessionAsync_IsFailed_WhenCentralIsTooOldForTheRoute()
         {
-            // An older Central has no updategame route (404).
-            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+            // An older Central has no updategame route: Express's own 404 page, not a missing
+            // session. Treating it as missing would make a new session on every start.
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("<pre>Cannot POST /api/gamelist/updategame</pre>", Encoding.UTF8, "text/html"),
+            });
 
-            Assert.False(await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
+            Assert.Equal(CentralSessionUpdate.Failed, await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
         }
 
         [Fact]
-        public async Task UpdateSessionAsync_ReturnsFalse_WhenCentralIsUnreachable()
+        public async Task UpdateSessionAsync_IsMissing_WhenCentralNoLongerHasTheSession()
+        {
+            // Central expired or deleted the session; the backend has to make a new one.
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("{\"error\":\"Session not found\"}", Encoding.UTF8, "application/json"),
+            });
+
+            Assert.Equal(CentralSessionUpdate.Missing, await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
+        }
+
+        [Fact]
+        public async Task UpdateSessionAsync_IsFailed_WhenCentralRefuses()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
+
+            Assert.Equal(CentralSessionUpdate.Failed, await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
+        }
+
+        [Fact]
+        public async Task UpdateSessionAsync_IsFailed_WhenCentralIsUnreachable()
         {
             var handler = new RecordingHandler(_ => throw new HttpRequestException("down"));
 
-            Assert.False(await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
+            Assert.Equal(CentralSessionUpdate.Failed, await Service(handler).UpdateSessionAsync("token", "session-1", Details()));
+        }
+
+        [Fact]
+        public async Task UpdateSessionAsync_SendsThePassword_OnlyWhenTheGameHasOne()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+            var details = Details();
+            details.Password = "pw";
+
+            await Service(handler).UpdateSessionAsync("token", "session-1", details);
+            Assert.Equal("pw", JObject.Parse(handler.Body!)["password"]!.Value<string>());
+
+            await Service(handler).UpdateSessionAsync("token", "session-1", Details());
+            Assert.Null(JObject.Parse(handler.Body!)["password"]);
+        }
+
+        [Fact]
+        public async Task DeleteSessionAsync_DeletesTheSessionOnCentral()
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+            Assert.True(await Service(handler).DeleteSessionAsync("token", "session 1"));
+            Assert.Equal(HttpMethod.Delete, handler.Request!.Method);
+            Assert.Equal("http://central/api/gamelist/DeleteGame?gameId=session%201", handler.Request.RequestUri!.AbsoluteUri);
+        }
+
+        [Fact]
+        public async Task DeleteSessionAsync_IsFalse_WhenCentralRefusesOrIsUnreachable()
+        {
+            Assert.False(await Service(new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden))).DeleteSessionAsync("token", "s"));
+            Assert.False(await Service(new RecordingHandler(_ => throw new HttpRequestException("down"))).DeleteSessionAsync("token", "s"));
+        }
+
+        [Theory]
+        [InlineData(HttpStatusCode.OK, CentralJoinResult.Joined)]
+        [InlineData(HttpStatusCode.Conflict, CentralJoinResult.Joined)] // already a member
+        [InlineData(HttpStatusCode.Unauthorized, CentralJoinResult.Refused)] // wrong password
+        [InlineData(HttpStatusCode.BadRequest, CentralJoinResult.Refused)]
+        [InlineData(HttpStatusCode.ServiceUnavailable, CentralJoinResult.Failed)]
+        public async Task JoinSessionAsync_MapsCentralsAnswer(HttpStatusCode status, CentralJoinResult expected)
+        {
+            var handler = new RecordingHandler(_ => new HttpResponseMessage(status));
+
+            var result = await Service(handler).JoinSessionAsync("token", "session-1", "pw");
+
+            Assert.Equal(expected, result);
+            Assert.Equal("http://central/api/gamelist/join", handler.Request!.RequestUri!.ToString());
+            var body = JObject.Parse(handler.Body!);
+            Assert.Equal("session-1", body["gameID"]!.Value<string>());
+            Assert.Equal("pw", body["password"]!.Value<string>());
+        }
+
+        [Fact]
+        public async Task JoinSessionAsync_IsFailed_WhenCentralIsUnreachable()
+        {
+            var handler = new RecordingHandler(_ => throw new HttpRequestException("down"));
+
+            Assert.Equal(CentralJoinResult.Failed, await Service(handler).JoinSessionAsync("token", "session-1", null));
         }
     }
 }

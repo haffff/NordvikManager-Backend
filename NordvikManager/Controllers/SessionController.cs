@@ -88,57 +88,25 @@ namespace NordvikManager.Controllers
             if (string.IsNullOrEmpty(centralToken))
                 return BadRequest(new { error = "No CentralToken cookie. Please log in to the Central Server first." });
 
-            var centralSessionId = await _mediator.Send(new GetGameCentralSessionIdCommand { GameID = gameId });
-
-            // No Central Server session — create one now (handles games created when token was expired).
+            // The game's Central session: made when there's none (a game created while the token
+            // was expired) or when Central no longer has it (expired, deleted); otherwise its
+            // listing — cover image, password — is re-sent.
+            // Making it makes its owner on Central, who may then connect as the game's GM: only
+            // the GM (or the server's local admin) may, not any player starting the game.
+            var mayCreate = playerResponse.Player.IsOwner == true || user.IsLocalAdmin;
+            var central = await new CentralSessionSync(_mediator, _centralServerService).EnsureAsync(gameId, centralToken, mayCreate);
+            if (central.Details == null)
+                return NotFound(new { error = "Game not found." });
+            if (central.NeedsOwner)
+                return Conflict(new { error = "This game has no session on the Central Server right now. Ask its GM to start it." });
+            var centralSessionId = central.SessionId;
             if (centralSessionId == null)
-            {
-                var details = await _mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
-                if (details == null)
-                    return NotFound(new { error = "Game not found." });
+                return StatusCode(502, new { error = "Could not create Central Server session. The Central Server may be unreachable." });
 
-                centralSessionId = await _centralServerService.CreateSessionAsync(
-                    centralToken,
-                    new GameItemDTO
-                    {
-                        Name = details.Name,
-                        ShortDescription = details.Summary,
-                        LongDescription = details.Description,
-                        Image = details.Image,
-                        PasswordRequired = details.PasswordRequired,
-                        IsPublic = details.IsPublic
-                    });
-
-                if (centralSessionId == null)
-                    return StatusCode(502, new { error = "Could not create Central Server session. The Central Server may be unreachable." });
-
-                await _mediator.Send(new SetGameCentralSessionCommand
-                {
-                    GameId = gameId,
-                    CentralSessionId = centralSessionId
-                });
-            }
-            else
-            {
-                // Refresh the listing players see before they connect (the cover image above
-                // all): it was only ever sent when the session was made. Best effort — an
-                // older Central without the route, or any failure, leaves it as it was.
-                var details = await _mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
-                if (details != null)
-                {
-                    await _centralServerService.UpdateSessionAsync(
-                        centralToken,
-                        centralSessionId,
-                        new GameItemDTO
-                        {
-                            Name = details.Name,
-                            ShortDescription = details.Summary,
-                            LongDescription = details.Description,
-                            Image = details.Image,
-                            IsPublic = details.IsPublic
-                        });
-                }
-            }
+            // Central signaling only lets the owner and the session's members connect as players,
+            // and someone who joined this game here (not through the player client) isn't one yet.
+            // Best effort: joining again is a no-op, and Central answers ok for the owner.
+            await _centralServerService.JoinSessionAsync(centralToken, centralSessionId, central.Details.Password);
 
             // Lobby already exists — check if WebRTC signaling is still connected.
             if (_lobbyRegistry.Games.ContainsKey(gameId))

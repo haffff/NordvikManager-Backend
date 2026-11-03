@@ -111,6 +111,8 @@ Use `AddScoped` for per-request, `AddSingleton` for cached/static data, `AddTran
 
 JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessageReceived` handler in Startup extracts the token from the request cookie. JWT secret is auto-generated at startup if not set in config.
 
+**Central session.** Each game has a Central session (`Games.CentralSessionId`). `Services/CentralSessionSync.cs` keeps it in step on every session start: it creates one when the game has none, re-sends the listing including the game password otherwise, and creates a new one when Central answers that the session is gone (Central expires sessions whose GM stays away for `SESSION_EXPIRY_DAYS`). Only the game's GM or the local admin may create or replace it: whoever creates it owns it on Central and may connect to signaling as GM. Starting a session also joins the starting user to it on Central (`JoinSessionAsync`), because Central signaling admits only the owner and members as players. Deleting a game deletes its Central session. The WebRTC data channel refuses banned users (`CheckUserBannedCommand`) before resolving or auto-creating the player.
+
 ## Database
 
 Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).

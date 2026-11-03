@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace NordvikManager.WebRTC
@@ -25,6 +27,12 @@ namespace NordvikManager.WebRTC
 
         public void Track(string socketId, string gameId, string userId, IPlayerConnection connection)
             => _bySocket[socketId] = (gameId, userId, connection);
+
+        /// <summary>Every socket (in any game) whose lobby connection belongs to this Central user.</summary>
+        public IReadOnlyList<(string SocketId, IPlayerConnection Connection)> SocketsOf(string userId)
+            => _bySocket.Where(kv => kv.Value.UserId == userId)
+                        .Select(kv => (kv.Key, kv.Value.Connection))
+                        .ToList();
 
         /// <summary>The socket is gone: release whatever connection it has.</summary>
         public Task ReleaseAsync(string socketId)

@@ -30,7 +30,8 @@ namespace NordvikManager.Application.Commands.Game.GetGameSessionDetails
                 Name = game.Name ?? string.Empty,
                 Summary = game.Properties?.FirstOrDefault(p => p.Name == "shortDescription")?.Value,
                 Description = game.Properties?.FirstOrDefault(p => p.Name == "longDescription")?.Value,
-                PasswordRequired = game.Password != null,
+                PasswordRequired = !string.IsNullOrWhiteSpace(game.Password),
+                Password = string.IsNullOrWhiteSpace(game.Password) ? null : game.Password,
                 IsPublic = game.IsPublic,
                 Image = await GetCoverImageAsync(game.Id),
             };
