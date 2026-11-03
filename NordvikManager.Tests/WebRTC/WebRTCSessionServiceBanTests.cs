@@ -32,6 +32,8 @@ namespace NordvikManager.Tests.WebRTC
         private Func<IceCandidateArgs, Task>? _onIce;
         private readonly RTCPeerConnection _browser = new(new RTCConfiguration());
         private readonly Guid _gameId = Guid.NewGuid();
+        private readonly WebRTCSessionService _service;
+        private readonly GameLobby _lobby;
 
         public WebRTCSessionServiceBanTests()
         {
@@ -65,14 +67,15 @@ namespace NordvikManager.Tests.WebRTC
 
             var registry = new Mock<ILobbyRegistry>();
             var games = new ConcurrentDictionary<Guid, GameLobby>();
-            games[_gameId] = new GameLobby(scopes.Object)
+            _lobby = new GameLobby(scopes.Object)
             {
                 GameId = _gameId,
                 ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>>(),
             };
+            games[_gameId] = _lobby;
             registry.Setup(r => r.Games).Returns(games);
 
-            _ = new WebRTCSessionService(
+            _service = new WebRTCSessionService(
                 _signaling.Object,
                 registry.Object,
                 new Mock<IWebRTCApiDispatcher>().Object,
@@ -90,6 +93,18 @@ namespace NordvikManager.Tests.WebRTC
             var first = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             var channel = await _browser.createDataChannel("game");
             channel.onmessage += (_, _, data) => first.TrySetResult(Encoding.UTF8.GetString(data));
+            await OfferAsync();
+            return await WithinAsync(first.Task);
+        }
+
+        private static async Task<T?> WithinAsync<T>(Task<T> task) where T : class
+        {
+            var done = await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(15)));
+            return done == task ? task.Result : null;
+        }
+
+        private async Task OfferAsync()
+        {
             _browser.onicecandidate += c =>
             {
                 if (c != null)
@@ -99,9 +114,52 @@ namespace NordvikManager.Tests.WebRTC
             await _browser.setLocalDescription(offer);
 
             await _onOffer!(new WebRTCSignalArgs(_gameId.ToString(), "socket-1", offer.sdp, "user-1", "Alice"));
+        }
 
-            var done = await Task.WhenAny(first.Task, Task.Delay(TimeSpan.FromSeconds(15)));
-            return done == first.Task ? first.Task.Result : null;
+        // Banning someone already in a game: their channel is told why, then closed, and they
+        // leave the lobby, instead of playing on until they reconnect.
+        [Fact]
+        public async Task DisconnectUser_TellsAConnectedPlayerTheyAreBanned_AndClosesTheirConnection()
+        {
+            var alice = new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice", CentralServerUserId = "user-1" };
+            _lobby.ConnectedPlayers[alice] = new List<IPlayerConnection>();
+            var message = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var closed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var channel = await _browser.createDataChannel("game");
+            channel.onmessage += (_, _, data) => message.TrySetResult(Encoding.UTF8.GetString(data));
+            _browser.onconnectionstatechange += state =>
+            {
+                if (state is RTCPeerConnectionState.closed or RTCPeerConnectionState.failed or RTCPeerConnectionState.disconnected)
+                    closed.TrySetResult(state.ToString());
+            };
+            await OfferAsync();
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (_lobby.ConnectedPlayers[alice].Count == 0 && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+            Assert.Single(_lobby.ConnectedPlayers[alice]);
+
+            await _service.DisconnectUserAsync("user-1");
+
+            Assert.Contains("err: banned", await WithinAsync(message.Task));
+            Assert.NotNull(await WithinAsync(closed.Task));
+            Assert.Empty(_lobby.ConnectedPlayers.TryGetValue(alice, out var left) ? left : new List<IPlayerConnection>());
+        }
+
+        [Fact]
+        public async Task DisconnectUser_LeavesOtherUsersAlone()
+        {
+            var bob = new PlayerDTO { Id = Guid.NewGuid(), Name = "Bob", CentralServerUserId = "user-1" };
+            _lobby.ConnectedPlayers[bob] = new List<IPlayerConnection>();
+            var channel = await _browser.createDataChannel("game");
+            await OfferAsync();
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (_lobby.ConnectedPlayers[bob].Count == 0 && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+
+            await _service.DisconnectUserAsync("someone-else");
+
+            Assert.Single(_lobby.ConnectedPlayers[bob]);
+            Assert.Equal(RTCDataChannelState.open, channel.readyState);
         }
 
         [Fact]

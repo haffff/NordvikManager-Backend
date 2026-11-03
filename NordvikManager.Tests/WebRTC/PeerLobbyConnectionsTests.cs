@@ -1,5 +1,6 @@
 using NordvikManager.WebRTC;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -82,6 +83,18 @@ namespace NordvikManager.Tests.WebRTC
             var connections = Create();
             await connections.ReleaseAsync("never-opened");
             Assert.Empty(_removed);
+        }
+
+        [Fact]
+        public void SocketsOf_ListsEverySocketOfThatUser_InAnyGame()
+        {
+            var connections = new PeerLobbyConnections((_, _, _) => Task.CompletedTask);
+            connections.Track("s1", "g1", "u1", new FakeConnection());
+            connections.Track("s2", "g2", "u1", new FakeConnection());
+            connections.Track("s3", "g1", "u2", new FakeConnection());
+
+            Assert.Equal(new[] { "s1", "s2" }, connections.SocketsOf("u1").Select(c => c.SocketId).OrderBy(s => s));
+            Assert.Empty(connections.SocketsOf("nobody"));
         }
     }
 }

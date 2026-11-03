@@ -134,6 +134,37 @@ namespace NordvikManager.WebRTC
             }
         }
 
+        // Long enough for the "banned" message to leave before the connection closes.
+        private static readonly TimeSpan BannedMessageGrace = TimeSpan.FromMilliseconds(500);
+
+        public async Task DisconnectUserAsync(string centralUserId)
+        {
+            if (string.IsNullOrEmpty(centralUserId))
+                return;
+            var sockets = _lobbyConnections.SocketsOf(centralUserId);
+            if (sockets.Count == 0)
+                return;
+
+            _logger.LogInformation("Disconnecting banned user {UserId} ({Count} connection(s))", centralUserId, sockets.Count);
+            foreach (var (_, connection) in sockets)
+            {
+                try
+                {
+                    await connection.SendMessageToPlayer(new { command = WebSocketCommandNames.ErrorGeneric, data = BannedError });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not tell banned user {UserId} before disconnecting", centralUserId);
+                }
+            }
+            await Task.Delay(BannedMessageGrace);
+            foreach (var (socketId, connection) in sockets)
+            {
+                CleanupPeer(socketId);
+                await _lobbyConnections.ReleaseAsync(socketId, connection);
+            }
+        }
+
         private TaskCompletionSource<RTCPeerConnection?> GetOrCreateReadySignal(string socketId)
             => _peerReadySignals.GetOrAdd(socketId, _ =>
                 new TaskCompletionSource<RTCPeerConnection?>(TaskCreationOptions.RunContinuationsAsynchronously));
@@ -299,7 +330,7 @@ namespace NordvikManager.WebRTC
                         {
                             _logger.LogInformation("Refused banned user {UserId} in game {GameId}", args.UserId, gameId);
                             banned = true;
-                            SendChannelError(dataChannel, "err: banned");
+                            SendChannelError(dataChannel, BannedError);
                             return false;
                         }
                     }
@@ -712,6 +743,9 @@ namespace NordvikManager.WebRTC
 
             return servers;
         }
+
+        // The channel error a banned user gets; the client stops reconnecting on it.
+        private const string BannedError = "err: banned";
 
         private static void SendChannelError(RTCDataChannel dc, string message)
         {

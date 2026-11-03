@@ -7,6 +7,7 @@ using NordvikManager.Application.Commands.Player.UnbanUser;
 using NordvikManager.Domain.Entities.Auth;
 using NordvikManager.Services;
 using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -294,14 +295,17 @@ namespace NordvikManager.Controllers
         [HttpPost]
         [Authorize]
         [Route("banuser")]
-        public async Task<IActionResult> BanUser([FromBody] Models.CentralUserRequest request)
+        public async Task<IActionResult> BanUser([FromBody] Models.CentralUserRequest request, [FromServices] IWebRTCSessionService webRtcSession)
         {
             var user = HttpContext.Items["User"] as User;
             if (user?.IsLocalAdmin != true) return Unauthorized();
 
             var result = await _mediator.Send(new BanUserCommand { CentralUserId = request.CentralUserId });
-            if (result == NordvikManager.Domain.Enums.CommandResponse.Ok) return Ok();
-            return BadRequest();
+            if (result != NordvikManager.Domain.Enums.CommandResponse.Ok) return BadRequest();
+
+            // The ban applies now: the user's open game connections are closed, not only refused next time.
+            await webRtcSession.DisconnectUserAsync(request.CentralUserId);
+            return Ok();
         }
 
         [HttpPost]
