@@ -26,9 +26,23 @@ namespace NordvikManager.WebRTC
         public void Track(string socketId, string gameId, string userId, IPlayerConnection connection)
             => _bySocket[socketId] = (gameId, userId, connection);
 
+        /// <summary>The socket is gone: release whatever connection it has.</summary>
         public Task ReleaseAsync(string socketId)
             => _bySocket.TryRemove(socketId, out var entry)
                 ? _remove(entry.GameId, entry.UserId, entry.Connection)
                 : Task.CompletedTask;
+
+        /// <summary>
+        /// One connection is gone: release it only if it is still the socket's connection, not
+        /// one that replaced it after the player re-offered on the same socket.
+        /// </summary>
+        public Task ReleaseAsync(string socketId, IPlayerConnection connection)
+        {
+            if (!_bySocket.TryGetValue(socketId, out var entry) || !ReferenceEquals(entry.Connection, connection))
+                return Task.CompletedTask;
+            return _bySocket.TryRemove(new(socketId, entry))
+                ? _remove(entry.GameId, entry.UserId, entry.Connection)
+                : Task.CompletedTask;
+        }
     }
 }

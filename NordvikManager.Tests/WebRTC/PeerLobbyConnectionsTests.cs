@@ -58,6 +58,25 @@ namespace NordvikManager.Tests.WebRTC
         }
 
         [Fact]
+        public async Task ReleasingAnOldConnection_LeavesTheOneThatReplacedItOnTheSameSocket()
+        {
+            // The player re-offered on the same signaling socket: the old connection's late
+            // close must not take the new one out of the lobby.
+            var connections = Create();
+            var oldConnection = new FakeConnection();
+            var newConnection = new FakeConnection();
+            connections.Track("socket", "game", "user", oldConnection);
+            connections.Track("socket", "game", "user", newConnection);
+
+            await connections.ReleaseAsync("socket", oldConnection);
+            Assert.Empty(_removed);
+
+            await connections.ReleaseAsync("socket", newConnection);
+            Assert.Single(_removed);
+            Assert.Same(newConnection, _removed[0].Connection);
+        }
+
+        [Fact]
         public async Task Release_OfAnUntrackedPeer_DoesNothing()
         {
             var connections = Create();
