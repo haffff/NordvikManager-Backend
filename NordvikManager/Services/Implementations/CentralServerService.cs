@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
@@ -52,22 +53,14 @@ namespace NordvikManager.Services.Implementations
             if (string.IsNullOrEmpty(refreshToken))
                 return response;
 
-            var newAccessToken = await RefreshTokenAsync(refreshToken);
-            if (newAccessToken == null)
+            var tokens = await RefreshTokenAsync(refreshToken);
+            if (tokens == null)
                 return response;
 
             if (httpContext != null)
-            {
-                httpContext.Response.Cookies.Append("CentralToken", newAccessToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    IsEssential = true,
-                    SameSite = SameSiteMode.None,
-                    Secure = true
-                });
-            }
+                CentralAuthCookies.WriteRefreshed(httpContext.Response, tokens);
 
-            return await send(CreateAuthenticatedClient(newAccessToken));
+            return await send(CreateAuthenticatedClient(tokens.AccessToken));
         }
 
         public async Task<CentralServerMeta?> GetMetaAsync()
@@ -176,7 +169,32 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
-        public async Task<string?> RefreshTokenAsync(string refreshToken)
+        // refresh token → its refresh (in flight or done), kept briefly: Central revokes a refresh
+        // token when it's used, so a second refresh with it (another request, another tab) must
+        // get the first one's result rather than a refusal.
+        private readonly ConcurrentDictionary<string, (DateTime At, Task<CentralTokens?> Refresh)> _refreshes = new();
+        private static readonly TimeSpan RefreshReuse = TimeSpan.FromMinutes(1);
+
+        public Task<CentralTokens?> RefreshTokenAsync(string refreshToken)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var kv in _refreshes)
+                if (now - kv.Value.At > RefreshReuse) _refreshes.TryRemove(kv);
+
+            return _refreshes.GetOrAdd(refreshToken, token => (now, RefreshOnceAsync(token))).Refresh;
+        }
+
+        // A failed refresh isn't reused: the next caller asks Central again.
+        private async Task<CentralTokens?> RefreshOnceAsync(string refreshToken)
+        {
+            await Task.Yield(); // stored in _refreshes before it can finish
+            var tokens = await RequestRefreshAsync(refreshToken);
+            if (tokens == null)
+                _refreshes.TryRemove(refreshToken, out _);
+            return tokens;
+        }
+
+        private async Task<CentralTokens?> RequestRefreshAsync(string refreshToken)
         {
             var client = _httpClientFactory.CreateClient();
             var body = JsonConvert.SerializeObject(new { refreshToken });
@@ -186,7 +204,10 @@ namespace NordvikManager.Services.Implementations
                 var response = await client.PostAsync($"{_centralServerUrl}/api/user/refresh", content);
                 if (!response.IsSuccessStatusCode) return null;
 
-                return ExtractCookieValue(response, "Authorization");
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                var accessToken = json["accessToken"]?.Value<string>() ?? ExtractCookieValue(response, "Authorization");
+                if (string.IsNullOrEmpty(accessToken)) return null;
+                return new CentralTokens(accessToken, json["refreshToken"]?.Value<string>());
             }
             catch
             {

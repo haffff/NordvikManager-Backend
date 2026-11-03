@@ -99,6 +99,8 @@ namespace NordvikManager.Controllers
         /// Silently refreshes the CentralToken using the stored CentralRefreshToken.
         /// Called by the frontend or other endpoints when the 15-min access token has expired.
         /// Returns 200 with the new token on success, 401 if the refresh token is missing/expired.
+        /// The GM's browser uses the returned access token for signaling (it has no Central
+        /// cookie of its own), as it does the one StartSession returns.
         /// </summary>
         [Authorize]
         [HttpPost]
@@ -109,20 +111,13 @@ namespace NordvikManager.Controllers
             if (string.IsNullOrEmpty(refreshToken))
                 return Unauthorized(new { error = "No Central Server refresh token. Please log in again." });
 
-            var newAccessToken = await _centralServer.RefreshTokenAsync(refreshToken);
-            if (newAccessToken == null)
+            var tokens = await _centralServer.RefreshTokenAsync(refreshToken);
+            if (tokens == null)
                 return Unauthorized(new { error = "Central Server refresh failed. Please log in again." });
 
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                IsEssential = true,
-                SameSite = SameSiteMode.None,
-                Secure = true
-            };
-            HttpContext.Response.Cookies.Append("CentralToken", newAccessToken, cookieOptions);
+            CentralAuthCookies.WriteRefreshed(HttpContext.Response, tokens);
 
-            return Ok(new { refreshed = true });
+            return Ok(new { refreshed = true, accessToken = tokens.AccessToken });
         }
 
         [Authorize]
