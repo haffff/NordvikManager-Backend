@@ -12,9 +12,9 @@ namespace NordvikManager.Services
     /// <summary>
     /// The game's Central session and the details it was made from. <see cref="Details"/> is
     /// null when the game is gone; <see cref="SessionId"/> is null when Central has none for it
-    /// and making one failed.
+    /// and making one failed, or (<see cref="NeedsOwner"/>) wasn't this user's to make.
     /// </summary>
-    public sealed record CentralSessionResult(string? SessionId, GetGameSessionDetailsResult? Details);
+    public sealed record CentralSessionResult(string? SessionId, GetGameSessionDetailsResult? Details, bool NeedsOwner = false);
 
     /// <summary>
     /// Keeps a game's Central session in step with the game: made when the game has none, its
@@ -32,7 +32,12 @@ namespace NordvikManager.Services
             _central = central;
         }
 
-        public async Task<CentralSessionResult> EnsureAsync(Guid gameId, string centralToken)
+        /// <param name="mayCreate">
+        /// Whether this user may make the session when one is needed. Whoever makes it owns it on
+        /// Central, and the owner may connect to signaling as the game's GM, so only the game's GM
+        /// (or the server's local admin) may.
+        /// </param>
+        public async Task<CentralSessionResult> EnsureAsync(Guid gameId, string centralToken, bool mayCreate)
         {
             var details = await _mediator.Send(new GetGameSessionDetailsCommand { GameId = gameId });
             if (details == null)
@@ -48,6 +53,8 @@ namespace NordvikManager.Services
                     return new CentralSessionResult(sessionId, details);
             }
 
+            if (!mayCreate)
+                return new CentralSessionResult(null, details, NeedsOwner: true);
             return new CentralSessionResult(await CreateAsync(gameId, centralToken, details), details);
         }
 

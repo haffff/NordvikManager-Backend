@@ -196,6 +196,44 @@ namespace NordvikManager.Tests.Controllers
             _central.Verify(c => c.JoinSessionAsync(It.IsAny<string>(), "central-session-2", It.IsAny<string?>()), Times.Once);
         }
 
+        // Making the Central session makes its owner, who may then connect as GM from anywhere;
+        // only the game's GM (or the server's local admin) may do that.
+        [Theory]
+        [InlineData(false)] // the game never had a Central session
+        [InlineData(true)]  // Central expired or deleted it
+        public async Task StartSession_ByAPlayerWhoIsNotTheGm_NeverMakesTheCentralSession(bool hadOne)
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetPlayerCommandResponse { Player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice", IsOwner = false } });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(hadOne ? "central-session-1" : null);
+            _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync(CentralSessionUpdate.Missing);
+
+            var result = await CreateController().StartSession(_gameId);
+
+            var conflict = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Contains("GM", conflict.Value!.GetType().GetProperty("error")!.GetValue(conflict.Value) as string);
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
+            _webRtcSession.Verify(s => s.StartSessionAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task StartSession_ByTheLocalAdmin_MayMakeTheCentralSession()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetPlayerCommandResponse { Player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Admin", IsOwner = false } });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string?)null);
+            _central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>())).ReturnsAsync("central-session-2");
+            var controller = CreateController();
+            controller.HttpContext.Items["User"] = new User { Id = "admin-id", UserName = "admin", IsLocalAdmin = true };
+
+            await controller.StartSession(_gameId);
+
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Once);
+        }
+
         [Fact]
         public async Task StartSession_ReturnsOk_WhenSignalingStarts()
         {

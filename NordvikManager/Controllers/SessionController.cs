@@ -91,9 +91,14 @@ namespace NordvikManager.Controllers
             // The game's Central session: made when there's none (a game created while the token
             // was expired) or when Central no longer has it (expired, deleted); otherwise its
             // listing — cover image, password — is re-sent.
-            var central = await new CentralSessionSync(_mediator, _centralServerService).EnsureAsync(gameId, centralToken);
+            // Making it makes its owner on Central, who may then connect as the game's GM: only
+            // the GM (or the server's local admin) may, not any player starting the game.
+            var mayCreate = playerResponse.Player.IsOwner == true || user.IsLocalAdmin;
+            var central = await new CentralSessionSync(_mediator, _centralServerService).EnsureAsync(gameId, centralToken, mayCreate);
             if (central.Details == null)
                 return NotFound(new { error = "Game not found." });
+            if (central.NeedsOwner)
+                return Conflict(new { error = "This game has no session on the Central Server right now. Ask its GM to start it." });
             var centralSessionId = central.SessionId;
             if (centralSessionId == null)
                 return StatusCode(502, new { error = "Could not create Central Server session. The Central Server may be unreachable." });

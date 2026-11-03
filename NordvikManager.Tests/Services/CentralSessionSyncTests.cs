@@ -44,7 +44,7 @@ namespace NordvikManager.Tests.Services
         {
             StoredSession(null);
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Equal("new-session", result.SessionId);
             _central.Verify(c => c.CreateSessionAsync("token", It.Is<GameItemDTO>(g =>
@@ -57,7 +57,7 @@ namespace NordvikManager.Tests.Services
         {
             StoredSession("old-session");
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Equal("old-session", result.SessionId);
             _central.Verify(c => c.UpdateSessionAsync("token", "old-session", It.Is<GameItemDTO>(g => g.Password == "pw" && g.Name == "Game")), Times.Once);
@@ -71,7 +71,7 @@ namespace NordvikManager.Tests.Services
             _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), "expired-session", It.IsAny<GameItemDTO>()))
                     .ReturnsAsync(CentralSessionUpdate.Missing);
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Equal("new-session", result.SessionId);
             VerifySaved("new-session", Times.Once());
@@ -85,7 +85,7 @@ namespace NordvikManager.Tests.Services
             _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GameItemDTO>()))
                     .ReturnsAsync(CentralSessionUpdate.Failed);
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Equal("old-session", result.SessionId);
             _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
@@ -97,7 +97,7 @@ namespace NordvikManager.Tests.Services
             StoredSession(null);
             _central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>())).ReturnsAsync((string?)null);
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Null(result.SessionId);
             Assert.NotNull(result.Details);
@@ -111,10 +111,50 @@ namespace NordvikManager.Tests.Services
             _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((GetGameSessionDetailsResult?)null);
 
-            var result = await Sync().EnsureAsync(_gameId, "token");
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: true);
 
             Assert.Null(result.Details);
             Assert.Null(result.SessionId);
+        }
+
+        // Whoever makes a Central session owns it, and the owner may connect to signaling as
+        // GM. A player starting the game must not end up owning it.
+        [Fact]
+        public async Task Ensure_DoesNotCreate_ForSomeoneWhoMayNot_WhenTheGameHasNone()
+        {
+            StoredSession(null);
+
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: false);
+
+            Assert.Null(result.SessionId);
+            Assert.True(result.NeedsOwner);
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
+            VerifySaved("new-session", Times.Never());
+        }
+
+        [Fact]
+        public async Task Ensure_DoesNotRecreate_ForSomeoneWhoMayNot_WhenCentralLostTheSession()
+        {
+            StoredSession("expired-session");
+            _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), "expired-session", It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync(CentralSessionUpdate.Missing);
+
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: false);
+
+            Assert.Null(result.SessionId);
+            Assert.True(result.NeedsOwner);
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Ensure_UsesTheExistingSession_ForAnyPlayer()
+        {
+            StoredSession("old-session");
+
+            var result = await Sync().EnsureAsync(_gameId, "token", mayCreate: false);
+
+            Assert.Equal("old-session", result.SessionId);
+            Assert.False(result.NeedsOwner);
         }
 
         [Fact]
