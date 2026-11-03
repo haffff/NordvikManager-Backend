@@ -142,11 +142,12 @@ namespace NordvikManager.WebRTC
             };
 
             // authenticated: Central Server confirms GM registration — mark as truly connected
-            client.On("authenticated", async _ =>
+            client.On("authenticated", async ctx =>
             {
                 _logger.LogInformation("Signaling authenticated with Central Server for game {GameId}", gameId);
                 _authenticated[gameId] = true;
                 authTcs.TrySetResult(true);
+                _ = WatchAsync(gameId, client);
             });
 
             // auth-error: Central Server rejected the authenticate event
@@ -303,6 +304,43 @@ namespace NordvikManager.WebRTC
                 // Don't throw — the connection may still authenticate shortly after.
                 // The frontend will need to retry a few times rather than hundreds.
             }
+        }
+
+        // Asks Central now and then whether this connection is still the session's GM (see
+        // SignalingWatchdog): one that died without a disconnect is ended and reconnected.
+        private Task WatchAsync(string gameId, SioClient client) => SignalingWatchdog.RunAsync(
+            () => AskAliveAsync(client),
+            () => _clients.TryGetValue(gameId, out var current) && ReferenceEquals(current, client) && client.Connected,
+            async () =>
+            {
+                _logger.LogWarning("Signaling for game {GameId} stopped answering; reconnecting", gameId);
+                _authenticated.TryRemove(gameId, out _);
+                // A half-open connection can hang on the goodbye: don't wait on it for long.
+                try { await Task.WhenAny(client.DisconnectAsync(), Task.Delay(TimeSpan.FromSeconds(5))); } catch { /* best-effort */ }
+                if (_clients.TryGetValue(gameId, out var current) && ReferenceEquals(current, client))
+                    _ = ReconnectAsync(gameId);
+            },
+            delay => Task.Delay(delay));
+
+        private static async Task<SignalingWatchdog.Answer> AskAliveAsync(SioClient client)
+        {
+            var answer = new TaskCompletionSource<SignalingWatchdog.Answer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            try
+            {
+                await client.EmitAsync("gm-alive", Array.Empty<object>(), ack =>
+                {
+                    var isGm = false;
+                    try { isGm = ack.GetValue<bool>(0); } catch { /* no flag: not ours */ }
+                    answer.TrySetResult(isGm ? SignalingWatchdog.Answer.Gm : SignalingWatchdog.Answer.NotGm);
+                    return Task.CompletedTask;
+                });
+            }
+            catch
+            {
+                return SignalingWatchdog.Answer.None;
+            }
+            var done = await Task.WhenAny(answer.Task, Task.Delay(SignalingWatchdog.AnswerTimeout));
+            return done == answer.Task ? answer.Task.Result : SignalingWatchdog.Answer.None;
         }
 
         // Runs at most once per game at a time, until signaling is back, Central refuses it,

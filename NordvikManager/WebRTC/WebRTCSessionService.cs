@@ -179,6 +179,9 @@ namespace NordvikManager.WebRTC
 
             _peerConnections[args.SocketId] = pc;
             _peerMeta[args.SocketId] = (args.GameId, args.UserId);
+            // Peer-joined also comes for a player whose signaling socket reconnected while its
+            // data channel stayed open: no offer follows, so don't keep that connection around.
+            _ = CloseIfNeverOfferedAsync(args.SocketId, pc);
             _pendingLocalCandidates[args.SocketId] = new List<(string, string?, int?)>();
             GetOrCreateReadySignal(args.SocketId).TrySetResult(pc);
 
@@ -603,6 +606,17 @@ namespace NordvikManager.WebRTC
 
             // Re-insert null so subsequent onicecandidate fires are sent directly.
             _pendingLocalCandidates[socketId] = null;
+        }
+
+        private static readonly TimeSpan UnofferedPeerTimeout = TimeSpan.FromSeconds(60);
+
+        private async Task CloseIfNeverOfferedAsync(string socketId, RTCPeerConnection pc)
+        {
+            await Task.Delay(UnofferedPeerTimeout);
+            if (pc.remoteDescription != null)
+                return;
+            _logger.LogInformation("No offer from socket {SocketId} within {Timeout}; closing its peer connection", socketId, UnofferedPeerTimeout);
+            CleanupPeer(socketId, pc);
         }
 
         // `only`: clean up only if that is still the socket's peer connection (not one that
