@@ -3,6 +3,7 @@ using NordvikManager.Application.Commands.Card.GetCard;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
 using NordvikManager.Application.Commands.Resources;
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Commands.Resources.GetResourceRange;
 using NordvikManager.Application.Commands.Resources.CreateResource;
 using NordvikManager.Application.Commands.Resources.DeleteResourceData;
 using NordvikManager.Application.Commands.Resources.GetResource;
@@ -337,6 +338,47 @@ namespace NordvikManager.Controllers
                 data     = Convert.ToBase64String(content.Data!),
                 mimeType = content.MimeType.GetDescriptionValue(),
                 version  = content.Version,
+            });
+        }
+
+        /// <summary>
+        /// Part of a resource's bytes as base64 JSON (at most 2 MB), for readers that need only
+        /// some of a big file, such as pdf.js showing a few pages of a book.
+        /// </summary>
+        [HttpGet]
+        [Authorize]
+        [Route("ResourceRange")]
+        public async Task<IActionResult> GetResourceRange(Guid? id, string? key, Guid? gameId, long start = 0, int length = 0, string? ifVersion = null)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var range = await mediator.Send(new GetResourceRangeCommand
+            {
+                GameID    = gameId,
+                Player    = playerResult.Player,
+                ID        = id,
+                Key       = key,
+                Start     = start,
+                Length    = length,
+                IfVersion = ifVersion,
+            });
+
+            if (range == null)
+                return NotFound();
+
+            if (range.NotModified)
+                return Ok(new { notModified = true, start = range.Start, total = range.Total, version = range.Version });
+
+            return Ok(new
+            {
+                data     = Convert.ToBase64String(range.Data!),
+                start    = range.Start,
+                total    = range.Total,
+                mimeType = range.MimeType.GetDescriptionValue(),
+                version  = range.Version,
             });
         }
 

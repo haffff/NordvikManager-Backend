@@ -7,6 +7,9 @@
     {
         Task<string> SaveAsync(Guid gameId, Guid resourceId, byte[] data, string? fileExtension);
         Task<byte[]?> ReadAsync(string path);
+
+        /// <summary>Up to <paramref name="count"/> bytes from <paramref name="offset"/>, without reading the rest; null if the file doesn't exist.</summary>
+        Task<byte[]?> ReadRangeAsync(string path, long offset, int count);
         Task DeleteAsync(string path);
         bool Exists(string path);
 

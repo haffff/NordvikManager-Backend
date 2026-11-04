@@ -6,6 +6,7 @@ using NordvikManager.Application.Commands.Resources.CreateResource;
 using NordvikManager.Application.Commands.Resources.DeleteResourceData;
 using NordvikManager.Application.Commands.Resources.GetResource;
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Commands.Resources.GetResourceRange;
 using NordvikManager.Application.Commands.Resources.Link;
 using NordvikManager.Infrastructure.Interfaces;
 using NordvikManager.Application.Commands.Resources.UpdateResourceData;
@@ -147,6 +148,41 @@ namespace NordvikManager.Tests.Controllers
             Assert.True(body["notModified"]!.Value<bool>());
             Assert.Equal("v1", body["version"]!.Value<string>());
             Assert.Null(body["data"]);
+        }
+
+        // GetResourceRange — part of a big file (pdf.js asks for the bytes of the pages it shows)
+        [Fact]
+        public async Task GetResourceRange_ReturnsThePartWithTotalAndVersion()
+        {
+            GetResourceRangeCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ResourceRange?>, CancellationToken>((c, _) => sent = (GetResourceRangeCommand)c)
+                     .ReturnsAsync(new ResourceRange(new byte[] { 5, 6 }, 1024, 9000, MimeType.PDF, "v3", false));
+
+            var body = Body(await _controller.GetResourceRange(Guid.NewGuid(), null, Guid.NewGuid(), start: 1024, length: 2));
+
+            Assert.Equal(1024, sent!.Start);
+            Assert.Equal(2, sent.Length);
+            Assert.Equal(Convert.ToBase64String(new byte[] { 5, 6 }), body["data"]!.Value<string>());
+            Assert.Equal(1024, body["start"]!.Value<long>());
+            Assert.Equal(9000, body["total"]!.Value<long>());
+            Assert.Equal("application/pdf", body["mimeType"]!.Value<string>());
+            Assert.Equal("v3", body["version"]!.Value<string>());
+        }
+
+        [Fact]
+        public async Task GetResourceRange_CachedVersionCurrent_ReturnsNotModified_AndMissingIsNotFound()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ResourceRange(null, 0, 9000, MimeType.PDF, "v3", true));
+            var body = Body(await _controller.GetResourceRange(null, "pdf_src_1.pdf", Guid.NewGuid(), ifVersion: "v3"));
+            Assert.True(body["notModified"]!.Value<bool>());
+            Assert.Equal(9000, body["total"]!.Value<long>());
+            Assert.Null(body["data"]);
+
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((ResourceRange?)null);
+            Assert.IsType<NotFoundResult>(await _controller.GetResourceRange(Guid.NewGuid(), null, Guid.NewGuid()));
         }
 
         [Fact]
