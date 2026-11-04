@@ -1,4 +1,4 @@
-using NordvikManager.Data.Contexts;
+﻿using NordvikManager.Data.Contexts;
 using NordvikManager.Infrastructure.Interfaces;
 using NordvikManager.Infrastructure.Services;
 using NordvikManager.Infrastructure.Services.Backup;
@@ -32,6 +32,7 @@ namespace NordvikManager.Infrastructure
                     o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
 
             services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
+            services.AddSingleton<IUploadStore, LocalUploadStore>();
             services.TryAddSingleton(TimeProvider.System);
             services.AddSingleton(BackupOptions.FromConfiguration(configuration));
             services.AddSingleton<IBackupService>(sp => new BackupService(sp.GetRequiredService<BackupOptions>(), sp.GetRequiredService<TimeProvider>()));
