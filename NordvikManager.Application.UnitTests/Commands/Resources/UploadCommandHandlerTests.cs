@@ -143,6 +143,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
 
             Assert.Equal(CommandResponse.AlreadyExists, (await handler.Handle(Cmd(c => c.Key = "taken"), CancellationToken.None)).Item1);
             Assert.Equal(CommandResponse.WrongArguments, (await handler.Handle(Cmd(c => c.Size = -1), CancellationToken.None)).Item1);
+            // what the finish can store: one array, and SQLite's largest blob (~1 GB)
+            Assert.Equal(CommandResponse.WrongArguments, (await handler.Handle(Cmd(c => c.Size = 1024L * 1024 * 1024 + 1), CancellationToken.None)).Item1);
             Assert.Equal(CommandResponse.WrongArguments, (await handler.Handle(Cmd(c => c.Name = " "), CancellationToken.None)).Item1);
             await Assert.ThrowsAsync<PermissionException>(() => handler.Handle(Cmd(c => { c.Player = Other; c.StorageKind = ResourceStorageKind.ManagedFile; }), CancellationToken.None));
         }

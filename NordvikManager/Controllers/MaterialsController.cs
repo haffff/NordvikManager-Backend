@@ -504,7 +504,7 @@ namespace NordvikManager.Controllers
             {
                 CommandResponse.Ok => Ok(new { uploadId }),
                 CommandResponse.AlreadyExists => Conflict(new { error = $"Resource with key '{request.Key}' already exists." }),
-                _ => BadRequest(new { error = "A name and a size up to 4 GB are needed." }),
+                _ => BadRequest(new { error = "A name and a size up to 1 GB are needed." }),
             };
         }
 

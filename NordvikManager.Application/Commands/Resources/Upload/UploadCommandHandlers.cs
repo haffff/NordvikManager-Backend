@@ -11,8 +11,11 @@ namespace NordvikManager.Application.Commands.Resources.Upload
 {
     internal static class Uploads
     {
-        /// <summary>The largest file one upload takes (4 GB).</summary>
-        public const long MaxSize = 4L * 1024 * 1024 * 1024;
+        /// <summary>
+        /// The largest file one upload takes (1 GB): the finish reads it into one array, and
+        /// SQLite stores at most about 1 GB in one blob.
+        /// </summary>
+        public const long MaxSize = 1024L * 1024 * 1024;
         public static readonly TimeSpan Abandoned = TimeSpan.FromDays(1);
 
         /// <summary>The player's own upload, or null.</summary>
