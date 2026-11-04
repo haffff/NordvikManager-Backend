@@ -76,7 +76,12 @@ namespace NordvikManager.Application.Commands.Resources.GetResourceRange
                 return new ResourceRange(Array.Empty<byte>(), start, total, meta.MimeType, version, false);
 
             byte[]? data;
-            if (meta.Storage == ResourceStorageKind.Blob || whole != null)
+            if (meta.Storage == ResourceStorageKind.Blob && whole == null
+                && (data = await dbContext.ReadResourceSliceAsync(meta.Id, start, length, cancellationToken)) != null)
+            {
+                // cut by the database
+            }
+            else if (meta.Storage == ResourceStorageKind.Blob || whole != null)
             {
                 whole ??= await ReadWholeAsync(meta, cancellationToken);
                 if (whole == null)

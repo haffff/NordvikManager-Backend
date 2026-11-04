@@ -30,5 +30,11 @@ namespace NordvikManager.Infrastructure.Interfaces
         DbSet<PlaylistModel> Playlists { get; }
         DbSet<TurnOrderModel> TurnOrders { get; }
         DbSet<TurnOrderEntryModel> TurnOrderEntries { get; }
+
+        /// <summary>
+        /// Part of a database-stored resource's bytes, cut by the database (the whole column is
+        /// never loaded); empty past the end. Null when the provider can't (InMemory): load and cut.
+        /// </summary>
+        Task<byte[]?> ReadResourceSliceAsync(Guid resourceId, long start, int length, CancellationToken cancellationToken = default);
     }
 }

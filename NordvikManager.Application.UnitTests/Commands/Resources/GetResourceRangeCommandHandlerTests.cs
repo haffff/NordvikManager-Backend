@@ -58,6 +58,21 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.False(result.NotModified);
         }
 
+        // A big file in the database: each part is cut out by the database, not by loading the
+        // whole column for every part (50 MB per 2 MB part).
+        [Fact]
+        public async Task Blob_ReadsOnlyThePart_NotTheWholeColumn()
+        {
+            var id = Seed(r => { r.Data = Bytes; r.ContentHash = "h"; });
+            Commands.Reset();
+
+            var result = await Get(id, 40, 3);
+
+            Assert.Equal(new byte[] { 40, 41, 42 }, result!.Data);
+            Assert.Contains(Commands.Texts, sql => sql.Contains("substr(", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(Commands.Texts, sql => sql.Contains("SELECT \"r\".\"Data\""));
+        }
+
         [Fact]
         public async Task ByKey_AndAPartRunningPastTheEnd_GivesWhatIsThere()
         {

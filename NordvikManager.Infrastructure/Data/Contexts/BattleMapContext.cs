@@ -213,5 +213,23 @@ namespace NordvikManager.Data.Contexts
         public DbSet<PlaylistModel>? Playlists { get; set; }
         public DbSet<TurnOrderModel>? TurnOrders { get; set; }
         public DbSet<TurnOrderEntryModel>? TurnOrderEntries { get; set; }
+
+        public async Task<byte[]?> ReadResourceSliceAsync(Guid resourceId, long start, int length, CancellationToken cancellationToken = default)
+        {
+            if (!Database.IsRelational())
+                return null;
+            var provider = Database.ProviderName ?? "";
+            // SQL positions count from 1; both functions work on bytes for blobs.
+            var from = start + 1;
+            var query = provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase)
+                ? Database.SqlQuery<byte[]>($"SELECT substr(\"Data\", {from}, {length}) AS \"Value\" FROM \"Resources\" WHERE \"Id\" = {resourceId}")
+                : provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)
+                    ? Database.SqlQuery<byte[]>($"SELECT SUBSTRING(`Data`, {from}, {length}) AS `Value` FROM `Resources` WHERE `Id` = {resourceId}")
+                    : null;
+            if (query == null)
+                return null;
+            var rows = await query.ToListAsync(cancellationToken);
+            return rows.Count == 0 ? null : rows[0] ?? Array.Empty<byte>();
+        }
     }
 }
