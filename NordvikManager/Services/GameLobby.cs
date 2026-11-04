@@ -355,6 +355,17 @@ namespace NordvikManager.Services.Implementations
 
                     _ = Task.Run(() => ActionProcessingService.CommandToHook(webSocketCommand));
 
+                    // Anyone in the game who knows a resource's id or key can read it, so a new
+                    // resource is announced only to who made it and the GMs (as GetResources
+                    // lists them), never to every player.
+                    if (webSocketCommand.Command == WebSocketCommandNames.ResourceAdd)
+                    {
+                        foreach (var item in ConnectedPlayers.ToList())
+                            if (item.Key.Id == player.Id || await CanEditGameAsync(item.Key, cmdMediator))
+                                item.Value.SendMessageToPlayer(webSocketCommand);
+                        return;
+                    }
+
                     var idToCheck = webSocketCommand.Data.Type == JTokenType.Object
                         ? webSocketCommand.Data[WebSocketCommandNames.DataKeyParentId] ?? webSocketCommand.Data[WebSocketCommandNames.DataKeyId]
                         : null;
