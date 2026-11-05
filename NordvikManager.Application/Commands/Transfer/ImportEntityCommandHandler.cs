@@ -578,6 +578,7 @@ namespace NordvikManager.Application.Commands.Transfer
 
                 var (response, id) = await mediator.Send(new CreateResourceCommand
                 {
+                    SkipQuota = true, // an import the GM runs
                     GameId = request.GameId,
                     Player = request.Player,
                     Key = file.Key,

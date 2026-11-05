@@ -80,6 +80,18 @@ namespace NordvikManager.Tests.Controllers
         }
 
         [Fact]
+        public async Task SetUploadLimits_ReturnsUnauthorized_WhenNotLocalAdmin_AndOkForTheAdmin()
+        {
+            var command = new SetUploadLimitsCommand { GmGameLimitMb = 0, PlayerLimitMb = 300 };
+            Assert.IsType<UnauthorizedResult>(await CreateController(Player()).SetUploadLimits(command));
+            _mediator.Verify(m => m.Send(It.IsAny<SetUploadLimitsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+
+            var dto = new ServerSettingsDTO();
+            _mediator.Setup(m => m.Send(command, It.IsAny<CancellationToken>())).ReturnsAsync(dto);
+            Assert.Same(dto, Assert.IsType<OkObjectResult>(await CreateController(LocalAdmin()).SetUploadLimits(command)).Value);
+        }
+
+        [Fact]
         public async Task Get_ReturnsOk_ForLocalAdmin()
         {
             var dto = new ServerSettingsDTO();

@@ -17,10 +17,12 @@ namespace NordvikManager.Application.Commands.Resources.CreateResource
     {
         private readonly IMediator _mediator;
         private readonly IFileStorageProvider storage;
+        private readonly UploadQuota? quota;
 
-        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage)
+        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage, UploadQuota? quota = null)
             : base(dbContext, mapper)
         {
+            this.quota = quota;
             _mediator = mediator;
             this.storage = storage;
         }
@@ -65,6 +67,8 @@ namespace NordvikManager.Application.Commands.Resources.CreateResource
                 if (game == null || !game.HasPermission(player.Id, Permission.Edit))
                     throw new PermissionException(Permission.Edit);
             }
+            if (!request.SkipQuota && quota != null)
+                await quota.EnsureRoomAsync(dbContext, request.GameId, player.Id, request.Data?.Length ?? 0, cancellationToken: cancellationToken);
             await ResourceContentStore.StoreAsync(model, storage, request.StorageKind, request.Data, request.SourceFile, request.ContentHash);
 
             await dbContext.Resources.AddAsync(model, cancellationToken);

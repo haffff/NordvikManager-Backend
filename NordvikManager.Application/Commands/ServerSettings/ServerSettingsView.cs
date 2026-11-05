@@ -71,6 +71,11 @@ namespace NordvikManager.Application.Commands.ServerSettings
                     MainRepository = new SettingValueDTO<string> { FromConfig = addonRegistry.ConfiguredMainRepository, Saved = saved.Addons.MainRepository },
                     FeaturedAddons = new SettingValueDTO<IReadOnlyList<string>> { FromConfig = addonRegistry.ConfiguredFeaturedAddons, Saved = saved.Addons.FeaturedAddons },
                 },
+                UploadLimits = new UploadLimitsDTO
+                {
+                    GmGameLimitMb = saved.Uploads.GmGameLimitMb,
+                    PlayerLimitMb = saved.Uploads.PlayerLimitMb,
+                },
             };
         }
     }

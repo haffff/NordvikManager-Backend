@@ -102,6 +102,23 @@ namespace NordvikManager.Infrastructure.Services.Storage
             locks.TryRemove(id, out _);
         }
 
+        public IReadOnlyList<UploadInfo> Unfinished(Guid gameId)
+        {
+            if (!Directory.Exists(folder))
+                return Array.Empty<UploadInfo>();
+            var list = new List<UploadInfo>();
+            foreach (var meta in Directory.EnumerateFiles(folder, "*.json"))
+            {
+                if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(meta), "N", out var id))
+                    continue;
+                UploadInfo? info;
+                try { info = Get(id); } catch (IOException) { continue; } catch (JsonException) { continue; }
+                if (info != null && info.GameId == gameId && info.ResourceId == null)
+                    list.Add(info);
+            }
+            return list;
+        }
+
         public int DeleteOlderThan(TimeSpan age)
         {
             if (!Directory.Exists(folder))
