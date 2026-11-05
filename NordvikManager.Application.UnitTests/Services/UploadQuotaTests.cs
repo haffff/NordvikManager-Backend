@@ -30,7 +30,7 @@ namespace NordvikManager.Application.UnitTests.Services
         public UploadQuotaTests()
         {
             _settings.Setup(s => s.Load()).Returns(() => _saved);
-            _uploads.Setup(u => u.Unfinished(It.IsAny<Guid>())).Returns(Array.Empty<UploadInfo>());
+            _uploads.Setup(u => u.Unfinished(It.IsAny<Guid>(), It.IsAny<TimeSpan>())).Returns(Array.Empty<UploadInfo>());
             _game = BuildGame();
             _game.MasterId = PlayerId;
             Db.SaveChanges();
@@ -118,7 +118,7 @@ namespace NordvikManager.Application.UnitTests.Services
         {
             _saved.Uploads.PlayerLimitMb = 10;
             var arriving = new UploadInfo { Id = Guid.NewGuid(), GameId = _game.Id, PlayerId = _ana, Size = 8 * MB };
-            _uploads.Setup(u => u.Unfinished(_game.Id)).Returns(new[] { arriving });
+            _uploads.Setup(u => u.Unfinished(_game.Id, It.IsAny<TimeSpan>())).Returns(new[] { arriving });
 
             await Assert.ThrowsAsync<UploadLimitException>(() => Room(_ana, 3 * MB));
             await Room(_ana, 8 * MB, exceptUpload: arriving.Id);

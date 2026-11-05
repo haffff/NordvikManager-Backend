@@ -154,7 +154,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.Equal(CommandResponse.Ok, ok);
             // the first one still arriving counts too
             await Assert.ThrowsAsync<UploadLimitException>(() => handler.Handle(Cmd(600 * 1024), CancellationToken.None));
-            Assert.Single(_store.Unfinished(_game.Id));
+            Assert.Single(_store.Unfinished(_game.Id, TimeSpan.FromMinutes(10)));
         }
 
         [Fact]

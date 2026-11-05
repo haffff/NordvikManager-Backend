@@ -15,6 +15,8 @@ namespace NordvikManager.Application.Services
     public class UploadQuota
     {
         private const long MB = 1024 * 1024;
+        /// <summary>An upload nothing arrived for in this long was given up (a reload starts it again): it no longer counts.</summary>
+        public static readonly TimeSpan ActiveUpload = TimeSpan.FromMinutes(10);
         private readonly IServerSettingsStore settings;
         private readonly IFileStorageProvider storage;
         private readonly IUploadStore uploads;
@@ -67,7 +69,7 @@ namespace NordvikManager.Application.Services
             }
 
             var used = stored.Where(r => r.Id != replacing && Counts(r.PlayerId)).Sum(SizeOf)
-                + uploads.Unfinished(gameId).Where(u => u.ResourceId == null && u.Id != exceptUpload && Counts(u.PlayerId)).Sum(u => u.Size);
+                + uploads.Unfinished(gameId, ActiveUpload).Where(u => u.ResourceId == null && u.Id != exceptUpload && Counts(u.PlayerId)).Sum(u => u.Size);
             if (used + adding > limit)
             {
                 var whose = asGm ? "The game's GMs have" : "You have";

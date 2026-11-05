@@ -48,8 +48,8 @@ namespace NordvikManager.Infrastructure.Interfaces
         /// <summary>Remembers what the finished upload became and drops its bytes.</summary>
         void MarkFinished(Guid id, Guid resourceId);
         void Delete(Guid id);
-        /// <summary>The game's uploads not finished yet (still arriving, or waiting to be finished).</summary>
-        IReadOnlyList<UploadInfo> Unfinished(Guid gameId);
+        /// <summary>The game's uploads still arriving: not finished, and added to within <paramref name="activeWithin"/> (the rest were given up).</summary>
+        IReadOnlyList<UploadInfo> Unfinished(Guid gameId, TimeSpan activeWithin);
         /// <summary>Removes uploads nothing was added to for that long; returns how many.</summary>
         int DeleteOlderThan(TimeSpan age);
     }
