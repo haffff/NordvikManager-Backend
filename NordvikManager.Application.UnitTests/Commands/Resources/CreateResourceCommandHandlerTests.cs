@@ -27,6 +27,34 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.Null(id);
         }
 
+        // A finished upload: its file is moved into file storage (never read), with the hash the
+        // upload worked out; the upload already checked who may store it there.
+        [Fact]
+        public async Task Handle_FromAnUpload_MovesTheFileIn_ForAPlayerWithoutEdit()
+        {
+            var game = BuildGame();
+            var other = new NordvikManager.Domain.Entities.BattleMap.PlayerModel { Id = Guid.NewGuid(), Name = "P" };
+            Db.Players.Add(other);
+            Db.SaveChanges();
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(other.Id, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission>())).Returns(false);
+            StorageMock.Setup(s => s.MoveInAsync(game.Id, It.IsAny<Guid>(), "C:/up/x.part", null)).ReturnsAsync("C:/store/x");
+            var cmd = new CreateResourceCommand
+            {
+                GameId = game.Id, Player = new PlayerDTO { Id = other.Id, Name = "P" }, Key = "song", Name = "Song",
+                SourceFile = "C:/up/x.part", ContentHash = "abc", StorageKind = ResourceStorageKind.ManagedFile,
+            };
+
+            var (response, id) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(CommandResponse.Ok, response);
+            var created = Db.Resources.Find(id!.Value)!;
+            Assert.Equal("C:/store/x", created.Path);
+            Assert.Equal(ResourceStorageKind.ManagedFile, created.Storage);
+            Assert.Equal("abc", created.ContentHash);
+            Assert.Null(created.Data);
+            StorageMock.Verify(s => s.SaveAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<byte[]>(), It.IsAny<string?>()), Times.Never);
+        }
+
         [Fact]
         public async Task Handle_PlayerNotInDatabase_ThrowsPermissionException()
         {

@@ -39,6 +39,9 @@ namespace NordvikManager.Domain.Enums
         MP4,
         [Description("video/webm")]
         WebM,
-        None
+        None,
+        // Stored as an int: new types go after None so existing resources keep theirs.
+        [Description("application/pdf")]
+        PDF,
     }
 }

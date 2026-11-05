@@ -1,4 +1,4 @@
-using NordvikManager.Application.Commands.Card.GetAllCards;
+﻿using NordvikManager.Application.Commands.Card.GetAllCards;
 using NordvikManager.Application.Commands.Card.GetCard;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
 using NordvikManager.Application.Commands.Resources;
@@ -6,6 +6,8 @@ using NordvikManager.Application.Commands.Resources.CreateResource;
 using NordvikManager.Application.Commands.Resources.DeleteResourceData;
 using NordvikManager.Application.Commands.Resources.GetResource;
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Commands.Resources.GetResourceRange;
+using NordvikManager.Application.Commands.Resources.Upload;
 using NordvikManager.Application.Commands.Resources.Link;
 using NordvikManager.Infrastructure.Interfaces;
 using NordvikManager.Application.Commands.Resources.UpdateResourceData;
@@ -147,6 +149,95 @@ namespace NordvikManager.Tests.Controllers
             Assert.True(body["notModified"]!.Value<bool>());
             Assert.Equal("v1", body["version"]!.Value<string>());
             Assert.Null(body["data"]);
+        }
+
+        // GetResourceRange — part of a big file (pdf.js asks for the bytes of the pages it shows)
+        [Fact]
+        public async Task GetResourceRange_ReturnsThePartWithTotalAndVersion()
+        {
+            GetResourceRangeCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ResourceRange?>, CancellationToken>((c, _) => sent = (GetResourceRangeCommand)c)
+                     .ReturnsAsync(new ResourceRange(new byte[] { 5, 6 }, 1024, 9000, MimeType.PDF, "v3", false));
+
+            var body = Body(await _controller.GetResourceRange(Guid.NewGuid(), null, Guid.NewGuid(), start: 1024, length: 2));
+
+            Assert.Equal(1024, sent!.Start);
+            Assert.Equal(2, sent.Length);
+            Assert.Equal(Convert.ToBase64String(new byte[] { 5, 6 }), body["data"]!.Value<string>());
+            Assert.Equal(1024, body["start"]!.Value<long>());
+            Assert.Equal(9000, body["total"]!.Value<long>());
+            Assert.Equal("application/pdf", body["mimeType"]!.Value<string>());
+            Assert.Equal("v3", body["version"]!.Value<string>());
+        }
+
+        [Fact]
+        public async Task GetResourceRange_CachedVersionCurrent_ReturnsNotModified_AndMissingIsNotFound()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ResourceRange(null, 0, 9000, MimeType.PDF, "v3", true));
+            var body = Body(await _controller.GetResourceRange(null, "pdf_src_1.pdf", Guid.NewGuid(), ifVersion: "v3"));
+            Assert.True(body["notModified"]!.Value<bool>());
+            Assert.Equal(9000, body["total"]!.Value<long>());
+            Assert.Null(body["data"]);
+
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceRangeCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((ResourceRange?)null);
+            Assert.IsType<NotFoundResult>(await _controller.GetResourceRange(Guid.NewGuid(), null, Guid.NewGuid()));
+        }
+
+        // Uploads in parts — a big file without one huge request, resumable after a drop
+        [Fact]
+        public async Task UploadStart_ReturnsTheUploadId_OrConflictForATakenKey()
+        {
+            var uploadId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<StartUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, (Guid?)uploadId));
+            var body = Body(await _controller.UploadStart(Guid.NewGuid(), new UploadStartRequest { Name = "book.pdf", Size = 10 }));
+            Assert.Equal(uploadId, body["uploadId"]!.Value<Guid>());
+
+            _mediator.Setup(m => m.Send(It.IsAny<StartUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.AlreadyExists, (Guid?)null));
+            Assert.IsType<ConflictObjectResult>(await _controller.UploadStart(Guid.NewGuid(), new UploadStartRequest { Name = "x", Key = "taken", Size = 1 }));
+        }
+
+        [Fact]
+        public async Task UploadPart_DecodesThePart_AndAWrongOffsetSaysWhereToContinue()
+        {
+            UploadPartCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<UploadPartCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<(CommandResponse, long)>, CancellationToken>((c, _) => sent = (UploadPartCommand)c)
+                     .ReturnsAsync((CommandResponse.Ok, 3L));
+            var id = Guid.NewGuid();
+            var ok = Body(await _controller.UploadPart(Guid.NewGuid(), new UploadPartRequest { UploadId = id, Offset = 0, Data = Convert.ToBase64String(new byte[] { 1, 2, 3 }) }));
+            Assert.Equal(3, ok["received"]!.Value<long>());
+            Assert.Equal(new byte[] { 1, 2, 3 }, sent!.Data);
+            Assert.Equal(id, sent.UploadId);
+
+            _mediator.Setup(m => m.Send(It.IsAny<UploadPartCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.WrongArguments, 3L));
+            var conflict = Assert.IsType<ConflictObjectResult>(await _controller.UploadPart(Guid.NewGuid(), new UploadPartRequest { UploadId = id, Offset = 0, Data = "AQ==" }));
+            Assert.Equal(3, JObject.FromObject(conflict.Value!)["received"]!.Value<long>());
+
+            Assert.IsType<BadRequestObjectResult>(await _controller.UploadPart(Guid.NewGuid(), new UploadPartRequest { UploadId = id, Data = "not base64!" }));
+        }
+
+        [Fact]
+        public async Task UploadStatus_AndFinish()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetUploadStatusCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((long?)5);
+            Assert.Equal(5, Body(await _controller.UploadStatus(Guid.NewGuid(), Guid.NewGuid()))["received"]!.Value<long>());
+            _mediator.Setup(m => m.Send(It.IsAny<GetUploadStatusCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((long?)null);
+            Assert.IsType<NotFoundResult>(await _controller.UploadStatus(Guid.NewGuid(), Guid.NewGuid()));
+
+            var resourceId = Guid.NewGuid();
+            _mediator.Setup(m => m.Send(It.IsAny<FinishUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new UploadFinishResult(CommandResponse.Ok, resourceId, true, "book.pdf", "application/pdf", Guid.NewGuid()));
+            Assert.Equal(resourceId, Body(await _controller.UploadFinish(Guid.NewGuid(), new UploadFinishRequest { UploadId = Guid.NewGuid() }))["id"]!.Value<Guid>());
+
+            _mediator.Setup(m => m.Send(It.IsAny<FinishUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new UploadFinishResult(CommandResponse.WrongArguments, null, false, "x", null, Guid.NewGuid()));
+            Assert.IsType<BadRequestObjectResult>(await _controller.UploadFinish(Guid.NewGuid(), new UploadFinishRequest { UploadId = Guid.NewGuid() }));
         }
 
         [Fact]
