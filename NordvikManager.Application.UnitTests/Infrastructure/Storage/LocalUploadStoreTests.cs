@@ -45,6 +45,39 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Storage
         }
 
         [Fact]
+        public async Task Finished_IsRemembered_WithoutItsBytes_AndTakesNoMoreParts()
+        {
+            var upload = NewUpload(size: 3);
+            await _store.AppendAsync(upload.Id, 0, new byte[] { 1, 2, 3 });
+            Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(new byte[] { 1, 2, 3 })).ToLowerInvariant(), await _store.HashAsync(upload.Id));
+            var resourceId = Guid.NewGuid();
+
+            _store.MarkFinished(upload.Id, resourceId);
+
+            Assert.False(File.Exists(_store.PathOf(upload.Id)));
+            Assert.Equal(resourceId, _store.Get(upload.Id)!.ResourceId);
+            Assert.Equal(3, _store.Get(upload.Id)!.Received);
+            await Assert.ThrowsAsync<UploadOffsetException>(() => _store.AppendAsync(upload.Id, 3, new byte[] { 9 }));
+        }
+
+        [Fact]
+        public async Task FileStorage_MovesAFileIn_WithoutCopyingItsBytesThroughMemory()
+        {
+            var files = new LocalFileStorageProvider(new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["FileStorage:BasePath"] = _folder }).Build());
+            var upload = NewUpload(size: 2);
+            await _store.AppendAsync(upload.Id, 0, new byte[] { 5, 6 });
+            var gameId = Guid.NewGuid();
+            var resourceId = Guid.NewGuid();
+
+            var path = await files.MoveInAsync(gameId, resourceId, _store.PathOf(upload.Id), null);
+
+            Assert.False(File.Exists(_store.PathOf(upload.Id)));
+            Assert.Equal(new byte[] { 5, 6 }, File.ReadAllBytes(path));
+            Assert.EndsWith(resourceId.ToString(), path);
+        }
+
+        [Fact]
         public async Task APart_AtTheWrongPlace_OrPastTheSize_IsRefused()
         {
             var upload = NewUpload(size: 4);

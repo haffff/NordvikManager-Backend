@@ -6,6 +6,7 @@ using NordvikManager.Application.Commands.Resources.CreateResource;
 using NordvikManager.Application.Commands.Resources.Upload;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.Exceptions;
+using NordvikManager.Application.Services;
 using NordvikManager.Domain.Entities.BattleMap;
 using NordvikManager.Domain.Entities.Resources;
 using NordvikManager.Domain.Enums;
@@ -86,9 +87,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
         public async Task Finish_WithAKey_CreatesTheResourceLikeCreateResource_AndForgetsTheUpload()
         {
             CreateResourceCommand? sent = null;
+            byte[]? inFile = null;
             var newId = Guid.NewGuid();
             _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
-                .Callback<IRequest<(CommandResponse, Guid?)>, CancellationToken>((c, _) => sent = (CreateResourceCommand)c)
+                .Callback<IRequest<(CommandResponse, Guid?)>, CancellationToken>((c, _) => { sent = (CreateResourceCommand)c; inFile = File.ReadAllBytes(sent.SourceFile!); })
                 .ReturnsAsync((CommandResponse.Ok, newId));
             var id = await Started(size: 3, key: "pdf_src_1.pdf", storage: ResourceStorageKind.ManagedFile);
             await Part(id, 0, new byte[] { 7, 8, 9 });
@@ -98,11 +100,59 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.Equal(CommandResponse.Ok, result.Response);
             Assert.Equal(newId, result.ResourceId);
             Assert.True(result.ByKey);
-            Assert.Equal(new byte[] { 7, 8, 9 }, sent!.Data);
+            // file storage: the parts file is moved in, never read into memory
+            Assert.Null(sent!.Data);
+            Assert.Equal(new byte[] { 7, 8, 9 }, inFile);
+            Assert.Equal(ResourceVersions.HashOf(new byte[] { 7, 8, 9 }), sent.ContentHash);
             Assert.Equal("pdf_src_1.pdf", sent.Key);
             Assert.Equal(ResourceStorageKind.ManagedFile, sent.StorageKind);
             Assert.Equal(_game.Id, sent.GameId);
+        }
+
+        [Fact]
+        public async Task Finish_Twice_GivesTheSameResource_MadeOnce()
+        {
+            var newId = Guid.NewGuid();
+            var calls = 0;
+            _mediator.Setup(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()))
+                .Returns(async () => { Interlocked.Increment(ref calls); await Task.Delay(50); return (CommandResponse.Ok, (Guid?)newId); });
+            var id = await Started(size: 2);
+            await Part(id, 0, new byte[] { 1, 2 });
+
+            // at once (a retry racing the first), and again later (the answer was lost)
+            var both = await Task.WhenAll(Finish(id), Finish(id));
+            var later = await Finish(id);
+
+            Assert.Equal(1, calls);
+            Assert.All(both.Append(later), r => { Assert.Equal(CommandResponse.Ok, r.Response); Assert.Equal(newId, r.ResourceId); });
+        }
+
+        [Fact]
+        public async Task Finish_Refused_ForgetsTheUpload()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((CommandResponse.AlreadyExists, (Guid?)null));
+            var id = await Started(size: 2, key: "k");
+            await Part(id, 0, new byte[] { 1, 2 });
+
+            Assert.Equal(CommandResponse.AlreadyExists, (await Finish(id)).Response);
             Assert.Null(await Status(id));
+        }
+
+        [Fact]
+        public async Task Start_ABigFile_GoesToFileStorage_ForAnyone()
+        {
+            var big = Uploads.MaxBlobSize + 1;
+            var mine = await Started(size: big);
+            var (response, theirs) = await new StartUploadCommandHandler(Db, Mapper, _store).Handle(new StartUploadCommand
+            {
+                GameId = _game.Id, Player = Other, Name = "song.mp3", Size = big,
+            }, CancellationToken.None);
+
+            Assert.Equal(ResourceStorageKind.ManagedFile, _store.Get(mine)!.StorageKind);
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.Equal(ResourceStorageKind.ManagedFile, _store.Get(theirs!.Value)!.StorageKind);
+            Assert.Equal(ResourceStorageKind.Blob, _store.Get(await Started(size: 10))!.StorageKind);
         }
 
         [Fact]
@@ -118,7 +168,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             var result = await Finish(id);
 
             Assert.False(result.ByKey);
-            Assert.Equal(new byte[] { 1, 2 }, sent!.DataRaw);
+            Assert.Equal(new byte[] { 1, 2 }, sent!.DataRaw); // small: into the database
             Assert.Equal("book.pdf", sent.Name);
             Assert.Equal("application/pdf", sent.MimeType);
         }

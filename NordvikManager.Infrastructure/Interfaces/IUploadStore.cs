@@ -16,6 +16,10 @@ namespace NordvikManager.Infrastructure.Interfaces
         public ResourceStorageKind StorageKind { get; set; }
         public long Size { get; set; }
         public DateTime CreatedUtc { get; set; }
+        /// <summary>The player asked for file storage (rather than the server choosing it for a big file).</summary>
+        public bool AskedForFileStorage { get; set; }
+        /// <summary>Set once finished: what it became (a retried finish gets the same answer).</summary>
+        public Guid? ResourceId { get; set; }
         /// <summary>How much has arrived (the parts file's length); not stored.</summary>
         public long Received { get; set; }
     }
@@ -35,6 +39,14 @@ namespace NordvikManager.Infrastructure.Interfaces
         /// <summary>Appends a part at offset (which must be where the upload is); returns how much has arrived.</summary>
         Task<long> AppendAsync(Guid id, long offset, byte[] data);
         Task<byte[]> ReadAllAsync(Guid id);
+        /// <summary>The file holding what has arrived (moved away when finished into file storage).</summary>
+        string PathOf(Guid id);
+        /// <summary>SHA-256 of what has arrived, lowercase hex (as resource versions are), read as a stream.</summary>
+        Task<string> HashAsync(Guid id);
+        /// <summary>Runs work alone for this upload (parts and the finish never overlap).</summary>
+        Task<T> ExclusiveAsync<T>(Guid id, Func<Task<T>> work);
+        /// <summary>Remembers what the finished upload became and drops its bytes.</summary>
+        void MarkFinished(Guid id, Guid resourceId);
         void Delete(Guid id);
         /// <summary>Removes uploads nothing was added to for that long; returns how many.</summary>
         int DeleteOlderThan(TimeSpan age);

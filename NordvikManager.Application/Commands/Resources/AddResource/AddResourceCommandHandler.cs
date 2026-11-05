@@ -27,7 +27,7 @@ namespace NordvikManager.Application.Commands.Resources
         public async override Task<(CommandResponse, Guid?)> Handle(AddResourceCommand request, CancellationToken cancellationToken)
         {
             await base.Handle(request, cancellationToken);
-            byte[] data = request.DataRaw ?? Convert.FromBase64String(request.Data);
+            byte[]? data = request.SourceFile != null ? null : request.DataRaw ?? Convert.FromBase64String(request.Data);
 
             //TODO: mimeType enum should be passed in command
             MimeType? mimeType = request.MimeType.ToEnumUsingDescriptionAttribute<MimeType>();
@@ -48,21 +48,12 @@ namespace NordvikManager.Application.Commands.Resources
                 GameId = request.GameID ?? Guid.Empty,
             };
 
-            if (request.StorageKind == ResourceStorageKind.ManagedFile)
-            {
-                // Files go into the server's own folder, so editing the game is enough.
-                if (game == null || !game.HasPermission(player.Id, Permission.Edit))
-                    throw new PermissionException(Permission.Edit);
-
-                model.Path = await storage.SaveAsync(model.GameId, model.Id, data, null);
-                model.Storage = ResourceStorageKind.ManagedFile;
-            }
-            else
-            {
-                model.Data = data;
-                model.Storage = ResourceStorageKind.Blob;
-            }
-            model.ContentHash = ResourceVersions.HashOf(data);
+            // Files go into the server's own folder, so editing the game is enough. (A finished
+            // upload was checked when it started: big uploads go there for anyone.)
+            if (request.StorageKind == ResourceStorageKind.ManagedFile && request.SourceFile == null
+                && (game == null || !game.HasPermission(player.Id, Permission.Edit)))
+                throw new PermissionException(Permission.Edit);
+            await ResourceContentStore.StoreAsync(model, storage, request.StorageKind, data, request.SourceFile, request.ContentHash);
 
             var entry = await dbContext.Resources.AddAsync(model);
 

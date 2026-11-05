@@ -24,6 +24,15 @@ namespace NordvikManager.Infrastructure.Services.Storage
             return fullPath;
         }
 
+        public Task<string> MoveInAsync(Guid gameId, Guid resourceId, string sourcePath, string? fileExtension)
+        {
+            var dir = Path.Combine(basePath, "games", gameId.ToString());
+            Directory.CreateDirectory(dir);
+            var fullPath = Path.GetFullPath(Path.Combine(dir, resourceId.ToString() + (fileExtension ?? string.Empty)));
+            File.Move(sourcePath, fullPath, overwrite: true);
+            return Task.FromResult(fullPath);
+        }
+
         public async Task<byte[]?> ReadAsync(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))

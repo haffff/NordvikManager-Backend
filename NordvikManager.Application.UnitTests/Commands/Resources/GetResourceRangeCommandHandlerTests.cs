@@ -58,8 +58,9 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.False(result.NotModified);
         }
 
-        // A big file in the database: each part is cut out by the database, not by loading the
-        // whole column for every part (50 MB per 2 MB part).
+        // A big file in the database: each part is read straight from the blob (SQLite's
+        // incremental blob I/O), not by loading the whole value for every part. substr() would
+        // load all of it inside SQLite: 50 MB per 2 MB part.
         [Fact]
         public async Task Blob_ReadsOnlyThePart_NotTheWholeColumn()
         {
@@ -69,8 +70,21 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             var result = await Get(id, 40, 3);
 
             Assert.Equal(new byte[] { 40, 41, 42 }, result!.Data);
-            Assert.Contains(Commands.Texts, sql => sql.Contains("substr(", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(Commands.Texts, sql => sql.Contains("substr(", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(Commands.Texts, sql => sql.Contains("SELECT \"r\".\"Data\""));
+            Assert.Contains(Commands.Texts, sql => sql.Contains("rowid", StringComparison.OrdinalIgnoreCase));
+        }
+
+        [Fact]
+        public async Task Blob_APartDeepInABigBlob_ComesOutRight()
+        {
+            var big = Enumerable.Range(0, 300_000).Select(i => (byte)(i % 251)).ToArray();
+            var id = Seed(r => { r.Data = big; r.ContentHash = "h"; });
+
+            var result = await Get(id, 123_457, 70_000);
+
+            Assert.Equal(big.AsSpan(123_457, 70_000).ToArray(), result!.Data);
+            Assert.Equal(300_000, result.Total);
         }
 
         [Fact]

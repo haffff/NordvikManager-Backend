@@ -6,6 +6,9 @@
     public interface IFileStorageProvider
     {
         Task<string> SaveAsync(Guid gameId, Guid resourceId, byte[] data, string? fileExtension);
+
+        /// <summary>Moves a file the server already has (a finished upload) into storage, without reading it; the stored path.</summary>
+        Task<string> MoveInAsync(Guid gameId, Guid resourceId, string sourcePath, string? fileExtension);
         Task<byte[]?> ReadAsync(string path);
 
         /// <summary>Up to <paramref name="count"/> bytes from <paramref name="offset"/>, without reading the rest; null if the file doesn't exist.</summary>

@@ -37,27 +37,29 @@ namespace NordvikManager.Infrastructure.Services.Storage
         {
             var meta = MetaOf(id);
             var part = PathOf(id);
-            if (!File.Exists(meta) || !File.Exists(part))
+            if (!File.Exists(meta))
                 return null;
             var info = JsonSerializer.Deserialize<UploadInfo>(File.ReadAllText(meta));
             if (info == null)
+                return null;
+            if (info.ResourceId != null)
+            {
+                info.Received = info.Size; // finished: its bytes are gone
+                return info;
+            }
+            if (!File.Exists(part))
                 return null;
             info.Received = new FileInfo(part).Length;
             return info;
         }
 
-        public async Task<long> AppendAsync(Guid id, long offset, byte[] data)
+        public async Task<T> ExclusiveAsync<T>(Guid id, Func<Task<T>> work)
         {
             var gate = locks.GetOrAdd(id, _ => new SemaphoreSlim(1, 1));
             await gate.WaitAsync();
             try
             {
-                var info = Get(id) ?? throw new FileNotFoundException("No such upload.");
-                if (offset != info.Received || info.Received + data.Length > info.Size)
-                    throw new UploadOffsetException(info.Received);
-                await using var stream = new FileStream(PathOf(id), FileMode.Append, FileAccess.Write, FileShare.Read);
-                await stream.WriteAsync(data);
-                return info.Received + data.Length;
+                return await work();
             }
             finally
             {
@@ -65,7 +67,33 @@ namespace NordvikManager.Infrastructure.Services.Storage
             }
         }
 
+        public Task<long> AppendAsync(Guid id, long offset, byte[] data) => ExclusiveAsync(id, async () =>
+        {
+            var info = Get(id) ?? throw new FileNotFoundException("No such upload.");
+            if (info.ResourceId != null || offset != info.Received || info.Received + data.Length > info.Size)
+                throw new UploadOffsetException(info.Received);
+            await using var stream = new FileStream(PathOf(id), FileMode.Append, FileAccess.Write, FileShare.Read);
+            await stream.WriteAsync(data);
+            return info.Received + data.Length;
+        });
+
         public Task<byte[]> ReadAllAsync(Guid id) => File.ReadAllBytesAsync(PathOf(id));
+
+        public async Task<string> HashAsync(Guid id)
+        {
+            await using var stream = new FileStream(PathOf(id), FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, useAsync: true);
+            return Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(stream)).ToLowerInvariant();
+        }
+
+        public void MarkFinished(Guid id, Guid resourceId)
+        {
+            var info = Get(id);
+            if (info == null)
+                return;
+            info.ResourceId = resourceId;
+            File.WriteAllText(MetaOf(id), JsonSerializer.Serialize(info));
+            if (File.Exists(PathOf(id))) File.Delete(PathOf(id));
+        }
 
         public void Delete(Guid id)
         {
@@ -79,11 +107,14 @@ namespace NordvikManager.Infrastructure.Services.Storage
             if (!Directory.Exists(folder))
                 return 0;
             var removed = 0;
-            foreach (var part in Directory.EnumerateFiles(folder, "*.part"))
+            // by the description file: finished uploads have no parts file left
+            foreach (var meta in Directory.EnumerateFiles(folder, "*.json"))
             {
-                if (DateTime.UtcNow - File.GetLastWriteTimeUtc(part) < age)
+                var part = Path.ChangeExtension(meta, ".part");
+                var touched = File.Exists(part) ? File.GetLastWriteTimeUtc(part) : File.GetLastWriteTimeUtc(meta);
+                if (DateTime.UtcNow - touched < age)
                     continue;
-                if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(part), "N", out var id))
+                if (Guid.TryParseExact(Path.GetFileNameWithoutExtension(meta), "N", out var id))
                 {
                     Delete(id);
                     removed++;
