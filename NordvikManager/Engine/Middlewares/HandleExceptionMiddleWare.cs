@@ -33,6 +33,10 @@ namespace NordvikManager.Engine.Middlewares
             {
                 await WriteError(context, ex, 400, LogLevel.Warning);
             }
+            catch (UploadLimitException ex)
+            {
+                await WriteError(context, ex, 413, LogLevel.Information);
+            }
             catch (Exception ex)
             {
                 await WriteError(context, ex, 500, LogLevel.Error);

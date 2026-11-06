@@ -140,6 +140,24 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
         }
 
         [Fact]
+        public async Task Start_OverThePlayersUploadLimit_IsRefusedBeforeTheFileTravels()
+        {
+            var settings = new Mock<NordvikManager.Infrastructure.Interfaces.IServerSettingsStore>();
+            var saved = new NordvikManager.Infrastructure.Services.Settings.ServerSettings();
+            saved.Uploads.PlayerLimitMb = 1;
+            settings.Setup(s => s.Load()).Returns(saved);
+            var quota = new UploadQuota(settings.Object, Storage, _store);
+            var handler = new StartUploadCommandHandler(Db, Mapper, _store, quota);
+            StartUploadCommand Cmd(long size) => new() { GameId = _game.Id, Player = Other, Name = "song.mp3", Size = size };
+
+            var (ok, first) = await handler.Handle(Cmd(600 * 1024), CancellationToken.None);
+            Assert.Equal(CommandResponse.Ok, ok);
+            // the first one still arriving counts too
+            await Assert.ThrowsAsync<UploadLimitException>(() => handler.Handle(Cmd(600 * 1024), CancellationToken.None));
+            Assert.Single(_store.Unfinished(_game.Id, TimeSpan.FromMinutes(10)));
+        }
+
+        [Fact]
         public async Task Start_ABigFile_GoesToFileStorage_ForAnyone()
         {
             var big = Uploads.MaxBlobSize + 1;

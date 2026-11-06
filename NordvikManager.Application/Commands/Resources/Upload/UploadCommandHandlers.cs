@@ -1,3 +1,4 @@
+using NordvikManager.Application.Services;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using NordvikManager.Application.Commands.Resources.CreateResource;
@@ -31,7 +32,12 @@ namespace NordvikManager.Application.Commands.Resources.Upload
     public class StartUploadCommandHandler : HandlerBase<StartUploadCommand, (CommandResponse, Guid?)>
     {
         private readonly IUploadStore store;
-        public StartUploadCommandHandler(IDbContext ctx, IMapper mapper, IUploadStore store) : base(ctx, mapper) { this.store = store; }
+        private readonly UploadQuota? quota;
+        public StartUploadCommandHandler(IDbContext ctx, IMapper mapper, IUploadStore store, UploadQuota? quota = null) : base(ctx, mapper)
+        {
+            this.store = store;
+            this.quota = quota;
+        }
 
         public override async Task<(CommandResponse, Guid?)> Handle(StartUploadCommand request, CancellationToken cancellationToken)
         {
@@ -49,6 +55,10 @@ namespace NordvikManager.Application.Commands.Resources.Upload
                 if (game == null || !game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit))
                     throw new PermissionException(Permission.Edit);
             }
+
+            // refused before the file travels (checked again when it's finished)
+            if (quota != null)
+                await quota.EnsureRoomAsync(dbContext, request.GameId, request.Player.Id ?? Guid.Empty, request.Size, cancellationToken: cancellationToken);
 
             var asked = request.StorageKind == ResourceStorageKind.ManagedFile;
             var storageKind = asked || request.Size > Uploads.MaxBlobSize ? ResourceStorageKind.ManagedFile : ResourceStorageKind.Blob;
@@ -101,10 +111,12 @@ namespace NordvikManager.Application.Commands.Resources.Upload
     {
         private readonly IUploadStore store;
         private readonly IMediator mediator;
-        public FinishUploadCommandHandler(IDbContext ctx, IMapper mapper, IUploadStore store, IMediator mediator) : base(ctx, mapper)
+        private readonly UploadQuota? quota;
+        public FinishUploadCommandHandler(IDbContext ctx, IMapper mapper, IUploadStore store, IMediator mediator, UploadQuota? quota = null) : base(ctx, mapper)
         {
             this.store = store;
             this.mediator = mediator;
+            this.quota = quota;
         }
 
         public override async Task<UploadFinishResult> Handle(FinishUploadCommand request, CancellationToken cancellationToken)
@@ -137,6 +149,9 @@ namespace NordvikManager.Application.Commands.Resources.Upload
                     if (game == null || !game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit))
                         throw new PermissionException(Permission.Edit);
                 }
+                // the check that decides (others may have uploaded since the start)
+                if (quota != null)
+                    await quota.EnsureRoomAsync(dbContext, info.GameId, request.Player.Id ?? Guid.Empty, info.Size, exceptUpload: info.Id, cancellationToken: cancellationToken);
                 // File storage: the parts file is moved in, never read into memory. The database:
                 // read (small, MaxBlobSize at most).
                 var toFile = info.StorageKind == ResourceStorageKind.ManagedFile;
@@ -147,13 +162,13 @@ namespace NordvikManager.Application.Commands.Resources.Upload
                     ? await mediator.Send(new CreateResourceCommand
                     {
                         GameId = info.GameId, Player = request.Player, Key = info.Key, Name = info.Name, Data = data,
-                        SourceFile = source, ContentHash = hash,
+                        SourceFile = source, ContentHash = hash, SkipQuota = true,
                         MimeType = info.MimeType, ParentFolder = info.ParentFolder, StorageKind = info.StorageKind,
                     }, cancellationToken)
                     : await mediator.Send(new AddResourceCommand
                     {
                         GameID = info.GameId, Player = request.Player, Name = info.Name, DataRaw = data!,
-                        SourceFile = source, ContentHash = hash,
+                        SourceFile = source, ContentHash = hash, SkipQuota = true,
                         MimeType = info.MimeType, ParentFolder = info.ParentFolder, StorageKind = info.StorageKind,
                     }, cancellationToken);
             }

@@ -47,6 +47,32 @@ namespace NordvikManager.Application.UnitTests.Commands.ServerSettings
             new SetSandboxAllowedOriginsCommandHandler(Db, Mapper, View()).Handle(new SetSandboxAllowedOriginsCommand { Origins = origins.ToList() }, default);
 
         // =========================================================================
+        // Upload limits (MB per game; 0 = no limit)
+        // =========================================================================
+
+        [Fact]
+        public async Task UploadLimits_DefaultToNoneForGms_And200MbPerPlayer_AndSave()
+        {
+            var before = await GetHandler().Handle(new GetServerSettingsCommand(), default);
+            Assert.Equal(0, before.UploadLimits.GmGameLimitMb);
+            Assert.Equal(200, before.UploadLimits.PlayerLimitMb);
+
+            var after = await new SetUploadLimitsCommandHandler(Db, Mapper, View()).Handle(new SetUploadLimitsCommand { GmGameLimitMb = 5000, PlayerLimitMb = 0 }, default);
+
+            Assert.Equal(5000, after.UploadLimits.GmGameLimitMb);
+            Assert.Equal(0, after.UploadLimits.PlayerLimitMb);
+            Assert.Equal(5000, new ServerSettingsStore(_options).Load().Uploads.GmGameLimitMb);
+        }
+
+        [Fact]
+        public async Task UploadLimits_RefuseNegativeOrAbsurdValues()
+        {
+            var handler = new SetUploadLimitsCommandHandler(Db, Mapper, View());
+            await Assert.ThrowsAsync<ServerSettingsException>(() => handler.Handle(new SetUploadLimitsCommand { GmGameLimitMb = -1, PlayerLimitMb = 1 }, default));
+            await Assert.ThrowsAsync<ServerSettingsException>(() => handler.Handle(new SetUploadLimitsCommand { GmGameLimitMb = 0, PlayerLimitMb = 100_000_000 }, default));
+        }
+
+        // =========================================================================
         // GetServerSettings
         // =========================================================================
 

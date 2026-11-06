@@ -25,6 +25,8 @@ namespace NordvikManager.Application.Commands.Resources.CreateResource
         /// store it there.
         /// </summary>
         [System.Text.Json.Serialization.JsonIgnore] public string? SourceFile { get; set; }
+        /// <summary>Not counted against the upload limits: addon files, a new game's own, imports, or a finished upload (counted already).</summary>
+        [System.Text.Json.Serialization.JsonIgnore] public bool SkipQuota { get; set; }
         /// <summary>The content's hash, when SourceFile is set.</summary>
         [System.Text.Json.Serialization.JsonIgnore] public string? ContentHash { get; set; }
     }

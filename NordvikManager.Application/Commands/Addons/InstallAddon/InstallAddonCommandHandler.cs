@@ -314,6 +314,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
 
                 var (_, resourceID) = await mediator.Send(new AddResourceCommand
                 {
+                    SkipQuota = true, // addon files: not uploads
                     GameID = request.GameID,
                     Player = request.Player,
                     MimeType = resource.FullName.ToMimeType()?.GetDescriptionValue(),
@@ -348,6 +349,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
 
                 var (_, resourceID) = await mediator.Send(new AddResourceCommand
                 {
+                    SkipQuota = true, // addon files: not uploads
                     GameID = request.GameID,
                     Player = request.Player,
                     MimeType = script.FullName.ToMimeType()?.GetDescriptionValue(),

@@ -18,10 +18,12 @@ namespace NordvikManager.Application.Commands.Resources
     {
         private readonly IMediator mediator;
         private readonly IFileStorageProvider storage;
-        public AddImageCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage) : base(battleMapContext, mapper)
+        private readonly UploadQuota? quota;
+        public AddImageCommandHandler(IDbContext battleMapContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage, UploadQuota? quota = null) : base(battleMapContext, mapper)
         {
             this.mediator = mediator;
             this.storage = storage;
+            this.quota = quota;
         }
 
         public async override Task<(CommandResponse, Guid?)> Handle(AddResourceCommand request, CancellationToken cancellationToken)
@@ -53,6 +55,8 @@ namespace NordvikManager.Application.Commands.Resources
             if (request.StorageKind == ResourceStorageKind.ManagedFile && request.SourceFile == null
                 && (game == null || !game.HasPermission(player.Id, Permission.Edit)))
                 throw new PermissionException(Permission.Edit);
+            if (!request.SkipQuota && quota != null)
+                await quota.EnsureRoomAsync(dbContext, model.GameId, player.Id, data?.Length ?? 0, cancellationToken: cancellationToken);
             await ResourceContentStore.StoreAsync(model, storage, request.StorageKind, data, request.SourceFile, request.ContentHash);
 
             var entry = await dbContext.Resources.AddAsync(model);

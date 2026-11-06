@@ -44,6 +44,24 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Storage
             Assert.Equal("book.pdf", _store.Get(upload.Id)!.Name);
         }
 
+        // An upload nothing arrived for in a while was given up (a reload starts it again): it
+        // no longer counts against the upload limit, though its bytes stay until cleaned up.
+        [Fact]
+        public async Task Unfinished_ListsOnlyUploadsStillArriving()
+        {
+            var fresh = NewUpload();
+            var stale = _store.Start(new UploadInfo { GameId = fresh.GameId, PlayerId = Guid.NewGuid(), Name = "a", Size = 6 });
+            var finished = _store.Start(new UploadInfo { GameId = fresh.GameId, PlayerId = Guid.NewGuid(), Name = "b", Size = 1 });
+            await _store.AppendAsync(finished.Id, 0, new byte[] { 1 });
+            _store.MarkFinished(finished.Id, Guid.NewGuid());
+            File.SetLastWriteTimeUtc(_store.PathOf(stale.Id), DateTime.UtcNow.AddMinutes(-30));
+
+            var arriving = _store.Unfinished(fresh.GameId, TimeSpan.FromMinutes(10));
+
+            Assert.Equal(new[] { fresh.Id }, arriving.Select(u => u.Id).ToArray());
+            Assert.Empty(_store.Unfinished(Guid.NewGuid(), TimeSpan.FromMinutes(10)));
+        }
+
         [Fact]
         public async Task Finished_IsRemembered_WithoutItsBytes_AndTakesNoMoreParts()
         {
