@@ -17,10 +17,12 @@ namespace NordvikManager.Application.Commands.Resources.CreateResource
     {
         private readonly IMediator _mediator;
         private readonly IFileStorageProvider storage;
+        private readonly UploadQuota? quota;
 
-        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage)
+        public CreateResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage, UploadQuota? quota = null)
             : base(dbContext, mapper)
         {
+            this.quota = quota;
             _mediator = mediator;
             this.storage = storage;
         }
@@ -57,22 +59,17 @@ namespace NordvikManager.Application.Commands.Resources.CreateResource
                 Player   = player,
             };
 
-            if (request.StorageKind == ResourceStorageKind.ManagedFile)
+            // Files go into the server's own folder, so editing the game is enough. (A finished
+            // upload was checked when it started: big uploads go there for anyone.)
+            if (request.StorageKind == ResourceStorageKind.ManagedFile && request.SourceFile == null)
             {
-                // Files go into the server's own folder, so editing the game is enough.
                 var game = dbContext.Games.FirstOrDefault(g => g.Id == request.GameId);
                 if (game == null || !game.HasPermission(player.Id, Permission.Edit))
                     throw new PermissionException(Permission.Edit);
-
-                model.Path = await storage.SaveAsync(model.GameId, model.Id, request.Data, null);
-                model.Storage = ResourceStorageKind.ManagedFile;
             }
-            else
-            {
-                model.Data = request.Data;
-                model.Storage = ResourceStorageKind.Blob;
-            }
-            model.ContentHash = ResourceVersions.HashOf(request.Data);
+            if (!request.SkipQuota && quota != null)
+                await quota.EnsureRoomAsync(dbContext, request.GameId, player.Id, request.Data?.Length ?? 0, cancellationToken: cancellationToken);
+            await ResourceContentStore.StoreAsync(model, storage, request.StorageKind, request.Data, request.SourceFile, request.ContentHash);
 
             await dbContext.Resources.AddAsync(model, cancellationToken);
             dbContext.SaveChanges();

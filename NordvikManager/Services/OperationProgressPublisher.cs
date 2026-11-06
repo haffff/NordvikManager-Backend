@@ -45,6 +45,13 @@ namespace NordvikManager.Services
             }
         }
 
+        /// <summary>
+        /// Call before handing the operation id to the client: from then on the client can
+        /// ask for the operation's state (OperationResults) if its outcome push is lost.
+        /// </summary>
+        public static void Begin(Guid operationId, PlayerDTO player) =>
+            OperationResults.Shared.Begin(operationId, player.Id ?? default);
+
         public static Task Update(GameLobby? lobby, PlayerDTO player, Guid operationId, int current, int? total = null, string? message = null)
         {
             if (lobby == null) return Task.CompletedTask;
@@ -60,6 +67,7 @@ namespace NordvikManager.Services
         public static Task Complete(GameLobby? lobby, PlayerDTO player, Guid operationId, string? title = null, string? description = null)
         {
             Trace(lobby, player, operationId, WebSocketCommandNames.OperationComplete);
+            OperationResults.Shared.Finish(operationId, player.Id ?? default, false, title, description);
             if (lobby == null) return Task.CompletedTask;
 
             return lobby.HandlePostCommand(player, new WebSocketCommand
@@ -73,6 +81,7 @@ namespace NordvikManager.Services
         public static Task Fail(GameLobby? lobby, PlayerDTO player, Guid operationId, string? title = null, string? description = null)
         {
             Trace(lobby, player, operationId, WebSocketCommandNames.OperationFailed);
+            OperationResults.Shared.Finish(operationId, player.Id ?? default, true, title, description);
             if (lobby == null) return Task.CompletedTask;
 
             return lobby.HandlePostCommand(player, new WebSocketCommand

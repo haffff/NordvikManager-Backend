@@ -1,0 +1,157 @@
+{
+  "about": "Shared by NordvikManagerFrontEnd (src/helpers/token-build-cases.json) and NordvikManager-Backend (NordvikManager.Application.UnitTests/Commands/Actions/token-build-cases.json): how a token file becomes the canvas object placed on the map. The server builds real tokens (BuildToken, SpawnToken); the token editor builds its preview with the client's copy (helpers/buildToken.js). Keep both copies the same.",
+  "cases": [
+    {
+      "name": "a bare token file: one grid square, the image as the element's own property",
+      "template": { "name": "token", "object": { "type": "image" } },
+      "options": { "gridSize": 50, "x": 10, "y": 20, "mapId": "map-1", "image": "img-1" },
+      "expected": {
+        "size": 1,
+        "object": {
+          "type": "image", "name": "Token", "left": 10, "top": 20, "width": 50, "height": 50, "scaleX": 1, "scaleY": 1,
+          "cardId": null, "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": "img-1",
+          "tokenData": {
+            "cardId": null, "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "element" }]
+          },
+          "tokenUiElements": []
+        }
+      }
+    },
+    {
+      "name": "a card's token reads its image from the card; its size is the card's (1 without drop_token_size), not the file's",
+      "template": { "name": "token", "size": 2, "object": { "type": "image", "opacity": 0.5 } },
+      "options": { "gridSize": 70, "x": 0, "y": 0, "mapId": "map-1", "cardId": "card-1", "name": "Goblin", "image": "img-2" },
+      "expected": {
+        "size": 1,
+        "object": {
+          "type": "image", "opacity": 0.5, "name": "Goblin", "left": 0, "top": 0, "width": 70, "height": 70, "scaleX": 1, "scaleY": 1,
+          "cardId": "card-1", "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": "img-2",
+          "tokenData": {
+            "cardId": "card-1", "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "card" }]
+          },
+          "tokenUiElements": []
+        }
+      }
+    },
+    {
+      "name": "without a card, the file's size times the grid",
+      "template": { "name": "token", "size": 2, "object": { "type": "image" } },
+      "options": { "gridSize": 70, "x": 0, "y": 0, "mapId": "map-1", "image": "img-3" },
+      "expected": {
+        "size": 2,
+        "object": {
+          "type": "image", "name": "Token", "left": 0, "top": 0, "width": 140, "height": 140, "scaleX": 1, "scaleY": 1,
+          "cardId": null, "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": "img-3",
+          "tokenData": {
+            "cardId": null, "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "element" }]
+          },
+          "tokenUiElements": []
+        }
+      }
+    },
+    {
+      "name": "a card's drop_token_size wins over the file; no grid means 50",
+      "template": { "name": "token", "size": 2, "object": { "type": "image" } },
+      "options": { "gridSize": 0, "size": 3, "x": 0, "y": 0, "mapId": "map-1", "cardId": "card-1", "name": "Ogre" },
+      "expected": {
+        "size": 3,
+        "object": {
+          "type": "image", "name": "Ogre", "left": 0, "top": 0, "width": 150, "height": 150, "scaleX": 1, "scaleY": 1,
+          "cardId": "card-1", "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": null,
+          "tokenData": {
+            "cardId": "card-1", "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "card" }]
+          },
+          "tokenUiElements": []
+        }
+      }
+    },
+    {
+      "name": "quick-edit fields, icons, the file's own deps and the parts (on the token UI layer)",
+      "template": {
+        "name": "token",
+        "object": { "type": "image" },
+        "tokenData": { "maxStatusIcons": 3, "propDeps": [{ "dtoProperty": "faded", "objectProperty": "opacity", "type": "number", "source": "element" }] },
+        "editableProps": [{ "name": "hp", "dtoProperty": "hp", "source": "card" }],
+        "assignableIcons": [{ "id": "poisoned", "iconPack": "gi", "iconName": "GiPoisonBottle", "dtoProperty": "status_poisoned", "source": "card" }],
+        "additions": [{ "name": "hp_bar", "type": "rect", "width": 40, "tokenData": { "anchor": "bottom" } }]
+      },
+      "options": { "gridSize": 50, "x": 0, "y": 0, "mapId": "map-1" },
+      "expected": {
+        "size": 1,
+        "object": {
+          "type": "image", "name": "Token", "left": 0, "top": 0, "width": 50, "height": 50, "scaleX": 1, "scaleY": 1,
+          "cardId": null, "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": null,
+          "tokenData": {
+            "maxStatusIcons": 3,
+            "propDeps": [
+              { "dtoProperty": "faded", "objectProperty": "opacity", "type": "number", "source": "element" },
+              { "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "element" }
+            ],
+            "cardId": null,
+            "editableProps": [{ "name": "hp", "dtoProperty": "hp", "source": "card" }],
+            "assignableIcons": [{ "id": "poisoned", "iconPack": "gi", "iconName": "GiPoisonBottle", "dtoProperty": "status_poisoned", "source": "card" }]
+          },
+          "tokenUiElements": [{ "name": "hp_bar", "type": "rect", "width": 40, "tokenData": { "anchor": "bottom" }, "layer": 110 }]
+        }
+      }
+    },
+    {
+      "name": "a circle crop without a radius covers the token; one with a radius keeps it",
+      "template": { "name": "token", "object": { "type": "image", "clipPath": { "type": "circle" } } },
+      "options": { "gridSize": 60, "x": 0, "y": 0, "mapId": "map-1" },
+      "expected": {
+        "size": 1,
+        "object": {
+          "type": "image", "clipPath": { "type": "circle", "radius": 30 }, "name": "Token", "left": 0, "top": 0, "width": 60, "height": 60, "scaleX": 1, "scaleY": 1,
+          "cardId": null, "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": null,
+          "tokenData": {
+            "cardId": null, "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "element" }]
+          },
+          "tokenUiElements": []
+        }
+      }
+    },
+    {
+      "name": "a part's tokenData is kept as written (status icons stacking off the top-right corner, a visibility switch)",
+      "template": {
+        "name": "token", "object": { "type": "image" },
+        "additions": [
+          {
+            "name": "status_poisoned", "type": "reactIcon", "iconPack": "gi", "iconName": "GiPoisonBottle", "width": 18, "visible": false,
+            "tokenData": {
+              "anchor": "left-bottom", "offsetX": 2, "offsetY": 0, "stack": true, "maskGroup": "conditions", "label": "Conditions",
+              "propDeps": [{ "dtoProperty": "status_poisoned", "objectProperty": "visible", "type": "bool", "source": "card" }]
+            }
+          }
+        ]
+      },
+      "options": { "gridSize": 50, "x": 10, "y": 20, "mapId": "map-1", "image": "img-1" },
+      "expected": {
+        "size": 1,
+        "object": {
+          "type": "image", "name": "Token", "left": 10, "top": 20, "width": 50, "height": 50, "scaleX": 1, "scaleY": 1,
+          "cardId": null, "isToken": true, "mapId": "map-1", "layer": 100, "resourceId": "img-1",
+          "tokenData": {
+            "cardId": null, "editableProps": [], "assignableIcons": [],
+            "propDeps": [{ "dtoProperty": "tokenImage", "objectProperty": "src", "type": "string", "source": "element" }]
+          },
+          "tokenUiElements": [
+            {
+              "name": "status_poisoned", "type": "reactIcon", "iconPack": "gi", "iconName": "GiPoisonBottle", "width": 18, "visible": false,
+              "tokenData": {
+                "anchor": "left-bottom", "offsetX": 2, "offsetY": 0, "stack": true, "maskGroup": "conditions", "label": "Conditions",
+                "propDeps": [{ "dtoProperty": "status_poisoned", "objectProperty": "visible", "type": "bool", "source": "card" }]
+              },
+              "layer": 110
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

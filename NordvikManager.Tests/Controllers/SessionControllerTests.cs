@@ -40,13 +40,15 @@ namespace NordvikManager.Tests.Controllers
                      .ReturnsAsync("central-session-1");
             _mediator.Setup(m => m.Send(It.IsAny<GetSystemPlayerCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new PlayerDTO { Id = Guid.NewGuid(), Name = "System" });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game" });
         }
 
-        private SessionController CreateController()
+        private SessionController CreateController(LobbyRegistry? registry = null)
         {
             var controller = new SessionController(
                 _mediator.Object,
-                new LobbyRegistry(),
+                registry ?? new LobbyRegistry(),
                 _webRtcSession.Object,
                 LobbyScopeFactory(),
                 _central.Object);
@@ -139,13 +141,97 @@ namespace NordvikManager.Tests.Controllers
             _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game" });
             _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GameItemDTO>()))
-                    .ReturnsAsync(false);
+                    .ReturnsAsync(CentralSessionUpdate.Failed);
             _webRtcSession.Setup(s => s.StartSessionAsync(_gameId, "central-session-1", It.IsAny<string>()))
                           .Returns(Task.CompletedTask);
 
             var result = await CreateController().StartSession(_gameId);
 
             Assert.IsType<OkObjectResult>(result);
+        }
+
+        // Central signaling only admits members as players; a player who joined this game on
+        // the GM server never joined it on Central, so starting the game joins them there.
+        [Fact]
+        public async Task StartSession_JoinsTheUserToTheCentralSession_WithTheGamePassword()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game", PasswordRequired = true, Password = "pw" });
+
+            await CreateController().StartSession(_gameId);
+
+            _central.Verify(c => c.JoinSessionAsync(It.IsAny<string>(), "central-session-1", "pw"), Times.Once);
+        }
+
+        [Fact]
+        public async Task StartSession_JoinsTheUser_EvenWhenTheSessionIsAlreadyRunning()
+        {
+            var registry = new LobbyRegistry();
+            registry.Games.TryAdd(_gameId, new GameLobby(LobbyScopeFactory()) { GameId = _gameId });
+            _webRtcSession.Setup(s => s.IsConnected(_gameId)).Returns(true);
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game" });
+            var controller = CreateController(registry);
+
+            var result = await controller.StartSession(_gameId);
+
+            Assert.IsType<OkObjectResult>(result);
+            _central.Verify(c => c.JoinSessionAsync(It.IsAny<string>(), "central-session-1", null), Times.Once);
+            _webRtcSession.Verify(s => s.StartSessionAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task StartSession_MakesANewCentralSession_WhenCentralExpiredTheOldOne()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameSessionDetailsCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetGameSessionDetailsResult { Name = "Game" });
+            _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), "central-session-1", It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync(CentralSessionUpdate.Missing);
+            _central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync("central-session-2");
+
+            await CreateController().StartSession(_gameId);
+
+            _webRtcSession.Verify(s => s.StartSessionAsync(_gameId, "central-session-2", It.IsAny<string>()), Times.Once);
+            _central.Verify(c => c.JoinSessionAsync(It.IsAny<string>(), "central-session-2", It.IsAny<string?>()), Times.Once);
+        }
+
+        // Making the Central session makes its owner, who may then connect as GM from anywhere;
+        // only the game's GM (or the server's local admin) may do that.
+        [Theory]
+        [InlineData(false)] // the game never had a Central session
+        [InlineData(true)]  // Central expired or deleted it
+        public async Task StartSession_ByAPlayerWhoIsNotTheGm_NeverMakesTheCentralSession(bool hadOne)
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetPlayerCommandResponse { Player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice", IsOwner = false } });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(hadOne ? "central-session-1" : null);
+            _central.Setup(c => c.UpdateSessionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<GameItemDTO>()))
+                    .ReturnsAsync(CentralSessionUpdate.Missing);
+
+            var result = await CreateController().StartSession(_gameId);
+
+            var conflict = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Contains("GM", conflict.Value!.GetType().GetProperty("error")!.GetValue(conflict.Value) as string);
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Never);
+            _webRtcSession.Verify(s => s.StartSessionAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task StartSession_ByTheLocalAdmin_MayMakeTheCentralSession()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new GetPlayerCommandResponse { Player = new PlayerDTO { Id = Guid.NewGuid(), Name = "Admin", IsOwner = false } });
+            _mediator.Setup(m => m.Send(It.IsAny<GetGameCentralSessionIdCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((string?)null);
+            _central.Setup(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>())).ReturnsAsync("central-session-2");
+            var controller = CreateController();
+            controller.HttpContext.Items["User"] = new User { Id = "admin-id", UserName = "admin", IsLocalAdmin = true };
+
+            await controller.StartSession(_gameId);
+
+            _central.Verify(c => c.CreateSessionAsync(It.IsAny<string>(), It.IsAny<GameItemDTO>()), Times.Once);
         }
 
         [Fact]

@@ -17,12 +17,14 @@ namespace NordvikManager.Application.Commands.Resources.SetResource
     {
         private readonly IMediator _mediator;
         private readonly IFileStorageProvider storage;
+        private readonly UploadQuota? quota;
 
-        public SetResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage)
+        public SetResourceCommandHandler(IDbContext dbContext, IMapper mapper, IMediator mediator, IFileStorageProvider storage, UploadQuota? quota = null)
             : base(dbContext, mapper)
         {
             _mediator = mediator;
             this.storage = storage;
+            this.quota = quota;
         }
 
         public override async Task<Guid> Handle(SetResourceCommand request, CancellationToken cancellationToken)
@@ -38,6 +40,8 @@ namespace NordvikManager.Application.Commands.Resources.SetResource
             {
                 if (existing.Storage == ResourceStorageKind.Linked)
                     throw new WrongArgumentsException(nameof(request.Key));
+                if (quota != null && request.Player?.Id is Guid writer)
+                    await quota.EnsureRoomAsync(dbContext, existing.GameId, writer, request.Data?.Length ?? 0, replacing: existing.Id, cancellationToken: cancellationToken);
 
                 if (existing.Storage == ResourceStorageKind.ManagedFile)
                     existing.Path = await storage.SaveAsync(existing.GameId, existing.Id, request.Data, null);
@@ -60,6 +64,9 @@ namespace NordvikManager.Application.Commands.Resources.SetResource
 
             var player = await dbContext.Players.FirstOrDefaultAsync(p =>
                 p.Id == request.Player.Id, cancellationToken);
+
+            if (quota != null)
+                await quota.EnsureRoomAsync(dbContext, request.GameId, player.Id, request.Data?.Length ?? 0, cancellationToken: cancellationToken);
 
             var model = new ResourceModel
             {

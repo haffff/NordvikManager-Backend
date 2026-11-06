@@ -31,8 +31,48 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
                 Resources = new List<NordvikManager.Domain.Entities.Resources.ResourceModel>(),
             };
             Db.Addons.Add(addon);
+            Db.Entry(addon).Property("GameModelId").CurrentValue = gameId;
             Db.SaveChanges();
             return addon;
+        }
+
+        [Fact]
+        public async Task Handle_ByKey_AddonOfAnotherGame_IsNotFoundAndStays()
+        {
+            var game = BuildGame();
+            var otherGame = OtherGame();
+            var otherAddon = SeedAddon(otherGame.Id, key: "dnd5e");
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "dnd5e" };
+
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
+        }
+
+        [Fact]
+        public async Task Handle_ById_AddonOfAnotherGame_IsNotFoundAndStays()
+        {
+            var game = BuildGame();
+            var otherGame = OtherGame();
+            var otherAddon = SeedAddon(otherGame.Id);
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = otherAddon.Id };
+
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
+        }
+
+        [Fact]
+        public async Task Handle_ByKey_TakesThisGamesAddon_WhenAnotherGameHasTheSameKey()
+        {
+            var otherGame = OtherGame();
+            var otherAddon = SeedAddon(otherGame.Id, key: "dnd5e");
+            var game = BuildGame();
+            var addon = SeedAddon(game.Id, key: "dnd5e");
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "dnd5e" };
+
+            var (_, result) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(addon.Id, result.AddonId);
+            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
         }
 
         [Fact]

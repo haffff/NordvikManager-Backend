@@ -46,6 +46,11 @@ namespace NordvikManager.Controllers
         public Task<IActionResult> SetAddonRegistry([FromBody] SetAddonRegistryCommand command) =>
             AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
 
+        /// <summary>How much may be uploaded into one game, in MB (0 = no limit): by its GMs together, and by each other player.</summary>
+        [HttpPut("upload-limits")]
+        public Task<IActionResult> SetUploadLimits([FromBody] SetUploadLimitsCommand command) =>
+            AsLocalAdmin(async () => Ok(await _mediator.Send(command)));
+
         private async Task<IActionResult> AsLocalAdmin(Func<Task<IActionResult>> action)
         {
             var user = HttpContext.Items["User"] as User;

@@ -45,6 +45,7 @@ namespace NordvikManager.Application.Extension
                 ".webp" => MimeType.WEBP,
                 ".mp4" => MimeType.MP4,
                 ".webm" => MimeType.WebM,
+                ".pdf" => MimeType.PDF,
                 _ => MimeType.None,
             };
         }

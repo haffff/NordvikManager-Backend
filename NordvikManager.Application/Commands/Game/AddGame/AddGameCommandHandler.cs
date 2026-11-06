@@ -96,6 +96,7 @@ namespace NordvikManager.Application.Commands.BattleMap
 
                 AddResourceCommand addResourceCommand = new AddResourceCommand()
                 {
+                    SkipQuota = true, // the new game\'s own cover
                     Data = imageData,
                     GameID = game.Id,
                     Key = "game_image",

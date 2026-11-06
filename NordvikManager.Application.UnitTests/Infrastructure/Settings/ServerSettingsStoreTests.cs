@@ -41,6 +41,19 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Settings
             Assert.False(updates.NoticesOff);
         }
 
+        // Upload limits: a file saved before they existed gets the defaults (200 MB per player).
+        [Fact]
+        public void Load_FileWithoutUploads_GivesDefaultLimits()
+        {
+            Directory.CreateDirectory(_folder);
+            File.WriteAllText(FilePath, "{\"Uploads\": null}");
+            Assert.Equal(200, Store().Load().Uploads.PlayerLimitMb);
+
+            File.WriteAllText(FilePath, "{}");
+            Assert.Equal(200, Store().Load().Uploads.PlayerLimitMb);
+            Assert.Equal(0, Store().Load().Uploads.GmGameLimitMb);
+        }
+
         [Fact]
         public void Update_SavesUpdateSettings()
         {

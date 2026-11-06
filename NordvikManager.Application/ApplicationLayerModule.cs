@@ -23,6 +23,7 @@ namespace NordvikManager.Application
             services.AddSingleton<IRollSessionStore>(_ => new RollSessionStore());
             services.AddSingleton<IBuiltInAddons>(_ => new BuiltInAddons());
             services.AddSingleton<Commands.ServerSettings.ServerSettingsView>();
+            services.AddSingleton<Services.UploadQuota>();
 
             services.AddMediatR(Assembly.GetExecutingAssembly());
         }

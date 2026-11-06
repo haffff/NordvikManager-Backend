@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
@@ -52,22 +53,14 @@ namespace NordvikManager.Services.Implementations
             if (string.IsNullOrEmpty(refreshToken))
                 return response;
 
-            var newAccessToken = await RefreshTokenAsync(refreshToken);
-            if (newAccessToken == null)
+            var tokens = await RefreshTokenAsync(refreshToken);
+            if (tokens == null)
                 return response;
 
             if (httpContext != null)
-            {
-                httpContext.Response.Cookies.Append("CentralToken", newAccessToken, new CookieOptions
-                {
-                    HttpOnly = true,
-                    IsEssential = true,
-                    SameSite = SameSiteMode.None,
-                    Secure = true
-                });
-            }
+                CentralAuthCookies.WriteRefreshed(httpContext.Response, tokens);
 
-            return await send(CreateAuthenticatedClient(newAccessToken));
+            return await send(CreateAuthenticatedClient(tokens.AccessToken));
         }
 
         public async Task<CentralServerMeta?> GetMetaAsync()
@@ -133,23 +126,59 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
-        public async Task<bool> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session)
+        public async Task<CentralSessionUpdate> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session)
         {
-            var body = JsonConvert.SerializeObject(new
+            var fields = new JObject
             {
-                sessionId,
-                name = session.Name,
-                summary = session.ShortDescription,
-                description = session.LongDescription,
-                image = session.Image,
-                isPublic = session.IsPublic,
-            });
+                ["sessionId"] = sessionId,
+                ["name"] = session.Name,
+                ["summary"] = session.ShortDescription,
+                ["description"] = session.LongDescription,
+                ["image"] = session.Image,
+                ["isPublic"] = session.IsPublic,
+            };
+            // Heals a session made without the password (Central then can't check it on join).
+            // Left out, Central keeps what it has.
+            if (!string.IsNullOrEmpty(session.Password))
+                fields["password"] = session.Password;
+            var body = fields.ToString(Formatting.None);
             try
             {
                 // Content built per attempt: a retry after a token refresh can't reuse a sent one.
                 var response = await SendAuthenticatedAsync(centralToken,
                     client => client.PostAsync($"{_centralServerUrl}/api/gamelist/updategame",
                         new StringContent(body, Encoding.UTF8, "application/json")));
+                if (response.IsSuccessStatusCode) return CentralSessionUpdate.Updated;
+                return await IsSessionNotFoundAsync(response) ? CentralSessionUpdate.Missing : CentralSessionUpdate.Failed;
+            }
+            catch
+            {
+                return CentralSessionUpdate.Failed;
+            }
+        }
+
+        // Central's own "no such session" answer. A Central too old for the route answers 404
+        // too, but with Express's HTML page; that one must not count as a missing session.
+        private static async Task<bool> IsSessionNotFoundAsync(HttpResponseMessage response)
+        {
+            if (response.StatusCode != HttpStatusCode.NotFound || response.Content == null) return false;
+            try
+            {
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                return json["error"]?.Value<string>() == "Session not found";
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteSessionAsync(string centralToken, string sessionId)
+        {
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.DeleteAsync($"{_centralServerUrl}/api/gamelist/DeleteGame?gameId={Uri.EscapeDataString(sessionId)}"));
                 return response.IsSuccessStatusCode;
             }
             catch
@@ -158,7 +187,69 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
-        public async Task<string?> RefreshTokenAsync(string refreshToken)
+        public async Task<CentralJoinResult> JoinSessionAsync(string centralToken, string sessionId, string? password)
+        {
+            var body = JsonConvert.SerializeObject(new { gameID = sessionId, password });
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/join",
+                        new StringContent(body, Encoding.UTF8, "application/json")));
+                if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Conflict)
+                    return CentralJoinResult.Joined;
+                var status = (int)response.StatusCode;
+                return status >= 400 && status < 500 ? CentralJoinResult.Refused : CentralJoinResult.Failed;
+            }
+            catch
+            {
+                return CentralJoinResult.Failed;
+            }
+        }
+
+        public async Task<string?> GetSignalingTicketAsync(string centralToken, string sessionId)
+        {
+            var body = JsonConvert.SerializeObject(new { sessionId });
+            try
+            {
+                var response = await SendAuthenticatedAsync(centralToken,
+                    client => client.PostAsync($"{_centralServerUrl}/api/gamelist/signalingticket",
+                        new StringContent(body, Encoding.UTF8, "application/json")));
+                if (!response.IsSuccessStatusCode) return null;
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                return json["ticket"]?.Value<string>();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // refresh token → its refresh (in flight or done), kept briefly: Central revokes a refresh
+        // token when it's used, so a second refresh with it (another request, another tab) must
+        // get the first one's result rather than a refusal.
+        private readonly ConcurrentDictionary<string, (DateTime At, Task<CentralTokens?> Refresh)> _refreshes = new();
+        private static readonly TimeSpan RefreshReuse = TimeSpan.FromMinutes(1);
+
+        public Task<CentralTokens?> RefreshTokenAsync(string refreshToken)
+        {
+            var now = DateTime.UtcNow;
+            foreach (var kv in _refreshes)
+                if (now - kv.Value.At > RefreshReuse) _refreshes.TryRemove(kv);
+
+            return _refreshes.GetOrAdd(refreshToken, token => (now, RefreshOnceAsync(token))).Refresh;
+        }
+
+        // A failed refresh isn't reused: the next caller asks Central again.
+        private async Task<CentralTokens?> RefreshOnceAsync(string refreshToken)
+        {
+            await Task.Yield(); // stored in _refreshes before it can finish
+            var tokens = await RequestRefreshAsync(refreshToken);
+            if (tokens == null)
+                _refreshes.TryRemove(refreshToken, out _);
+            return tokens;
+        }
+
+        private async Task<CentralTokens?> RequestRefreshAsync(string refreshToken)
         {
             var client = _httpClientFactory.CreateClient();
             var body = JsonConvert.SerializeObject(new { refreshToken });
@@ -168,7 +259,10 @@ namespace NordvikManager.Services.Implementations
                 var response = await client.PostAsync($"{_centralServerUrl}/api/user/refresh", content);
                 if (!response.IsSuccessStatusCode) return null;
 
-                return ExtractCookieValue(response, "Authorization");
+                var json = JObject.Parse(await response.Content.ReadAsStringAsync());
+                var accessToken = json["accessToken"]?.Value<string>() ?? ExtractCookieValue(response, "Authorization");
+                if (string.IsNullOrEmpty(accessToken)) return null;
+                return new CentralTokens(accessToken, json["refreshToken"]?.Value<string>());
             }
             catch
             {

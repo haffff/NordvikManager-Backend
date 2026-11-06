@@ -13,10 +13,12 @@ namespace NordvikManager.Application.Commands.Resources.UpdateResourceData
         : HandlerBase<UpdateResourceDataCommand, (CommandResponse, Guid?)>
     {
         private readonly IFileStorageProvider storage;
+        private readonly UploadQuota? quota;
 
-        public UpdateResourceDataCommandHandler(IDbContext dbContext, IMapper mapper, IFileStorageProvider storage)
+        public UpdateResourceDataCommandHandler(IDbContext dbContext, IMapper mapper, IFileStorageProvider storage, UploadQuota? quota = null)
             : base(dbContext, mapper)
         {
+            this.quota = quota;
             this.storage = storage;
         }
 
@@ -58,6 +60,9 @@ namespace NordvikManager.Application.Commands.Resources.UpdateResourceData
             {
                 throw new WrongArgumentsException(nameof(request.Content));
             }
+
+            if (quota != null && request.Player.Id is Guid writer)
+                await quota.EnsureRoomAsync(dbContext, resource.GameId, writer, data.Length, replacing: resource.Id, cancellationToken: cancellationToken);
 
             if (resource.Storage == ResourceStorageKind.ManagedFile)
                 resource.Path = await storage.SaveAsync(resource.GameId, resource.Id, data, null);

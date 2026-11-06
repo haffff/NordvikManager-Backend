@@ -14,6 +14,18 @@ namespace NordvikManager.Infrastructure.Services.Settings
         public AddonSettings Addons { get; set; } = new();
 
         public UpdateSettings Updates { get; set; } = new();
+
+        public UploadLimitSettings Uploads { get; set; } = new();
+    }
+
+    /// <summary>How much may be uploaded into one game, in MB; 0 = no limit (see UploadQuota).</summary>
+    public class UploadLimitSettings
+    {
+        /// <summary>What the game's GMs (owner, co-GMs) uploaded, together.</summary>
+        public long GmGameLimitMb { get; set; } = 0;
+
+        /// <summary>What each other player uploaded.</summary>
+        public long PlayerLimitMb { get; set; } = 200;
     }
 
     /// <summary>Server updates from Application Settings → Server (see Hosting/Updates in the web project).</summary>

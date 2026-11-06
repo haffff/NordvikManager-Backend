@@ -14,6 +14,16 @@ namespace NordvikManager.Application.DataTransferObjects.ServerSettings
         public SettingListDTO SandboxAllowedOrigins { get; set; } = new();
 
         public AddonRegistryDTO AddonRegistry { get; set; } = new();
+
+        public UploadLimitsDTO UploadLimits { get; set; } = new();
+    }
+
+    /// <summary>MB per game; 0 = no limit.</summary>
+    public class UploadLimitsDTO
+    {
+        public long GmGameLimitMb { get; set; }
+
+        public long PlayerLimitMb { get; set; }
     }
 
     public class AddonRegistryDTO

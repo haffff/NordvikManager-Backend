@@ -72,6 +72,7 @@ namespace NordvikManager.Infrastructure.Services.Settings
                 settings.Security.SandboxAllowedOrigins ??= new List<string>();
                 settings.Addons ??= new AddonSettings();
                 settings.Updates ??= new UpdateSettings();
+                settings.Uploads ??= new UploadLimitSettings();
                 settings.Updates.Channel ??= "stable";
                 return (settings, null);
             }

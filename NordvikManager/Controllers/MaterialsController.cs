@@ -1,8 +1,10 @@
-using NordvikManager.Application.Commands.Card.GetAllCards;
+﻿using NordvikManager.Application.Commands.Card.GetAllCards;
 using NordvikManager.Application.Commands.Card.GetCard;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
 using NordvikManager.Application.Commands.Resources;
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Commands.Resources.GetResourceRange;
+using NordvikManager.Application.Commands.Resources.Upload;
 using NordvikManager.Application.Commands.Resources.CreateResource;
 using NordvikManager.Application.Commands.Resources.DeleteResourceData;
 using NordvikManager.Application.Commands.Resources.GetResource;
@@ -341,6 +343,47 @@ namespace NordvikManager.Controllers
         }
 
         /// <summary>
+        /// Part of a resource's bytes as base64 JSON (at most 2 MB), for readers that need only
+        /// some of a big file, such as pdf.js showing a few pages of a book.
+        /// </summary>
+        [HttpGet]
+        [Authorize]
+        [Route("ResourceRange")]
+        public async Task<IActionResult> GetResourceRange(Guid? id, string? key, Guid? gameId, long start = 0, int length = 0, string? ifVersion = null)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var range = await mediator.Send(new GetResourceRangeCommand
+            {
+                GameID    = gameId,
+                Player    = playerResult.Player,
+                ID        = id,
+                Key       = key,
+                Start     = start,
+                Length    = length,
+                IfVersion = ifVersion,
+            });
+
+            if (range == null)
+                return NotFound();
+
+            if (range.NotModified)
+                return Ok(new { notModified = true, start = range.Start, total = range.Total, version = range.Version });
+
+            return Ok(new
+            {
+                data     = Convert.ToBase64String(range.Data!),
+                start    = range.Start,
+                total    = range.Total,
+                mimeType = range.MimeType.GetDescriptionValue(),
+                version  = range.Version,
+            });
+        }
+
+        /// <summary>
         /// Creates a resource with a stable key; returns 409 if key already exists.
         /// Used by addons via the WebRTC tunnel.
         /// </summary>
@@ -413,26 +456,123 @@ namespace NordvikManager.Controllers
             if (resp == CommandResponse.AlreadyExists)
                 return Conflict(new { error = $"Resource with key '{request.Key}' already exists." });
 
-            var lobby = _lobbyService.GetLobby(gameId);
-            if (lobby != null)
-            {
-                await lobby.HandlePostCommand(playerResult.Player, new WebSockets.WebSocketCommand
-                {
-                    Command = WebSockets.Core.WebSocketCommandNames.ResourceAdd,
-                    Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
-                    Data    = Newtonsoft.Json.Linq.JToken.FromObject(new
-                    {
-                        id,
-                        name       = request.Name ?? request.Key,
-                        path       = (string?)null,
-                        mimeType   = request.MimeType,
-                        playerId   = playerResult.Player.Id,
-                        playerName = playerResult.Player.Name,
-                    }),
-                });
-            }
-
+            await AnnounceNewResourceAsync(gameId, playerResult.Player, id, request.Name ?? request.Key, request.MimeType);
             return Ok(new { id });
+        }
+
+        // resource_add for a resource made by key (CreateResource, a finished upload with a key);
+        // the lobby sends it to its maker and the GMs.
+        private async Task AnnounceNewResourceAsync(Guid gameId, NordvikManager.Application.DataTransferObjects.Game.PlayerDTO player, Guid? id, string? name, string? mimeType)
+        {
+            var lobby = _lobbyService.GetLobby(gameId);
+            if (lobby == null)
+                return;
+            await lobby.HandlePostCommand(player, new WebSockets.WebSocketCommand
+            {
+                Command = WebSockets.Core.WebSocketCommandNames.ResourceAdd,
+                Result  = WebSockets.Core.WebSocketCommandNames.ResultOk,
+                Data    = Newtonsoft.Json.Linq.JToken.FromObject(new
+                {
+                    id,
+                    name,
+                    path       = (string?)null,
+                    mimeType,
+                    playerId   = player.Id,
+                    playerName = player.Name,
+                }),
+            });
+        }
+
+        // ── Uploads in parts: a big file without one huge request, resumable after a drop ──
+
+        [HttpPost]
+        [Authorize]
+        [Route("UploadStart")]
+        public async Task<IActionResult> UploadStart([FromQuery] Guid gameId, [FromBody] UploadStartRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var (response, uploadId) = await mediator.Send(new StartUploadCommand
+            {
+                GameId = gameId, Player = playerResult.Player, Name = request.Name, MimeType = request.MimeType, Key = request.Key,
+                ParentFolder = request.ParentFolder, StorageKind = request.StorageKind, Size = request.Size,
+            });
+            return response switch
+            {
+                CommandResponse.Ok => Ok(new { uploadId }),
+                CommandResponse.AlreadyExists => Conflict(new { error = $"Resource with key '{request.Key}' already exists." }),
+                _ => BadRequest(new { error = "A name and a size up to 1 GB are needed." }),
+            };
+        }
+
+        [HttpPost]
+        [Authorize]
+        [Route("UploadPart")]
+        public async Task<IActionResult> UploadPart([FromQuery] Guid gameId, [FromBody] UploadPartRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            byte[] data;
+            try { data = Convert.FromBase64String(request.Data ?? ""); }
+            catch { return BadRequest(new { error = "data must be base64." }); }
+            if (data.Length > GetResourceRangeCommandHandler.MaxLength)
+                return BadRequest(new { error = "A part is at most 2 MB." });
+
+            var (response, received) = await mediator.Send(new UploadPartCommand { UploadId = request.UploadId, Player = playerResult.Player, Offset = request.Offset, Data = data });
+            return response switch
+            {
+                CommandResponse.Ok => Ok(new { received }),
+                CommandResponse.WrongArguments => Conflict(new { error = "The upload continues elsewhere.", received }),
+                _ => NotFound(),
+            };
+        }
+
+        [HttpGet]
+        [Authorize]
+        [Route("UploadStatus")]
+        public async Task<IActionResult> UploadStatus([FromQuery] Guid gameId, [FromQuery] Guid uploadId)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var received = await mediator.Send(new GetUploadStatusCommand { UploadId = uploadId, Player = playerResult.Player });
+            return received == null ? NotFound() : Ok(new { received });
+        }
+
+        [HttpPost]
+        [Authorize]
+        [Route("UploadFinish")]
+        public async Task<IActionResult> UploadFinish([FromQuery] Guid gameId, [FromBody] UploadFinishRequest request)
+        {
+            var user = HttpContext.Items["User"] as User;
+            var playerResult = await GetPlayerIfExists(gameId, user);
+            if (playerResult?.Player == null)
+                return BadRequest();
+
+            var result = await mediator.Send(new FinishUploadCommand { UploadId = request.UploadId, Player = playerResult.Player });
+            switch (result.Response)
+            {
+                case CommandResponse.Ok:
+                    if (result.ByKey)
+                        await AnnounceNewResourceAsync(result.GameId, playerResult.Player, result.ResourceId, result.Name, result.MimeType);
+                    else
+                        _lobbyService.SendCommandToUser(user, new WebSocketCommand { Command = "resource_notify" });
+                    return Ok(new { id = result.ResourceId });
+                case CommandResponse.NoResource:
+                    return NotFound();
+                case CommandResponse.AlreadyExists:
+                    return Conflict(new { error = "A resource with that key already exists." });
+                default:
+                    return BadRequest(new { error = "The upload is not complete." });
+            }
         }
 
         /// <summary>
@@ -564,6 +704,7 @@ namespace NordvikManager.Controllers
 
             var player = playerResult.Player;
             var operationId = Guid.NewGuid();
+            OperationProgressPublisher.Begin(operationId, player);
 
             // Fire-and-forget: the request's own DI scope (and its IDbContext) is disposed the
             // moment this action returns, so the background walk resolves its own IMediator/

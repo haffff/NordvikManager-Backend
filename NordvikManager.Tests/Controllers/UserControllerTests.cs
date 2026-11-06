@@ -1,4 +1,5 @@
 using NordvikManager.Application.Commands.Player.GetLocalPlayers;
+using NordvikManager.Application.Commands.Player.BanUser;
 using NordvikManager.Application.Commands.Player.KickPlayer;
 using NordvikManager.Application.Commands.Player.RemoveUserPlayers;
 using NordvikManager.Application.Commands.Player.UnbanUser;
@@ -8,6 +9,7 @@ using NordvikManager.Domain.Entities.Auth;
 using NordvikManager.Models;
 using NordvikManager.Services;
 using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -339,6 +341,51 @@ namespace NordvikManager.Tests.Controllers
 
             await Assert.ThrowsAsync<WrongArgumentsException>(() =>
                 controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" }));
+        }
+
+        // =========================================================================
+        // BanUser
+        // =========================================================================
+
+        // A ban takes effect at once: the user's open game connections are closed, not just
+        // their next connection refused.
+        [Fact]
+        public async Task BanUser_DisconnectsTheBannedUser()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<BanUserCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.Ok);
+            var webRtc = new Mock<IWebRTCSessionService>();
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            var result = await controller.BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object);
+
+            Assert.IsType<OkResult>(result);
+            webRtc.Verify(w => w.DisconnectUserAsync("central-id"), Times.Once);
+        }
+
+        [Fact]
+        public async Task BanUser_DisconnectsNobody_WhenTheBanFails()
+        {
+            var mediator = new Mock<IMediator>();
+            mediator.Setup(x => x.Send(It.IsAny<BanUserCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.WrongArguments);
+            var webRtc = new Mock<IWebRTCSessionService>();
+            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
+
+            await controller.BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object);
+
+            webRtc.Verify(w => w.DisconnectUserAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task BanUser_IsRefused_ForANonAdmin()
+        {
+            var webRtc = new Mock<IWebRTCSessionService>();
+            var controller = CreateController(contextUser: RegularUser());
+
+            Assert.IsType<UnauthorizedResult>(await controller.BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object));
+            webRtc.Verify(w => w.DisconnectUserAsync(It.IsAny<string>()), Times.Never);
         }
 
         // =========================================================================

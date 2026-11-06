@@ -213,5 +213,61 @@ namespace NordvikManager.Data.Contexts
         public DbSet<PlaylistModel>? Playlists { get; set; }
         public DbSet<TurnOrderModel>? TurnOrders { get; set; }
         public DbSet<TurnOrderEntryModel>? TurnOrderEntries { get; set; }
+
+        private sealed class BlobRow
+        {
+            public long RowId { get; set; }
+            public long? Length { get; set; }
+        }
+
+        public async Task<byte[]?> ReadResourceSliceAsync(Guid resourceId, long start, int length, CancellationToken cancellationToken = default)
+        {
+            if (!Database.IsRelational())
+                return null;
+            var provider = Database.ProviderName ?? "";
+            if (provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+                return await ReadSqliteBlobSliceAsync(resourceId, start, length, cancellationToken);
+            if (provider.Contains("MySql", StringComparison.OrdinalIgnoreCase))
+            {
+                // SQL positions count from 1. MySQL reads the whole value for SUBSTRING; database
+                // blobs are kept small (big uploads go to file storage), so that stays bounded.
+                var rows = await Database.SqlQuery<byte[]>($"SELECT SUBSTRING(`Data`, {start + 1}, {length}) AS `Value` FROM `Resources` WHERE `Id` = {resourceId}")
+                    .ToListAsync(cancellationToken);
+                return rows.Count == 0 ? null : rows[0] ?? Array.Empty<byte>();
+            }
+            return null;
+        }
+
+        // SQLite's incremental blob I/O: reads only the pages holding the part. (substr() would
+        // load the whole value first.)
+        private async Task<byte[]?> ReadSqliteBlobSliceAsync(Guid resourceId, long start, int length, CancellationToken cancellationToken)
+        {
+            await Database.OpenConnectionAsync(cancellationToken);
+            try
+            {
+                var rows = await Database.SqlQuery<BlobRow>($"SELECT rowid AS \"RowId\", length(\"Data\") AS \"Length\" FROM \"Resources\" WHERE \"Id\" = {resourceId}")
+                    .ToListAsync(cancellationToken);
+                if (rows.Count == 0)
+                    return null;
+                var total = rows[0].Length ?? 0;
+                if (start >= total || length <= 0)
+                    return Array.Empty<byte>();
+                var buffer = new byte[(int)Math.Min(length, total - start)];
+                using var blob = new Microsoft.Data.Sqlite.SqliteBlob((Microsoft.Data.Sqlite.SqliteConnection)Database.GetDbConnection(), "Resources", "Data", rows[0].RowId, readOnly: true);
+                blob.Seek(start, SeekOrigin.Begin);
+                var read = 0;
+                while (read < buffer.Length)
+                {
+                    var n = await blob.ReadAsync(buffer.AsMemory(read), cancellationToken);
+                    if (n == 0) break;
+                    read += n;
+                }
+                return read == buffer.Length ? buffer : buffer[..read];
+            }
+            finally
+            {
+                await Database.CloseConnectionAsync();
+            }
+        }
     }
 }

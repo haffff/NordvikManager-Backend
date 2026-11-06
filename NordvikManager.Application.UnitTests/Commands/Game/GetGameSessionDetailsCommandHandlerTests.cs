@@ -53,5 +53,37 @@ namespace NordvikManager.Application.UnitTests.Commands.Game
 
             Assert.Null(result!.Image);
         }
+
+        // The Central Server checks the password when players join, so it needs the game's.
+        [Fact]
+        public async Task Handle_GameWithPassword_ReturnsIt()
+        {
+            var game = BuildGame();
+            game.Password = "secret";
+            Db.SaveChanges();
+
+            var result = await Handler().Handle(new GetGameSessionDetailsCommand { GameId = game.Id }, CancellationToken.None);
+
+            Assert.True(result!.PasswordRequired);
+            Assert.Equal("secret", result.Password);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        public async Task Handle_GameWithoutPassword_RequiresNone(string? password)
+        {
+            // A blank password used to count as required, leaving Central with a
+            // password-protected session it had no password for.
+            var game = BuildGame();
+            game.Password = password;
+            Db.SaveChanges();
+
+            var result = await Handler().Handle(new GetGameSessionDetailsCommand { GameId = game.Id }, CancellationToken.None);
+
+            Assert.False(result!.PasswordRequired);
+            Assert.Null(result.Password);
+        }
     }
 }

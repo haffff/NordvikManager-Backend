@@ -42,7 +42,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 Data = new JObject
                 {
                     ["object"] = shape.ToString(Newtonsoft.Json.Formatting.None),
-                    ["mapID"] = mapId,
+                    ["mapId"] = mapId,
                     ["layer"] = (int)MapShape.Number("AddElement", data.Layer, "Layer", MapLayer),
                 },
             };

@@ -1,5 +1,6 @@
 ﻿using NordvikManager.Application.Commands.BattleMap;
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Player.CheckUserBanned;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Domain.Entities.Auth;
 using NordvikManager.Enums;
@@ -59,6 +60,8 @@ namespace NordvikManager.WebRTC
         // TCS per socketId — completed when OnPeerJoined finishes creating the RTCPeerConnection.
         // Used by offer/ICE handlers to wait for the connection without polling.
         private readonly ConcurrentDictionary<string, TaskCompletionSource<RTCPeerConnection?>> _peerReadySignals = new();
+        // The lobby connection each peer opened, so a peer going away removes exactly that one.
+        private readonly PeerLobbyConnections _lobbyConnections;
 
         public WebRTCSessionService(
             ISignalingService signaling,
@@ -75,6 +78,8 @@ namespace NordvikManager.WebRTC
             _centralServerService = centralServerService;
             _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
+
+            _lobbyConnections = new PeerLobbyConnections(RemoveDataChannelConnectionAsync);
 
             _fallbackIceServers = BuildFallbackIceServers(configuration);
             _iceServers = _fallbackIceServers;
@@ -107,17 +112,83 @@ namespace NordvikManager.WebRTC
                 _logger.LogWarning("Could not fetch ICE servers from Central Server — using fallback STUN config.");
             }
 
-            await _signaling.ConnectAsync(gameId.ToString(), centralSessionId, centralToken);
+            // The ticket outlives the access token, so signaling can re-authenticate when its socket
+            // reconnects on its own. An older Central has no ticket: the access token it is.
+            var ticket = await _centralServerService.GetSignalingTicketAsync(centralToken, centralSessionId);
+            if (ticket == null)
+                _logger.LogWarning("No GM signaling ticket from the Central Server — signaling can't re-authenticate after the access token expires.");
+
+            await _signaling.ConnectAsync(gameId.ToString(), centralSessionId, ticket ?? centralToken);
         }
 
-        public Task StopSessionAsync(Guid gameId)
-            => _signaling.DisconnectAsync(gameId.ToString());
+        public async Task StopSessionAsync(Guid gameId)
+        {
+            var game = gameId.ToString();
+            await _signaling.DisconnectAsync(game);
+            // Players' data channels run peer to peer and outlive signaling, so close them too:
+            // their clients see the channel close and wait for the game to come back.
+            foreach (var socketId in _peerMeta.Where(kv => kv.Value.GameId == game).Select(kv => kv.Key).ToList())
+            {
+                CleanupPeer(socketId);
+                await _lobbyConnections.ReleaseAsync(socketId);
+            }
+        }
+
+        // Long enough for the "banned" message to leave before the connection closes.
+        private static readonly TimeSpan BannedMessageGrace = TimeSpan.FromMilliseconds(500);
+
+        public async Task DisconnectUserAsync(string centralUserId)
+        {
+            if (string.IsNullOrEmpty(centralUserId))
+                return;
+            var sockets = _lobbyConnections.SocketsOf(centralUserId);
+            if (sockets.Count == 0)
+                return;
+
+            _logger.LogInformation("Disconnecting banned user {UserId} ({Count} connection(s))", centralUserId, sockets.Count);
+            foreach (var (_, connection) in sockets)
+            {
+                try
+                {
+                    await connection.SendMessageToPlayer(new { command = WebSocketCommandNames.ErrorGeneric, data = BannedError });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not tell banned user {UserId} before disconnecting", centralUserId);
+                }
+            }
+            await Task.Delay(BannedMessageGrace);
+            foreach (var (socketId, connection) in sockets)
+            {
+                CleanupPeer(socketId);
+                await _lobbyConnections.ReleaseAsync(socketId, connection);
+            }
+        }
 
         private TaskCompletionSource<RTCPeerConnection?> GetOrCreateReadySignal(string socketId)
             => _peerReadySignals.GetOrAdd(socketId, _ =>
                 new TaskCompletionSource<RTCPeerConnection?>(TaskCreationOptions.RunContinuationsAsynchronously));
 
         private Task OnPeerJoined(PeerJoinedArgs args)
+        {
+            EnsurePeer(args);
+            return Task.CompletedTask;
+        }
+
+        // Peer-joined and the player's offer can both set up its peer connection (the offer when
+        // this backend never saw the peer join), concurrently: the first one does, the other
+        // gets that connection.
+        private readonly object _peerCreateLock = new();
+
+        private RTCPeerConnection? EnsurePeer(PeerJoinedArgs args)
+        {
+            lock (_peerCreateLock)
+            {
+                return _peerConnections.TryGetValue(args.SocketId, out var existing) ? existing : CreatePeer(args);
+            }
+        }
+
+        private RTCPeerConnection? CreatePeer(PeerJoinedArgs args)
         {
             _peerConnectStartMs[args.SocketId] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -132,7 +203,7 @@ namespace NordvikManager.WebRTC
                 _logger.LogError(ex, "Failed to create RTCPeerConnection for peer {SocketId} in game {GameId}", args.SocketId, args.GameId);
                 TryNotifyPlayerWebRTCError(args.GameId, args.UserId, "WebRTC connection could not be established");
                 GetOrCreateReadySignal(args.SocketId).TrySetResult(null);
-                return Task.CompletedTask;
+                return null;
             }
 
             _logger.LogInformation("Peer connection created for socketId={SocketId} user={User} game={GameId}",
@@ -140,18 +211,29 @@ namespace NordvikManager.WebRTC
 
             _peerConnections[args.SocketId] = pc;
             _peerMeta[args.SocketId] = (args.GameId, args.UserId);
+            // Peer-joined also comes for a player whose signaling socket reconnected while its
+            // data channel stayed open: no offer follows, so don't keep that connection around.
+            _ = CloseIfNeverOfferedAsync(args.SocketId, pc);
             _pendingLocalCandidates[args.SocketId] = new List<(string, string?, int?)>();
             GetOrCreateReadySignal(args.SocketId).TrySetResult(pc);
 
+            // This peer connection's lobby connection, once its data channel opened.
+            IPlayerConnection? lobbyConnection = null;
+
+            // 'disconnected' gets a grace period to recover; the player client reconnects by
+            // itself, so nothing is sent to the player (its other tabs would show the error).
+            // Only this connection is let go: the player may have re-offered on the same socket.
+            var stateWatcher = new PeerStateWatcher(PeerStateWatcher.DefaultGrace, () =>
+            {
+                _logger.LogInformation("WebRTC peer {SocketId} in game {GameId} is gone — releasing it", args.SocketId, args.GameId);
+                CleanupPeer(args.SocketId, pc);
+                if (lobbyConnection != null)
+                    _ = _lobbyConnections.ReleaseAsync(args.SocketId, lobbyConnection);
+            });
             pc.onconnectionstatechange += state =>
             {
                 _logger.LogInformation("WebRTC peer connection state → {State} for socket {SocketId} in game {GameId}", state, args.SocketId, args.GameId);
-                if (state == RTCPeerConnectionState.failed || state == RTCPeerConnectionState.disconnected)
-                {
-                    TryNotifyPlayerWebRTCError(args.GameId, args.UserId, $"WebRTC connection {state}");
-                    CleanupPeer(args.SocketId);
-                    RemoveDataChannelConnection(args.GameId, args.UserId);
-                }
+                stateWatcher.OnStateChanged(state);
             };
 
             pc.ondatachannel += dataChannel =>
@@ -161,6 +243,9 @@ namespace NordvikManager.WebRTC
                 PlayerDTO? playerEntry = null;
                 // chunkId → string slots; lives for the lifetime of this data channel.
                 var chunkBuffers = new Dictionary<string, string?[]>();
+                // What arrives before HandleOpenAsync knows the player: the client sends its
+                // queued requests the moment the channel opens.
+                var earlyMessages = new EarlyMessageBuffer();
 
                 // onmessage below dispatches lobby.HandleCommand fire-and-forget, so back-to-back
                 // commands from this connection (e.g. a tree "Delete All" sending many tree_remove
@@ -191,18 +276,63 @@ namespace NordvikManager.WebRTC
                 // to 'open' between assigning onopen and the readyState check below, which would
                 // otherwise call HandleOpenAsync twice and create a duplicate lobby connection.
                 var openHandled = 0;
+                var banned = false;
                 async Task HandleOpenAsync()
                 {
                     if (Interlocked.Exchange(ref openHandled, 1) != 0) return;
+                    try
+                    {
+                        if (await ResolvePlayerAsync())
+                            earlyMessages.Open(HandleMessage);
+                        else if (banned)
+                            FailEarlyMessages(403, "You are banned from this server.");
+                        else
+                            FailEarlyMessages(503, "The game could not identify this player.");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Resolving the player for socket {SocketId} in game {GameId} failed", args.SocketId, args.GameId);
+                        FailEarlyMessages(503, "The game could not identify this player.");
+                    }
+                }
+
+                // The requests that came in before the player was known get an answer, not silence.
+                void FailEarlyMessages(int status, string reason)
+                {
+                    foreach (var data in earlyMessages.Fail())
+                    {
+                        if (TryParseApiRequest(Encoding.UTF8.GetString(data), out var request))
+                            SendApiError(dataChannel, request!.Id, status, reason);
+                    }
+                }
+
+
+                // Sets connection and playerEntry; false when the player can't be resolved.
+                async Task<bool> ResolvePlayerAsync()
+                {
                     if (!Guid.TryParse(args.GameId, out var gameId))
                     {
                         SendChannelError(dataChannel, "err: invalid game id");
-                        return;
+                        return false;
                     }
                     if (!_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
                     {
                         SendChannelError(dataChannel, "err: no lobby found");
-                        return;
+                        return false;
+                    }
+
+                    // The player client never logs in here, so this is where a ban applies to it.
+                    using (var banScope = _serviceScopeFactory.CreateScope())
+                    {
+                        var banMediator = banScope.ServiceProvider.GetRequiredService<IMediator>();
+                        if (!string.IsNullOrEmpty(args.UserId)
+                            && await banMediator.Send(new CheckUserBannedCommand { CentralUserId = args.UserId }))
+                        {
+                            _logger.LogInformation("Refused banned user {UserId} in game {GameId}", args.UserId, gameId);
+                            banned = true;
+                            SendChannelError(dataChannel, BannedError);
+                            return false;
+                        }
                     }
 
                     playerEntry = lobby.ConnectedPlayers.Keys
@@ -226,9 +356,9 @@ namespace NordvikManager.WebRTC
                         if (response.Player == null)
                         {
                             // Auto-create the player — same path as joining a game for the first time.
-                            // The password gate is skipped here: reaching this point already required
-                            // passing the Central Server's join check for this session, and this
-                            // fallback has no channel to prompt the player for a password anyway.
+                            // The password gate is skipped here: Central signaling only lets the
+                            // session's owner and members (who passed its join check, password
+                            // included) connect as players, and this path can't prompt for one anyway.
                             await mediator.Send(new AddPlayerCommand { GameID = gameId, User = user, SkipPasswordCheck = true });
                             response = await mediator.Send(new GetPlayerCommand { GameID = gameId, User = user });
                         }
@@ -239,7 +369,7 @@ namespace NordvikManager.WebRTC
                                 "WebRTC data channel opened for userId={UserId} but player could not be created in game {GameId}",
                                 args.UserId, gameId);
                             SendChannelError(dataChannel, "err: no player found");
-                            return;
+                            return false;
                         }
 
                         connection = new WebRTCPlayerConnection(dataChannel);
@@ -251,11 +381,15 @@ namespace NordvikManager.WebRTC
                         lobby.ConnectedPlayers[playerEntry].Add(connection);
                     }
 
+                    _lobbyConnections.Track(args.SocketId, args.GameId, args.UserId, connection);
+                    lobbyConnection = connection;
+
                     var elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                         - (_peerConnectStartMs.TryGetValue(args.SocketId, out var t) ? t : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                     _logger.LogInformation(
                         "Data channel open player={Name} game={GameId} socketId={SocketId} elapsed={Elapsed}ms",
                         playerEntry.Name, gameId, args.SocketId, elapsed);
+                    return true;
                 }
 
                 dataChannel.onopen += () => _ = HandleOpenAsync();
@@ -267,20 +401,33 @@ namespace NordvikManager.WebRTC
                     _ = HandleOpenAsync();
 
                 dataChannel.onclose += () =>
-                    RemoveDataChannelConnection(args.GameId, args.UserId);
+                {
+                    if (connection != null)
+                        _ = _lobbyConnections.ReleaseAsync(args.SocketId, connection);
+                };
 
                 dataChannel.onmessage += (_, _, data) =>
                 {
-                    if (connection == null || playerEntry == null)
+                    switch (earlyMessages.Receive(data))
                     {
-                        // The player isn't resolved yet (HandleOpenAsync still running): the
-                        // message is dropped and its sender never gets an answer.
-                        var dropped = Encoding.UTF8.GetString(data);
-                        _logger.LogWarning(
-                            "[AddonOp] DROPPED message from socket {SocketId} before its player was known ({Length} chars): {Head}",
-                            args.SocketId, dropped.Length, dropped.Length > 160 ? dropped[..160] : dropped);
-                        return;
+                        case EarlyMessageBuffer.Route.Handle:
+                            HandleMessage(data);
+                            break;
+                        case EarlyMessageBuffer.Route.Dropped:
+                            // The player couldn't be resolved, or far too much came before it was.
+                            var dropped = Encoding.UTF8.GetString(data);
+                            _logger.LogWarning(
+                                "DROPPED message from socket {SocketId}: its player is unknown ({Length} chars): {Head}",
+                                args.SocketId, dropped.Length, dropped.Length > 160 ? dropped[..160] : dropped);
+                            break;
                     }
+                };
+
+                // A message from the resolved player (connection and playerEntry are set).
+                void HandleMessage(byte[] data)
+                {
+                    if (connection == null || playerEntry == null)
+                        return;
                     if (!Guid.TryParse(args.GameId, out var gameId))
                         return;
 
@@ -297,6 +444,12 @@ namespace NordvikManager.WebRTC
                     // Check if this is a tunneled REST request
                     if (TryParseApiRequest(text, out var apiRequest))
                     {
+                        if (WebRTCHeartbeat.ReplyFor(apiRequest!) is { } heartbeatReply)
+                        {
+                            if (dataChannel.readyState == RTCDataChannelState.open)
+                                dataChannel.send(heartbeatReply);
+                            return;
+                        }
                         _ = _apiDispatcher.DispatchAsync(apiRequest!, playerEntry, gameId, connection);
                         return;
                     }
@@ -304,7 +457,7 @@ namespace NordvikManager.WebRTC
                     // Otherwise route as a real-time game command
                     if (_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
                         _ = HandleCommandInOrderAsync(lobby, playerEntry, text);
-                };
+                }
             };
 
             pc.onicecandidate += candidate =>
@@ -331,16 +484,34 @@ namespace NordvikManager.WebRTC
                 }
             };
 
-            return Task.CompletedTask;
+            return pc;
         }
 
         private async Task OnOfferReceived(WebRTCSignalArgs args)
         {
             _logger.LogDebug("Processing WebRTC offer from socketId={SocketId} game={GameId}", args.FromSocketId, args.GameId);
 
-            // peer-joined and webrtc-offer are dispatched concurrently on the thread pool by SocketIOClient.
-            // Wait up to 2 s for the peer connection that OnPeerJoined is creating in parallel.
-            var pc = await WaitForPeerConnectionAsync(args.FromSocketId);
+            RTCPeerConnection? pc;
+            if (args.UserId != null)
+            {
+                // Central says who sent it, so the peer connection can be set up here when
+                // peer-joined never came (the player joined before this backend reached signaling).
+                // A connection that already negotiated is the player's previous one: it re-offers
+                // on the same signaling socket after its connection dropped, so start over.
+                if (_peerConnections.TryGetValue(args.FromSocketId, out var previous) && previous.remoteDescription != null)
+                {
+                    _logger.LogInformation("New offer from socket {SocketId}: replacing its previous peer connection", args.FromSocketId);
+                    CleanupPeer(args.FromSocketId);
+                    await _lobbyConnections.ReleaseAsync(args.FromSocketId);
+                }
+                pc = EnsurePeer(new PeerJoinedArgs(args.GameId, args.UserId, args.Username ?? args.UserId, args.FromSocketId));
+            }
+            else
+            {
+                // An older Central relays no sender: wait for the peer connection peer-joined
+                // is creating in parallel (SocketIOClient dispatches both on the thread pool).
+                pc = await WaitForPeerConnectionAsync(args.FromSocketId);
+            }
 
             if (pc == null)
             {
@@ -433,8 +604,16 @@ namespace NordvikManager.WebRTC
 
         private Task OnPeerLeft(PeerLeftArgs args)
         {
+            // The player's signaling socket left (it may just be reconnecting). Its data channel
+            // runs peer to peer, so an established connection stays; its own state ends it.
+            if (_peerConnections.TryGetValue(args.SocketId, out var pc)
+                && !PeerStateWatcher.ShouldCloseOnSignalingLeave(pc.connectionState))
+            {
+                _logger.LogInformation("Signaling socket {SocketId} left; keeping its {State} peer connection", args.SocketId, pc.connectionState);
+                return Task.CompletedTask;
+            }
             CleanupPeer(args.SocketId);
-            return Task.CompletedTask;
+            return _lobbyConnections.ReleaseAsync(args.SocketId);
         }
 
         /// <summary>
@@ -479,8 +658,26 @@ namespace NordvikManager.WebRTC
             _pendingLocalCandidates[socketId] = null;
         }
 
-        private void CleanupPeer(string socketId)
+        private static readonly TimeSpan UnofferedPeerTimeout = TimeSpan.FromSeconds(60);
+
+        private async Task CloseIfNeverOfferedAsync(string socketId, RTCPeerConnection pc)
         {
+            await Task.Delay(UnofferedPeerTimeout);
+            if (pc.remoteDescription != null)
+                return;
+            _logger.LogInformation("No offer from socket {SocketId} within {Timeout}; closing its peer connection", socketId, UnofferedPeerTimeout);
+            CleanupPeer(socketId, pc);
+        }
+
+        // `only`: clean up only if that is still the socket's peer connection (not one that
+        // replaced it); otherwise just close it.
+        private void CleanupPeer(string socketId, RTCPeerConnection? only = null)
+        {
+            if (only != null && !(_peerConnections.TryGetValue(socketId, out var current) && ReferenceEquals(current, only)))
+            {
+                only.close();
+                return;
+            }
             _logger.LogInformation("Cleaning up peer socketId={SocketId}", socketId);
             if (_peerConnections.TryRemove(socketId, out var pc))
                 pc.close();
@@ -511,25 +708,20 @@ namespace NordvikManager.WebRTC
             });
         }
 
-        private void RemoveDataChannelConnection(string gameIdStr, string userId)
+        // Removes exactly this connection (see PeerLobbyConnections), not the user's first one.
+        private Task RemoveDataChannelConnectionAsync(string gameIdStr, string userId, IPlayerConnection connection)
         {
             if (!Guid.TryParse(gameIdStr, out var gameId))
-                return;
+                return Task.CompletedTask;
             if (!_lobbyRegistry.Games.TryGetValue(gameId, out var lobby))
-                return;
+                return Task.CompletedTask;
 
             var playerEntry = lobby.ConnectedPlayers.Keys
                 .FirstOrDefault(p => p.CentralServerUserId == userId);
 
-            if (playerEntry == null)
-                return;
-
-            var toRemove = lobby.ConnectedPlayers[playerEntry]
-                .OfType<WebRTCPlayerConnection>()
-                .FirstOrDefault();
-
-            if (toRemove != null)
-                _ = LobbyConnectionHelper.DisconnectPlayerAsync(lobby, playerEntry, toRemove);
+            return playerEntry == null
+                ? Task.CompletedTask
+                : LobbyConnectionHelper.DisconnectPlayerAsync(lobby, playerEntry, connection);
         }
 
         private static List<RTCIceServer> BuildFallbackIceServers(IConfiguration configuration)
@@ -552,11 +744,22 @@ namespace NordvikManager.WebRTC
             return servers;
         }
 
+        // The channel error a banned user gets; the client stops reconnecting on it.
+        private const string BannedError = "err: banned";
+
         private static void SendChannelError(RTCDataChannel dc, string message)
         {
             if (dc.readyState == RTCDataChannelState.open)
                 dc.send(JsonConvert.SerializeObject(
                     new { command = WebSocketCommandNames.ErrorGeneric, data = message }));
+        }
+
+        // An api-response the client's WebRTCWebHelper resolves its pending request with.
+        private static void SendApiError(RTCDataChannel dc, string requestId, int status, string message)
+        {
+            if (dc.readyState == RTCDataChannelState.open)
+                dc.send(JsonConvert.SerializeObject(
+                    new { type = "api-response", id = requestId, status, body = new { error = message } }));
         }
 
         private static bool TryParseApiRequest(string text, out WebRTCApiRequest? request)

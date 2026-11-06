@@ -90,6 +90,15 @@ namespace NordvikManager.Application.UnitTests
             return game;
         }
 
+        // A second game (BuildGame would add the same player twice).
+        protected GameModel OtherGame()
+        {
+            var game = new GameModel { Id = Guid.NewGuid(), Name = "Other", SystemPlayerId = Guid.NewGuid(), Maps = new List<MapModel>(), Players = new List<PlayerModel>() };
+            Db.Games.Add(game);
+            Db.SaveChanges();
+            return game;
+        }
+
         protected NordvikManager.Application.DataTransferObjects.Game.PlayerDTO Player() =>
             new NordvikManager.Application.DataTransferObjects.Game.PlayerDTO { Id = PlayerId, Name = "Tester" };
 
