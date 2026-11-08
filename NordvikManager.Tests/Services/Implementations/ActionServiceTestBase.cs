@@ -31,6 +31,7 @@ namespace NordvikManager.Tests.Services.Implementations
     {
         protected readonly Mock<IMediator> _mediator = new();
         protected readonly List<JObject> _sent = new();
+        protected readonly List<WebSocketCommand> _commands = new();
         protected readonly List<ActionDto> _actions = new();
         protected readonly PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "GM" };
         protected readonly IActionProcessingService _service;
@@ -74,7 +75,10 @@ namespace NordvikManager.Tests.Services.Implementations
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))
                 .Callback<object>(m =>
                 {
-                    if (m is WebSocketCommand cmd && cmd.Command == "action_trace")
+                    if (m is not WebSocketCommand cmd)
+                        return;
+                    lock (_commands) _commands.Add(cmd);
+                    if (cmd.Command == "action_trace")
                         lock (_sent) _sent.Add((JObject)cmd.Data);
                 })
                 .ReturnsAsync(true);

@@ -97,7 +97,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
         }
 
         [Fact]
-        public async Task Handle_GmPermissionSet_ClearsAndSetsMasterPermission()
+        public async Task Handle_GmPermissionSet_LeavesTheOwnersRowAlone()
         {
             var game = BuildGame();
             var action = SeedAction(game.Id);
@@ -107,7 +107,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
 
             await Handler().Handle(cmd, CancellationToken.None);
 
-            PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.Control), Times.Once);
+            PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission?>()), Times.Never);
         }
         [Fact]
         public async Task Handle_ChatCommandWithoutCommands_ThrowsWrongArgumentsException_AndKeepsTheAction()

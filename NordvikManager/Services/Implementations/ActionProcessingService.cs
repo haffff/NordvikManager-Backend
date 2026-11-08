@@ -87,7 +87,8 @@ namespace NordvikManager.Services.Implementations
                     ? scope.ServiceProvider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("AddonOp")
                     : null;
 
-                var actions = await GetActionsAsync(mediator);
+                // A disabled addon's hooks don't fire, except its own clean-up when it's uninstalled.
+                var actions = await GetActionsAsync(mediator, excludeDisabledAddons: hook != Hook.Uninstall);
                 // The hook filter picks which occurrences run an action (HookFilters): a Chat
                 // Command action runs only for the commands it lists.
                 var key = HookFilterKey(hookArg);
@@ -131,7 +132,8 @@ namespace NordvikManager.Services.Implementations
 
                 var game = await dbContext.Games.Include(x => x.Addons)
                     .FirstOrDefaultAsync(x => x.Id == GameLobby.GameId);
-                var pendingAddons = game?.Addons?.Where(a => !a.InstallHookFired).ToList()
+                // A disabled addon gets it when a player joins after it's enabled again.
+                var pendingAddons = game?.Addons?.Where(a => !a.InstallHookFired && a.IsEnabled).ToList()
                     ?? new List<AddonModel>();
 
                 foreach (var addon in pendingAddons)
@@ -225,13 +227,14 @@ namespace NordvikManager.Services.Implementations
         private static string HookFilterKey(HookArgs.HookArgs hookArg) =>
             hookArg is HookArgs.ChatCommandHookArgs chat ? chat.ChatCommand ?? string.Empty : string.Empty;
 
-        private async Task<List<ActionDto>> GetActionsAsync(IMediator mediator)
+        private async Task<List<ActionDto>> GetActionsAsync(IMediator mediator, bool excludeDisabledAddons = true)
         {
             var getActionsCommand = new GetActionsCommand()
             {
                 GameId = GameLobby.GameId,
                 Player = GameLobby.SystemPlayer,
                 flatList = false,
+                ExcludeDisabledAddons = excludeDisabledAddons,
             };
 
             var (resp, result) = await mediator.Send(getActionsCommand);
@@ -389,64 +392,46 @@ namespace NordvikManager.Services.Implementations
             {
                 // Called from a step (If branch, ExecuteAction…): tell that step its target is missing.
                 CurrentRun.Value?.AddChildFault($"action '{action}' not found");
-                trace?.Finished(GameLobby, "Faulted", $"Action '{action}' not found.");
+                trace?.Finished(GameLobby, "Faulted", $"Action '{action}' not found, or its addon is disabled.");
                 return;
             }
 
-            // This overload is reached whenever an action is looked up BY NAME — the only
-            // caller that puts an attacker-controlled name here is GameLobby's CmdExecuteAction
-            // handler, which forwards whatever action name a connected client sent over the
-            // socket. Hook-triggered and nested (ExecuteAction step) invocations either call the
-            // ActionDto overload directly or inherit an already-checked Player from
-            // sharedVariables, so gating here — instead of inside the ActionDto overload —
-            // enforces the boundary exactly where untrusted input enters without re-checking
-            // (and breaking) system/hook-triggered chains that have no live requesting player.
-            if (foundActionDto.GmPermission.HasValue &&
-                hookArg is HookArgs.CommandHookArgs cmdArgs &&
-                cmdArgs.Player != null)
+            // The one place a player starts an action: GameLobby forwards the name any client
+            // sent (a sheet, a menu item, a map tool). Whoever edits the game may run anything,
+            // a switched-off action too (the editor's Run button); anyone else needs Execute on
+            // it, from its "everyone" permission. Steps calling other actions pass no
+            // CommandHookArgs and hooks use the ActionDto overload, so a public action can call
+            // a blocked one: the addon decides what it exposes.
+            if (hookArg is HookArgs.CommandHookArgs cmdArgs && cmdArgs.Player != null
+                && !await UiDelivery.IsGmAsync(mediator, GameLobby, cmdArgs.Player)
+                && !await MayRunAsync(mediator, foundActionDto, cmdArgs.Player))
             {
-                // InstallAddonCommandHandler grants game.MasterId this exact permission on the
-                // action entity itself when GmPermission is set from an addon's JSON definition —
-                // that's the per-action ACL row this check is meant to honor. As a fallback (for
-                // actions that predate that grant, or were never round-tripped through an
-                // install/update path that populates it) we accept the game's master directly,
-                // rather than a generic permission check that any other Permission.All grant on
-                // the game entity would also satisfy.
-                var hasPermission = false;
-
-                if (foundActionDto.Id.HasValue)
+                GameLobby?.EventLog?.Log("Warning", "Permission",
+                    $"Player '{cmdArgs.Player.Name}' attempted to execute action '{action}' without sufficient permission.",
+                    cmdArgs.Player.Name);
+                const string refused = "You don't have permission to run this action.";
+                GameLobby?.SendToPlayer(new WebSocketCommand
                 {
-                    hasPermission = await mediator.Send(new CheckPermissionsCommand
-                    {
-                        Player = cmdArgs.Player,
-                        EntityId = foundActionDto.Id.Value,
-                        RequiredPermission = foundActionDto.GmPermission.Value,
-                    });
-                }
-
-                // Whoever may edit the game (the owner or a co-GM) is a GM here.
-                if (!hasPermission)
-                {
-                    hasPermission = cmdArgs.Player.IsOwner == true || await mediator.Send(new CheckPermissionsCommand
-                    {
-                        Player = cmdArgs.Player,
-                        EntityId = GameLobby.GameId,
-                        RequiredPermission = Permission.Edit,
-                    });
-                }
-
-                if (!hasPermission)
-                {
-                    GameLobby?.EventLog?.Log("Warning", "Permission",
-                        $"Player '{cmdArgs.Player.Name}' attempted to execute action '{action}' without sufficient permission.",
-                        cmdArgs.Player.Name);
-                    trace?.Finished(GameLobby, "Faulted", "You don't have permission to run this action.");
-                    return;
-                }
+                    GameId = GameLobby.GameId,
+                    PlayerId = cmdArgs.Player.Id,
+                    Command = WebSocketCommandNames.ErrorPermission,
+                    Data = refused,
+                    OnlyToSender = true,
+                }, cmdArgs.Player);
+                trace?.Finished(GameLobby, "Faulted", refused);
+                return;
             }
 
             await ExecActionAsync(foundActionDto, hookArg, sharedVariables, mediator, trace);
         }
+
+        private static async Task<bool> MayRunAsync(IMediator mediator, ActionDto action, PlayerDTO player) =>
+            action.IsEnabled && action.Id.HasValue && await mediator.Send(new CheckPermissionsCommand
+            {
+                Player = player,
+                EntityId = action.Id.Value,
+                RequiredPermission = Permission.Execute,
+            });
 
         // The action whose steps are running on this async flow, so a step holding a block
         // (If, ForEach) runs that block inside the same action: same variables, trace and run.
