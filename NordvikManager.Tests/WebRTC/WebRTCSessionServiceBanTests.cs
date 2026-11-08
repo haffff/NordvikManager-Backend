@@ -153,7 +153,8 @@ namespace NordvikManager.Tests.WebRTC
             var channel = await _browser.createDataChannel("game");
             await OfferAsync();
             var deadline = DateTime.UtcNow.AddSeconds(15);
-            while (_lobby.ConnectedPlayers[bob].Count == 0 && DateTime.UtcNow < deadline)
+            // The backend's side opens first; the browser's follows when the backend's ack arrives.
+            while ((_lobby.ConnectedPlayers[bob].Count == 0 || channel.readyState != RTCDataChannelState.open) && DateTime.UtcNow < deadline)
                 await Task.Delay(50);
 
             await _service.DisconnectUserAsync("someone-else");
