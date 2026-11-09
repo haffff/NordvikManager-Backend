@@ -69,6 +69,14 @@ namespace NordvikManager.Tests.WebRTC
             return await task.WaitAsync(TimeSpan.FromSeconds(5));
         }
 
+        /// <summary>Waits until a large send has stopped at the buffer limit; nothing more of it goes out before a drain.</summary>
+        private static async Task WaitUntilFull(FakeChannel channel)
+        {
+            for (int i = 0; i < 500 && channel.BufferedAmount < MB; i++)
+                await Task.Delay(10);
+            Assert.True(channel.BufferedAmount >= MB, $"buffered only {channel.BufferedAmount}");
+        }
+
         private static string Reassemble(IEnumerable<string> sent)
         {
             var chunks = sent.Select(JObject.Parse).Where(c => c["type"]?.Value<string>() == "chunk").ToList();
@@ -119,7 +127,7 @@ namespace NordvikManager.Tests.WebRTC
             var channel = new FakeChannel();
             var connection = Connection(channel);
             var sending = connection.SendMessageToPlayer(Big(5 * MB));
-            await Task.Delay(50);
+            await WaitUntilFull(channel);
             var before = channel.Count;
 
             Assert.True(await connection.SendMessageToPlayer(new { command = "element_move" }));
