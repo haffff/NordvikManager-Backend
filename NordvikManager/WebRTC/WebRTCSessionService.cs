@@ -241,8 +241,7 @@ namespace NordvikManager.WebRTC
                 // Shared state — set by HandleOpenAsync, read by onmessage/onclose.
                 WebRTCPlayerConnection? connection = null;
                 PlayerDTO? playerEntry = null;
-                // chunkId → string slots; lives for the lifetime of this data channel.
-                var chunkBuffers = new Dictionary<string, string?[]>();
+                var chunks = new ChunkAssembler();
                 // What arrives before HandleOpenAsync knows the player: the client sends its
                 // queued requests the moment the channel opens.
                 var earlyMessages = new EarlyMessageBuffer();
@@ -372,13 +371,14 @@ namespace NordvikManager.WebRTC
                             return false;
                         }
 
-                        connection = new WebRTCPlayerConnection(dataChannel);
+                        connection = new WebRTCPlayerConnection(dataChannel, _logger);
                         playerEntry = await LobbyConnectionHelper.ConnectPlayerAsync(lobby, response.Player, connection);
                     }
                     else
                     {
-                        connection = new WebRTCPlayerConnection(dataChannel);
-                        lobby.ConnectedPlayers[playerEntry].Add(connection);
+                        connection = new WebRTCPlayerConnection(dataChannel, _logger);
+                        // Also when they left a moment ago: the join is then a new one.
+                        playerEntry = await LobbyConnectionHelper.ConnectPlayerAsync(lobby, playerEntry, connection);
                     }
 
                     _lobbyConnections.Track(args.SocketId, args.GameId, args.UserId, connection);
@@ -436,9 +436,14 @@ namespace NordvikManager.WebRTC
                     // Reassemble chunked messages before any other processing.
                     if (TryParseChunk(text, out var chunk))
                     {
-                        text = TryAssembleChunk(chunkBuffers, chunk!);
-                        if (text == null)
-                            return; // waiting for remaining chunks
+                        var outcome = chunks.Add(chunk!.ChunkId, chunk.Index, chunk.Total, chunk.Data, out var assembled);
+                        if (outcome == ChunkAssembler.Outcome.Rejected)
+                            _logger.LogWarning(
+                                "Dropped a chunked message from socket {SocketId}: chunk {Index} of {Total} is malformed or over the limits",
+                                args.SocketId, chunk.Index, chunk.Total);
+                        if (outcome != ChunkAssembler.Outcome.Complete)
+                            return;
+                        text = assembled!;
                     }
 
                     // Check if this is a tunneled REST request
@@ -700,7 +705,7 @@ namespace NordvikManager.WebRTC
             if (player == null)
                 return;
 
-            _ = lobby.ConnectedPlayers[player].SendMessageToPlayer(new
+            _ = lobby.ConnectedPlayers.ConnectionsOf(player).SendMessageToPlayer(new
             {
                 command = WebSocketCommandNames.ErrorGeneric,
                 result = message,
@@ -804,27 +809,6 @@ namespace NordvikManager.WebRTC
             {
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Stores a chunk slice and returns the fully reassembled string when all chunks have arrived,
-        /// or null if more chunks are still expected.
-        /// </summary>
-        private static string? TryAssembleChunk(Dictionary<string, string?[]> buffers, ChunkEnvelope chunk)
-        {
-            if (!buffers.TryGetValue(chunk.ChunkId, out var parts))
-            {
-                parts = new string?[chunk.Total];
-                buffers[chunk.ChunkId] = parts;
-            }
-
-            parts[chunk.Index] = chunk.Data;
-
-            if (parts.Any(p => p == null))
-                return null;
-
-            buffers.Remove(chunk.ChunkId);
-            return string.Concat(parts);
         }
 
         private record ChunkEnvelope(string ChunkId, int Index, int Total, string Data);

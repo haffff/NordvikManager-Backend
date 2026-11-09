@@ -290,11 +290,6 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                     actionModel.ClearPermissions(Guid.Empty);
                     actionModel.SetGlobalPermission(dto.GenericPermission.Value);
                 }
-                if (dto.GmPermission.HasValue)
-                {
-                    actionModel.ClearPermissions(game.MasterId);
-                    actionModel.SetPermissions(game.MasterId, dto.GmPermission.Value);
-                }
 
                 addon.Actions!.Add(actionModel);
 

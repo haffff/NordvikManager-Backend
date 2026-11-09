@@ -14,21 +14,31 @@ namespace NordvikManager.Services.Implementations
     {
         private readonly IConfiguration _configuration;
         private readonly string _adminFilePath;
+        private readonly string? _legacyFilePath;
         private string? _autoPromotedAdminId;
+        // The file exists but can't be read, so who the admin is isn't known: nobody gets
+        // promoted, or anyone could take over by being the next to log in.
+        private bool _adminFileDamaged;
+        private bool _saveFailureReported;
         // User id → the configured email it logged in with. Requests over WebRTC carry no
         // email, so an admin listed by email is recognised in game by the id remembered here.
         private Dictionary<string, string> _emailAdmins = new();
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
 
         public LocalAdminService(IConfiguration configuration)
-            : this(configuration, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".localadmin"))
+            : this(
+                configuration,
+                configuration["LocalAdmins:FilePath"] ?? "./data/.localadmin",
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".localadmin"))
         {
         }
 
-        public LocalAdminService(IConfiguration configuration, string adminFilePath)
+        /// <param name="legacyFilePath">Where the file used to be: read until the first save writes the new one.</param>
+        public LocalAdminService(IConfiguration configuration, string adminFilePath, string? legacyFilePath = null)
         {
             _configuration = configuration;
-            _adminFilePath = adminFilePath;
+            _adminFilePath = Path.GetFullPath(adminFilePath);
+            _legacyFilePath = legacyFilePath;
             LoadAutoPromotedAdmin();
         }
 
@@ -58,7 +68,7 @@ namespace NordvikManager.Services.Implementations
             }
 
             var autoPromoteEnabled = _configuration.GetValue("LocalAdmins:AutoPromoteFirstUser", true);
-            if (!autoPromoteEnabled)
+            if (!autoPromoteEnabled || _adminFileDamaged)
                 return false;
 
             await _lock.WaitAsync();
@@ -69,8 +79,7 @@ namespace NordvikManager.Services.Implementations
                     return _autoPromotedAdminId == userId;
                 }
 
-                await PromoteFirstUserAsync(userId);
-                return true;
+                return await PromoteFirstUserAsync(userId);
             }
             finally
             {
@@ -92,19 +101,21 @@ namespace NordvikManager.Services.Implementations
 
         private void LoadAutoPromotedAdmin()
         {
+            var path = File.Exists(_adminFilePath) ? _adminFilePath : _legacyFilePath;
+            if (path == null || !File.Exists(path))
+                return;
+
             try
             {
-                if (File.Exists(_adminFilePath))
-                {
-                    var json = File.ReadAllText(_adminFilePath);
-                    var data = JsonSerializer.Deserialize<AdminData>(json);
-                    _autoPromotedAdminId = string.IsNullOrEmpty(data?.UserId) ? null : data.UserId;
-                    _emailAdmins = data?.EmailAdmins ?? new();
-                }
+                var data = JsonSerializer.Deserialize<AdminData>(File.ReadAllText(path))
+                    ?? throw new JsonException("The file is empty.");
+                _autoPromotedAdminId = string.IsNullOrEmpty(data.UserId) ? null : data.UserId;
+                _emailAdmins = data.EmailAdmins ?? new();
             }
-            catch
+            catch (Exception ex)
             {
-                // If file is corrupted, ignore and allow re-promotion
+                _adminFileDamaged = true;
+                Console.Error.WriteLine($"Warning: The local admin file '{path}' can't be read, so nobody will be auto-promoted to local admin. Fix or delete it and restart, or list admins under LocalAdmins in appsettings.json: {ex.Message}");
             }
         }
 
@@ -116,7 +127,8 @@ namespace NordvikManager.Services.Implementations
                 if (_emailAdmins.TryGetValue(userId, out var known) && string.Equals(known, email, StringComparison.OrdinalIgnoreCase))
                     return;
                 _emailAdmins[userId] = email;
-                await SaveAsync(DateTime.UtcNow);
+                if (!_adminFileDamaged) // Saving would replace it, and lose who it names.
+                    await SaveAsync(DateTime.UtcNow);
             }
             catch (Exception ex)
             {
@@ -128,14 +140,19 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
-        private Task SaveAsync(DateTime promotedAt)
+        // Through a temporary file: a crash mid-write must not leave a damaged admin file.
+        private async Task SaveAsync(DateTime promotedAt)
         {
             var data = new AdminData { UserId = _autoPromotedAdminId ?? string.Empty, PromotedAt = promotedAt, EmailAdmins = _emailAdmins };
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
-            return File.WriteAllTextAsync(_adminFilePath, json);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(_adminFilePath)!);
+            var temporary = _adminFilePath + ".tmp";
+            await File.WriteAllTextAsync(temporary, json);
+            File.Move(temporary, _adminFilePath, overwrite: true);
         }
 
-        private async Task PromoteFirstUserAsync(string userId)
+        private async Task<bool> PromoteFirstUserAsync(string userId)
         {
             try
             {
@@ -158,11 +175,19 @@ namespace NordvikManager.Services.Implementations
                 Console.WriteLine($"║  Or to disable auto-promotion:                                 ║");
                 Console.WriteLine($"║    \"LocalAdmins\": {{ \"AutoPromoteFirstUser\": false }}           ║");
                 Console.WriteLine($"╚════════════════════════════════════════════════════════════════╝");
+                return true;
             }
             catch (Exception ex)
             {
+                // Not admin: an unsaved promotion would hand admin to whoever asks next, too.
+                // The next request tries again, so a passing problem sorts itself out.
                 _autoPromotedAdminId = null;
-                Console.Error.WriteLine($"Warning: Failed to persist local admin promotion for user '{userId}'. Auto-promotion was not applied: {ex.Message}");
+                if (!_saveFailureReported)
+                {
+                    _saveFailureReported = true;
+                    Console.Error.WriteLine($"Warning: Failed to save the local admin file '{_adminFilePath}', so nobody is local admin yet: {ex.Message}");
+                }
+                return false;
             }
         }
 

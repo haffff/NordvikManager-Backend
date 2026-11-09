@@ -35,6 +35,41 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
             await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
+        private void SeedAddon(GameModel game, bool enabled, params ActionModel[] actions)
+        {
+            (game.Addons ??= new()).Add(new NordvikManager.Domain.Entities.AddonModel
+            {
+                Name = "Addon", Key = Guid.NewGuid().ToString(), IsEnabled = enabled, Actions = actions.ToList(),
+            });
+            Db.SaveChanges();
+        }
+
+        [Fact]
+        public async Task Handle_ExcludeDisabledAddons_LeavesOutOnlyTheirActions()
+        {
+            var game = BuildGame();
+            SeedAddon(game, false, SeedAction(game.Id, "Off"));
+            SeedAddon(game, true, SeedAction(game.Id, "On"));
+            SeedAction(game.Id, "Own");
+            var cmd = new GetActionsCommand { GameId = game.Id, Player = Player(), ExcludeDisabledAddons = true };
+
+            var (_, actions) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { "On", "Own" }, actions.Select(a => a.Name).OrderBy(n => n));
+        }
+
+        [Fact]
+        public async Task Handle_ListsDisabledAddonsActions_WhenNotExcluding()
+        {
+            var game = BuildGame();
+            SeedAddon(game, false, SeedAction(game.Id, "Off"));
+            var cmd = new GetActionsCommand { GameId = game.Id, Player = Player() };
+
+            var (_, actions) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Single(actions);
+        }
+
         [Fact]
         public async Task Handle_NoPageRequested_ReturnsAllActions()
         {

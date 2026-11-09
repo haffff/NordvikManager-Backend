@@ -129,15 +129,9 @@ namespace NordvikManager
             services.AddCors(options =>
             {
                 options.AddPolicy("SuperPolicy", policy =>
-                {
-                    var clientUrls = Configuration["FrontUrls:Client"];
-                    if (string.IsNullOrEmpty(clientUrls))
-                        clientUrls = "http://localhost:3000,http://localhost:3002";
-
-                    var origins = clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                    policy.WithOrigins(origins).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
-                });
+                    policy.WithOrigins(ClientOrigins()).AllowCredentials().AllowAnyMethod().AllowAnyHeader());
             });
+            services.AddSingleton(new CrossSiteRequestGuardMiddleWare(ClientOrigins()));
 
             InfrastructureLayerModule.Register(services, Configuration);
             ApplicationLayerModule.Register(services, Configuration);
@@ -184,6 +178,15 @@ namespace NordvikManager
             });
         }
 
+        private string[] ClientOrigins()
+        {
+            var clientUrls = Configuration["FrontUrls:Client"];
+            if (string.IsNullOrEmpty(clientUrls))
+                clientUrls = "http://localhost:3000,http://localhost:3002";
+
+            return clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
@@ -202,6 +205,9 @@ namespace NordvikManager
 
             // CORS must be applied after routing and before authentication/authorization so the CORS headers are set
             app.UseCors("SuperPolicy");
+
+            // Before anything reads the body or acts on the login cookie.
+            app.UseMiddleware<CrossSiteRequestGuardMiddleWare>();
 
             app.UseAuthentication();
             app.UseAuthorization();

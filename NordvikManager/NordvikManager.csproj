@@ -71,7 +71,7 @@
     <PackageReference Include="System.Collections" Version="4.3.0" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.5" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.17.0" />
-    <PackageReference Include="SIPSorcery" Version="10.0.3" />
+    <PackageReference Include="SIPSorcery" Version="10.0.17" />
     <PackageReference Include="SocketIOClient" Version="4.0.3" />
   </ItemGroup>
 

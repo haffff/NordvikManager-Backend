@@ -113,8 +113,8 @@ namespace NordvikManager.Tests.ActionScenarios
                 GameId = gameId,
                 SystemPlayer = new PlayerDTO { Id = systemId, Name = "System", System = true },
             };
-            lobby.ConnectedPlayers[gm] = new() { Connection(gm) };
-            lobby.ConnectedPlayers[player] = new() { Connection(player) };
+            lobby.ConnectedPlayers[gm] = new List<IPlayerConnection> { Connection(gm) };
+            lobby.ConnectedPlayers[player] = new List<IPlayerConnection> { Connection(player) };
         }
 
         public void Dispose()
@@ -298,7 +298,8 @@ namespace NordvikManager.Tests.ActionScenarios
         [Fact]
         public async Task Setup_APlayerGetsThePlayerToolsOnly_AndOnlyThemselves()
         {
-            await Run("sanity/setup", player);
+            // Fired by the Load hook: not a player starting it, so no Execute needed.
+            await lobby.ActionProcessingService.ExecActionAsync("sanity/setup", new PlayerHookArgs { Player = player });
 
             NoErrors();
             Assert.Equal(new[] { "sanity_menu", "sanity_bless", "sanity_fireball", "sanity_burning_hands" }, Added(player));

@@ -19,7 +19,19 @@ namespace NordvikManager.Application.Commands.Card.GetAllCards
 
             var game = await dbContext.Games.Include(x => x.Cards).FirstOrDefaultAsync(g => g.Id == request.GameId, cancellationToken);
 
+            // A disabled addon's panels are off too. Its templates stay: cards made from them keep working.
+            var viewsOfDisabledAddons = request.CustomUis
+                ? await dbContext.Games
+                    .Where(g => g.Id == request.GameId)
+                    .SelectMany(g => g.Addons)
+                    .Where(a => !a.IsEnabled)
+                    .SelectMany(a => a.Views!)
+                    .Select(v => v.Id)
+                    .ToListAsync(cancellationToken)
+                : new List<Guid>();
+
             var cardsOriginal = game.Cards.Where(x => (x.IsTemplate && request.Templates) || (x.IsCustomUi && request.CustomUis) || (!request.CustomUis && !request.Templates && !x.IsCustomUi && !x.IsTemplate))
+                .Where(x => !viewsOfDisabledAddons.Contains(x.Id))
                 .WithPermission(request.Player.Id ?? default);
 
             if (request.Flat)

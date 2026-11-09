@@ -44,6 +44,20 @@ namespace NordvikManager.Tests.WebRTC
 
         private static object Big(int bytes, string tag = "a") => new { type = "api-response", tag, body = new string('x', bytes) };
 
+        private sealed class SelfReferencing
+        {
+            public SelfReferencing Self => this;
+        }
+
+        [Fact]
+        public async Task AMessageThatCannotBeSerialized_ReportsFailure_InsteadOfThrowing()
+        {
+            var channel = new FakeChannel();
+
+            Assert.False(await Connection(channel).SendMessageToPlayer(new SelfReferencing()));
+            Assert.Empty(channel.Sent);
+        }
+
         /// <summary>Drains the fake channel until the task finishes (or gives up).</summary>
         private static async Task<T> DrainUntil<T>(FakeChannel channel, Task<T> task)
         {
@@ -53,6 +67,14 @@ namespace NordvikManager.Tests.WebRTC
                 channel.Drain();
             }
             return await task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        /// <summary>Waits until a large send has stopped at the buffer limit; nothing more of it goes out before a drain.</summary>
+        private static async Task WaitUntilFull(FakeChannel channel)
+        {
+            for (int i = 0; i < 500 && channel.BufferedAmount < MB; i++)
+                await Task.Delay(10);
+            Assert.True(channel.BufferedAmount >= MB, $"buffered only {channel.BufferedAmount}");
         }
 
         private static string Reassemble(IEnumerable<string> sent)
@@ -105,7 +127,7 @@ namespace NordvikManager.Tests.WebRTC
             var channel = new FakeChannel();
             var connection = Connection(channel);
             var sending = connection.SendMessageToPlayer(Big(5 * MB));
-            await Task.Delay(50);
+            await WaitUntilFull(channel);
             var before = channel.Count;
 
             Assert.True(await connection.SendMessageToPlayer(new { command = "element_move" }));

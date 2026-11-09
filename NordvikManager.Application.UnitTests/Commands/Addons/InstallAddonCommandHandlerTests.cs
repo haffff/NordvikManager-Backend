@@ -149,6 +149,17 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         // which have no existence check of their own — duplicating every action and card.
 
         [Fact]
+        public async Task Handle_ActionWithGmPermission_DoesNotChangeTheOwnersRow()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"gmPermission\":0,\"content\":\"[]\"}"));
+
+            await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.None), Times.Never);
+        }
+
+        [Fact]
         public async Task Handle_AlreadyInstalled_WithoutReinstall_ReturnsAlreadyExistsAndDoesNotDuplicate()
         {
             var game = BuildGame();

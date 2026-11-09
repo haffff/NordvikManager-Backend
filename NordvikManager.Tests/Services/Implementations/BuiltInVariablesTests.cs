@@ -24,7 +24,9 @@ namespace NordvikManager.Tests.Services.Implementations
         public async Task PlayerIsGm_FalseForAPlayer()
         {
             // Not traced for a player who can't edit the game, so check through the event log.
-            _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((MediatR.IRequest<bool> c, CancellationToken _) =>
+                    ((CheckPermissionsCommand)c).RequiredPermission == NordvikManager.Domain.Enums.Permission.Execute);
             AddAction("a", Step("s", "Log", new { Message = "gm=%playerIsGm%" }));
 
             await Run("a");

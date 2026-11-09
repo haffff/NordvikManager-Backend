@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
   "name": "bless",
   "prefix": "sanity",
+  "genericPermission": 2,
   "description": "Bless on up to 3 creatures the player picks on the map.",
   "hook": 0,
   "isEnabled": false,

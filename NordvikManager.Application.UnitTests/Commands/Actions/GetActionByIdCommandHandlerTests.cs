@@ -34,7 +34,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
         {
             var game = BuildGame();
             var strangerId = Guid.NewGuid();
-            PermissionsMock.Setup(p => p.CheckIfHasPermissions(strangerId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.Read))
+            // Read on the game isn't enough: an action's content is the GM's.
+            PermissionsMock.Setup(p => p.CheckIfHasPermissions(strangerId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.Edit))
                 .Returns(false);
             var action = SeedAction(game.Id);
             var cmd = new GetActionByIdCommand { GameId = game.Id, Player = new PlayerDTO { Id = strangerId }, Id = action.Id };

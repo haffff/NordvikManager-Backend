@@ -31,10 +31,9 @@ namespace NordvikManager.Tests.Services.Implementations
     // the calling If/ExecuteAction step, so the trace must still mark that step as failed.
     public class ActionTraceTests : ActionServiceTestBase
     {
-        // An action only the GM may run (GmPermission) has no row for a co-GM on the action
-        // itself; Edit on the game is enough, like for the owner.
+        // A co-GM has no row on the action itself; Edit on the game is enough, like for the owner.
         [Fact]
-        public async Task GmOnlyAction_RunByACoGm_Runs()
+        public async Task BlockedAction_RunByACoGm_Runs()
         {
             _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((IRequest<bool> c, CancellationToken _) =>
@@ -43,7 +42,6 @@ namespace NordvikManager.Tests.Services.Implementations
                     return check.EntityId == _lobby.GameId && check.RequiredPermission == Permission.Edit;
                 });
             AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
-            _actions[^1].GmPermission = Permission.Execute;
 
             var msgs = await Run("gm");
 
@@ -51,12 +49,11 @@ namespace NordvikManager.Tests.Services.Implementations
         }
 
         [Fact]
-        public async Task GmOnlyAction_RunByAPlayer_IsRefused()
+        public async Task BlockedAction_RunByAPlayer_IsRefused()
         {
             _mediator.Setup(m => m.Send(It.IsAny<CheckPermissionsCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(false);
             AddAction("gm", Step("s1", "Log", new { Message = "hi" }));
-            _actions[^1].GmPermission = Permission.Execute;
 
             await Run("gm"); // no trace: a player who can't edit the game isn't traced
 

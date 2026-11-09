@@ -24,9 +24,9 @@ namespace NordvikManager.Services
         public static async Task<PlayerDTO> ConnectPlayerAsync(
             GameLobby lobby, PlayerDTO player, IPlayerConnection connection)
         {
-            if (!lobby.CheckForPlayer(player))
+            var canonical = lobby.ConnectedPlayers.Attach(player, connection, out var isNewPlayer);
+            if (isNewPlayer)
             {
-                lobby.ConnectedPlayers[player] = new List<IPlayerConnection> { connection };
                 // Catch up any addon whose Install hook never ran (e.g. auto-installed at
                 // game creation, before this lobby existed) before PlayerJoin — anything
                 // that join-time logic expects an addon to have set up should be there.
@@ -36,12 +36,10 @@ namespace NordvikManager.Services
                 foreach (var kv in lobby.ConnectedPlayers)
                     await kv.Value.SendMessageToPlayer(
                         new { command = WebSocketCommandNames.PlayerJoin, data = player });
-                return player;
+                return canonical;
             }
 
-            // Player already present — attach the new connection without re-firing hooks
-            var canonical = lobby.ConnectedPlayers.First(kv => kv.Key.Id == player.Id).Key;
-            lobby.ConnectedPlayers[canonical].Add(connection);
+            // Player already present: the new connection joins them without re-firing hooks.
             return canonical;
         }
 
@@ -52,14 +50,9 @@ namespace NordvikManager.Services
         public static async Task DisconnectPlayerAsync(
             GameLobby lobby, PlayerDTO player, IPlayerConnection connection)
         {
-            if (!lobby.ConnectedPlayers.ContainsKey(player))
+            if (!lobby.ConnectedPlayers.Detach(player, connection))
                 return;
 
-            lobby.ConnectedPlayers[player].Remove(connection);
-            if (lobby.ConnectedPlayers[player].Count > 0)
-                return;
-
-            lobby.ConnectedPlayers.Remove(player);
             await lobby.ActionProcessingService.CallHookAsync(
                 Hook.PlayerLeave, new PlayerHookArgs { Player = player });
             foreach (var kv in lobby.ConnectedPlayers)
