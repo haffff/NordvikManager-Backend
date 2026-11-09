@@ -70,7 +70,6 @@ namespace NordvikManager.Tests.WebRTC
             _lobby = new GameLobby(scopes.Object)
             {
                 GameId = _gameId,
-                ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>>(),
             };
             games[_gameId] = _lobby;
             registry.Setup(r => r.Games).Returns(games);

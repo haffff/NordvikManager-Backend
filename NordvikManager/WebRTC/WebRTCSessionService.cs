@@ -371,13 +371,14 @@ namespace NordvikManager.WebRTC
                             return false;
                         }
 
-                        connection = new WebRTCPlayerConnection(dataChannel);
+                        connection = new WebRTCPlayerConnection(dataChannel, _logger);
                         playerEntry = await LobbyConnectionHelper.ConnectPlayerAsync(lobby, response.Player, connection);
                     }
                     else
                     {
-                        connection = new WebRTCPlayerConnection(dataChannel);
-                        lobby.ConnectedPlayers[playerEntry].Add(connection);
+                        connection = new WebRTCPlayerConnection(dataChannel, _logger);
+                        // Also when they left a moment ago: the join is then a new one.
+                        playerEntry = await LobbyConnectionHelper.ConnectPlayerAsync(lobby, playerEntry, connection);
                     }
 
                     _lobbyConnections.Track(args.SocketId, args.GameId, args.UserId, connection);
@@ -704,7 +705,7 @@ namespace NordvikManager.WebRTC
             if (player == null)
                 return;
 
-            _ = lobby.ConnectedPlayers[player].SendMessageToPlayer(new
+            _ = lobby.ConnectedPlayers.ConnectionsOf(player).SendMessageToPlayer(new
             {
                 command = WebSocketCommandNames.ErrorGeneric,
                 result = message,

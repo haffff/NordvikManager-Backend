@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SIPSorcery.Net;
 using System;
@@ -21,6 +22,7 @@ namespace NordvikManager.WebRTC
         private const ulong BufferHigh = 1024 * 1024;
 
         private readonly IDataChannelSender _channel;
+        private readonly ILogger? _logger;
 
         // SIPSorcery has no "buffered amount low" event, so a waiting send checks back this often.
         private readonly TimeSpan _pollInterval;
@@ -32,14 +34,15 @@ namespace NordvikManager.WebRTC
         /// <summary>Whether the data channel can still carry messages (for diagnostics).</summary>
         public bool IsOpen => _channel.IsOpen;
 
-        public WebRTCPlayerConnection(RTCDataChannel dataChannel)
-            : this(new SipsorceryDataChannelSender(dataChannel))
+        public WebRTCPlayerConnection(RTCDataChannel dataChannel, ILogger? logger = null)
+            : this(new SipsorceryDataChannelSender(dataChannel), logger: logger)
         {
         }
 
-        public WebRTCPlayerConnection(IDataChannelSender channel, TimeSpan? pollInterval = null)
+        public WebRTCPlayerConnection(IDataChannelSender channel, TimeSpan? pollInterval = null, ILogger? logger = null)
         {
             _channel = channel;
+            _logger = logger;
             _pollInterval = pollInterval ?? TimeSpan.FromMilliseconds(10);
         }
 
@@ -53,7 +56,16 @@ namespace NordvikManager.WebRTC
             if (!_channel.IsOpen)
                 return Task.FromResult(false);
 
-            var json = JsonConvert.SerializeObject(message);
+            string json;
+            try
+            {
+                json = JsonConvert.SerializeObject(message);
+            }
+            catch (Exception e)
+            {
+                _logger?.LogError(e, "A {Type} could not be serialized for a player and was not sent", message?.GetType().Name);
+                return Task.FromResult(false);
+            }
 
             if (json.Length <= ChunkSize)
             {

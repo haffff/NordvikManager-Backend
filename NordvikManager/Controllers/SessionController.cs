@@ -125,8 +125,7 @@ namespace NordvikManager.Controllers
             _lobbyRegistry.Games.GetOrAdd(gameId, _ => new GameLobby(_serviceScopeFactory)
             {
                 GameId = gameId,
-                SystemPlayer = systemPlayer,
-                ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>>()
+                SystemPlayer = systemPlayer
             });
 
             await _webRTCSession.StartSessionAsync(gameId, centralSessionId, centralToken);

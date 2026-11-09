@@ -49,7 +49,7 @@ namespace NordvikManager.Services
             var playerEntry = game.ConnectedPlayers.Keys.FirstOrDefault(x => x.Id == playerId);
             if (playerEntry != null)
             {
-                foreach (var conn in game.ConnectedPlayers[playerEntry])
+                foreach (var conn in game.ConnectedPlayers.ConnectionsOf(playerEntry))
                     await conn.SendMessageToPlayer(
                         new { command = WebSocketCommandNames.LogCommand, data = new { message, code, logType } });
             }
@@ -65,7 +65,7 @@ namespace NordvikManager.Services
                 var playerEntry = game.ConnectedPlayers.Keys
                     .FirstOrDefault(p => p.CentralServerUserId == user.Id);
                 if (playerEntry != null)
-                    _ = game.ConnectedPlayers[playerEntry].SendMessageToPlayer(command);
+                    _ = game.ConnectedPlayers.ConnectionsOf(playerEntry).SendMessageToPlayer(command);
             }
         }
         public void SendKickToPlayer(Guid playerId)
@@ -89,7 +89,7 @@ namespace NordvikManager.Services
                     OnlyToSender = true
                 };
 
-                _ = game.ConnectedPlayers[playerEntry].SendMessageToPlayer(kickCommand);
+                _ = game.ConnectedPlayers.ConnectionsOf(playerEntry).SendMessageToPlayer(kickCommand);
                 game.ConnectedPlayers.Remove(playerEntry);
                 return;
             }

@@ -44,6 +44,20 @@ namespace NordvikManager.Tests.WebRTC
 
         private static object Big(int bytes, string tag = "a") => new { type = "api-response", tag, body = new string('x', bytes) };
 
+        private sealed class SelfReferencing
+        {
+            public SelfReferencing Self => this;
+        }
+
+        [Fact]
+        public async Task AMessageThatCannotBeSerialized_ReportsFailure_InsteadOfThrowing()
+        {
+            var channel = new FakeChannel();
+
+            Assert.False(await Connection(channel).SendMessageToPlayer(new SelfReferencing()));
+            Assert.Empty(channel.Sent);
+        }
+
         /// <summary>Drains the fake channel until the task finishes (or gives up).</summary>
         private static async Task<T> DrainUntil<T>(FakeChannel channel, Task<T> task)
         {

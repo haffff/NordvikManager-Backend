@@ -56,7 +56,7 @@ namespace NordvikManager.Services.Implementations
 
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid GameId { get; set; }
-        public Dictionary<PlayerDTO, List<IPlayerConnection>> ConnectedPlayers { get; set; } = new Dictionary<PlayerDTO, List<IPlayerConnection>>();
+        public ConnectedPlayerMap ConnectedPlayers { get; } = new();
         public PlayerDTO SystemPlayer { get; set; }
         public IActionProcessingService ActionProcessingService { get; set; }
 
@@ -96,7 +96,7 @@ namespace NordvikManager.Services.Implementations
             foreach (var connectedPlayer in ConnectedPlayers)
             {
                 if (connectedPlayer.Key.Id != player.Id)
-                    connectedPlayer.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
+                    _ = connectedPlayer.Value.SendMessageToPlayer(message);
             }
         }
 
@@ -107,7 +107,7 @@ namespace NordvikManager.Services.Implementations
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             foreach (var connected in ConnectedPlayers.ToList())
                 if (await CanEditGameAsync(connected.Key, mediator))
-                    connected.Value.ForEach(async ws => await ws.SendMessageToPlayer(message));
+                    await connected.Value.SendMessageToPlayer(message);
         }
 
         private async Task<bool> CanEditGameAsync(PlayerDTO player, IMediator mediator) =>
@@ -120,8 +120,7 @@ namespace NordvikManager.Services.Implementations
 
         public void SendToPlayer(object message, PlayerDTO player)
         {
-            if (ConnectedPlayers.ContainsKey(player))
-                ConnectedPlayers[player].ForEach(async ws => await ws.SendMessageToPlayer(message));
+            _ = ConnectedPlayers.ConnectionsOf(player).SendMessageToPlayer(message);
         }
 
         private async Task<WebSocketCommand> HandleWebSocketCommand(WebSocketCommand message, PlayerDTO player)
@@ -298,7 +297,7 @@ namespace NordvikManager.Services.Implementations
         /// those who can see a token placed for the card that shows it get the change too
         /// (they could load it already, see GetPropertiesByQuery), e.g. its bars.
         /// </summary>
-        private async Task SendToTokenViewers(IMediator cmdMediator, WebSocketCommand webSocketCommand, List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>> notReading)
+        private async Task SendToTokenViewers(IMediator cmdMediator, WebSocketCommand webSocketCommand, List<KeyValuePair<PlayerDTO, IReadOnlyList<IPlayerConnection>>> notReading)
         {
             var command = webSocketCommand.Command;
             if (notReading.Count == 0
@@ -320,7 +319,7 @@ namespace NordvikManager.Services.Implementations
 
             webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)Permission.Read;
             foreach (var item in notReading.Where(p => viewers.Contains(p.Key.Id ?? Guid.Empty)))
-                await item.Value.SendMessageToPlayer(webSocketCommand);
+                _ = item.Value.SendMessageToPlayer(webSocketCommand);
         }
 
         /// <summary>
@@ -339,8 +338,7 @@ namespace NordvikManager.Services.Implementations
 
                 if (webSocketCommand.OnlyToSender)
                 {
-                    if (ConnectedPlayers.ContainsKey(player))
-                        ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
+                    SendToPlayer(webSocketCommand, player);
                 }
                 else
                 {
@@ -348,8 +346,7 @@ namespace NordvikManager.Services.Implementations
                     {
                         webSocketCommand.OnlyToSender = true;
                         webSocketCommand.Result = WebSocketCommandNames.ResultCommandNotFound;
-                        if (ConnectedPlayers.ContainsKey(player))
-                            ConnectedPlayers[player].SendMessageToPlayer(webSocketCommand);
+                        SendToPlayer(webSocketCommand, player);
                         return;
                     }
 
@@ -362,7 +359,7 @@ namespace NordvikManager.Services.Implementations
                     {
                         foreach (var item in ConnectedPlayers.ToList())
                             if (item.Key.Id == player.Id || await CanEditGameAsync(item.Key, cmdMediator))
-                                item.Value.SendMessageToPlayer(webSocketCommand);
+                                _ = item.Value.SendMessageToPlayer(webSocketCommand);
                         return;
                     }
 
@@ -385,11 +382,11 @@ namespace NordvikManager.Services.Implementations
                         if (permissions.Count == 0)
                         {
                             foreach (var item in ConnectedPlayers)
-                                item.Value.SendMessageToPlayer(webSocketCommand);
+                                _ = item.Value.SendMessageToPlayer(webSocketCommand);
                             return;
                         }
 
-                        var notReading = new List<KeyValuePair<PlayerDTO, List<IPlayerConnection>>>();
+                        var notReading = new List<KeyValuePair<PlayerDTO, IReadOnlyList<IPlayerConnection>>>();
                         foreach (var item in ConnectedPlayers)
                         {
                             if (permissions.TryGetValue(item.Key.Id ?? Guid.Empty, out var permission) ||
@@ -398,7 +395,7 @@ namespace NordvikManager.Services.Implementations
                                 if (permission.HasFlag(Permission.Read))
                                 {
                                     webSocketCommand.Data[WebSocketCommandNames.DataKeyPermission] = (int)permission;
-                                    item.Value.SendMessageToPlayer(webSocketCommand);
+                                    _ = item.Value.SendMessageToPlayer(webSocketCommand);
                                     continue;
                                 }
                             }
@@ -410,7 +407,7 @@ namespace NordvikManager.Services.Implementations
                     else
                     {
                         foreach (var item in ConnectedPlayers)
-                            item.Value.SendMessageToPlayer(webSocketCommand);
+                            _ = item.Value.SendMessageToPlayer(webSocketCommand);
                     }
                 }
 
@@ -443,7 +440,7 @@ namespace NordvikManager.Services.Implementations
             if (parsedMsg.Command == WebSocketCommandNames.CmdChatPush && parsedMsg.VisibleTo != null && !parsedMsg.OnlyToSender)
             {
                 foreach (var item in ConnectedPlayers.Where(p => parsedMsg.VisibleTo.Contains(p.Key.Id ?? Guid.Empty)))
-                    item.Value.SendMessageToPlayer(parsedMsg);
+                    _ = item.Value.SendMessageToPlayer(parsedMsg);
                 return true;
             }
 
@@ -451,7 +448,7 @@ namespace NordvikManager.Services.Implementations
             if (parsedMsg.Command == WebSocketCommandNames.CmdPlayerList)
             {
                 parsedMsg.Data = JToken.FromObject(ConnectedPlayers.Keys);
-                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                SendToPlayer(parsedMsg, player);
                 return true;
             }
             // Editor → players: open a panel (e.g. the battle map's "Show" menu). Data: { type, syncId,
@@ -478,7 +475,7 @@ namespace NordvikManager.Services.Implementations
                 {
                     var isRecipient = targetId != null ? item.Key.Id == targetId : item.Key.Id != player.Id;
                     if (isRecipient)
-                        item.Value.SendMessageToPlayer(parsedMsg);
+                        _ = item.Value.SendMessageToPlayer(parsedMsg);
                 }
                 return true;
             }
@@ -501,7 +498,7 @@ namespace NordvikManager.Services.Implementations
             {
                 parsedMsg.Data = Debug;
                 parsedMsg.OnlyToSender = true;
-                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                SendToPlayer(parsedMsg, player);
                 return true;
             }
 
@@ -515,7 +512,7 @@ namespace NordvikManager.Services.Implementations
                 }
                 Debug = parsedMsg.Data.Value<bool>();
                 parsedMsg.OnlyToSender = true;
-                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                SendToPlayer(parsedMsg, player);
                 return true;
             }
 
@@ -547,7 +544,7 @@ namespace NordvikManager.Services.Implementations
 
                 parsedMsg.OnlyToSender = true;
                 parsedMsg.Result = WebSocketCommandNames.ResultOk;
-                ConnectedPlayers[player].SendMessageToPlayer(parsedMsg);
+                SendToPlayer(parsedMsg, player);
 
                 return true;
             }

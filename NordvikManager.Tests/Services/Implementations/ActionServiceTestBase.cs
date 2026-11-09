@@ -41,7 +41,7 @@ namespace NordvikManager.Tests.Services.Implementations
             var steps = new IActionStepDefinition[]
             {
                 new SetVariableStepDefinition(), new IfStepDefinition(), new ForEachStepDefinition(), new LogStepDefinition(),
-                new ExitStepDefinition(), new RunScriptStepDefinition(), new ExecuteActionStepDefinition(),
+                new ExitStepDefinition(), new RunScriptStepDefinition(), new ExecuteActionStepDefinition(), new TestFireCommandStep(),
             };
 
             var games = new Mock<DbSet<GameModel>>();
@@ -87,7 +87,7 @@ namespace NordvikManager.Tests.Services.Implementations
             {
                 GameId = Guid.NewGuid(),
                 SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-                ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>> { [_player] = new() { connection.Object } },
+                ConnectedPlayers = { [_player] = new List<IPlayerConnection> { connection.Object } },
             };
             _service = _lobby.ActionProcessingService;
         }

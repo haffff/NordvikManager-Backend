@@ -46,6 +46,11 @@ namespace NordvikManager.Services.Implementations
         // by that step (If/ForEach/ExecuteAction) sees it as its parent.
         private static readonly AsyncLocal<ActionRunEntry> CurrentRun = new();
 
+        // The chain this run belongs to. Unlike CurrentRun it is not cleared for a hook: a
+        // hook fired from a step (through Task.Run, which carries this along) is what makes
+        // a loop out of two actions that never call each other.
+        private static readonly AsyncLocal<ActionCascade> CurrentCascade = new();
+
         private readonly Dictionary<string, IActionStepDefinition> actionStepDefinitions = new Dictionary<string, IActionStepDefinition>();
 
         public ActionProcessingService(IServiceScopeFactory serviceScopeFactory)
@@ -246,6 +251,19 @@ namespace NordvikManager.Services.Implementations
         }
         public async Task ExecActionAsync(ActionDto action, HookArgs.HookArgs hookArg, Dictionary<string, object> sharedVariables = null, IMediator mediator = null, ActionTrace trace = null)
         {
+            var outerCascade = CurrentCascade.Value ?? ActionCascade.Start();
+            var cascade = outerCascade.TryEnter();
+            if (cascade == null)
+            {
+                var stopped = $"Action '{action.Name}' was stopped: too many actions ran from one start. Check for an action that calls itself or sets off the hook it listens to.";
+                if (outerCascade.FirstRefusal())
+                    GameLobby?.EventLog?.Log("Error", "Action", stopped, details: new { actionName = action.Name, actionId = action.Id });
+                CurrentRun.Value?.AddChildFault(stopped);
+                trace?.Finished(GameLobby, "Faulted", stopped);
+                return;
+            }
+            CurrentCascade.Value = cascade;
+
             // Always create a scope so we can get dbContext for the property query resolver.
             // If mediator was already provided by a caller, we still need our own scope for dbContext.
             using var scope = serviceScopeFactory.CreateScope();

@@ -113,8 +113,8 @@ namespace NordvikManager.Tests.ActionScenarios
                 GameId = gameId,
                 SystemPlayer = new PlayerDTO { Id = systemId, Name = "System", System = true },
             };
-            lobby.ConnectedPlayers[gm] = new() { Connection(gm) };
-            lobby.ConnectedPlayers[player] = new() { Connection(player) };
+            lobby.ConnectedPlayers[gm] = new List<IPlayerConnection> { Connection(gm) };
+            lobby.ConnectedPlayers[player] = new List<IPlayerConnection> { Connection(player) };
         }
 
         public void Dispose()
