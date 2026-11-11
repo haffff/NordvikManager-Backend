@@ -1,29 +1,29 @@
-﻿using NordvikManager.Application.Commands.BattleMap;
-using NordvikManager.Application.Commands.Card.GetAllCards;
-using NordvikManager.Application.Commands.Chat.GetMessages;
-using NordvikManager.Application.Commands.Game.Player.GetPlayer;
-using NordvikManager.Application.Commands.Layouts.GetLayout;
-using NordvikManager.Application.Commands.Layouts.GetLayouts;
-using NordvikManager.Application.Commands.TreeEntry.GetTreeEntries;
-using NordvikManager.Domain.Entities.Auth;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NordvikManager.Api.Endpoints;
+using NordvikManager.Domain.Entities.Auth;
 using System;
 using System.Threading.Tasks;
 
 namespace NordvikManager.Controllers
 {
+    /// <summary>
+    /// The logic is in <see cref="BattleMapEndpoints"/>, shared with hosts without ASP.NET Core
+    /// (the browser-wasm host's ApiRouter); this only binds the request and the caller.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     public class BattleMapController : Controller
     {
-        private readonly IMediator mediator;
+        private readonly BattleMapEndpoints endpoints;
 
         public BattleMapController(IMediator mediator)
         {
-            this.mediator = mediator;
+            endpoints = new BattleMapEndpoints(mediator);
         }
+
+        private User? CurrentUser => HttpContext.Items["User"] as User;
 
         /// <summary>
         /// Returns player model that belongs to logged in user in specific game
@@ -35,29 +35,7 @@ namespace NordvikManager.Controllers
         [Route("GetPlayer")]
         [HttpGet]
         public async Task<IActionResult> GetPlayer(Guid gameId)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            //GetPlayerPermissionsCommand cmd = new GetPlayerPermissionsCommand()
-            //{
-            //    Player = player.Player,
-            //    GameID = gameId
-            //};
-
-            //player.Player.Permissions = await mediator.Send(cmd);
-
-            return Ok(player?.Player);
-        }
+            => (await endpoints.GetPlayer(CurrentUser, gameId)).ToActionResult();
 
         /// <summary>
         /// Returns all game assets. If you are Gamemaster you will get full game, if player, you will get only elements that are visible to you
@@ -68,30 +46,7 @@ namespace NordvikManager.Controllers
         [Route("GetFullGame")]
         [HttpGet]
         public async Task<IActionResult> GetFullGame(Guid gameId)
-        {
-
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetGameCommand cmd = new GetGameCommand();
-            cmd.GameID = gameId;
-            cmd.PlayerID = player?.Player?.Id ?? default;
-
-            var game = await mediator.Send(cmd);
-            if (game != null)
-                game.IsLocalAdmin = currentUser?.IsLocalAdmin == true;
-
-            return Ok(game);
-        }
+            => (await endpoints.GetFullGame(CurrentUser, gameId)).ToActionResult();
 
         /// <summary>
         /// Returns game chat. Messages are sorten in descending order by datetime
@@ -104,193 +59,42 @@ namespace NordvikManager.Controllers
         [Route("GetChat")]
         [HttpGet]
         public async Task<IActionResult> GetChat(Guid gameId, int size = 30, int page = 0, Guid from = default, string filter = "")
-        {
-
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetMessagesCommand cmd = new GetMessagesCommand();
-            cmd.GameID = gameId;
-            cmd.Size = size;
-            cmd.Page = page;
-            cmd.Filter = filter;
-            cmd.From = from;
-            cmd.PlayerID = player.Player?.Id ?? default;
-
-            var chat = await mediator.Send(cmd);
-
-            return Ok(chat);
-        }
+            => (await endpoints.GetChat(CurrentUser, gameId, size, page, from, filter)).ToActionResult();
 
         [Authorize]
         [Route("GetLayout")]
         [HttpGet]
         public async Task<IActionResult> GetLayout(Guid gameId, Guid id)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetLayoutCommand cmd = new GetLayoutCommand();
-            cmd.Id = id;
-            cmd.Player = player.Player;
-
-            var result = await mediator.Send(cmd);
-
-            return Ok(result);
-        }
+            => (await endpoints.GetLayout(CurrentUser, gameId, id)).ToActionResult();
 
         [Authorize]
         [Route("GetBattlemap")]
         [HttpGet]
         public async Task<IActionResult> GetBattlemap(Guid gameId, Guid id)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetBattleMapCommand cmd = new GetBattleMapCommand();
-            cmd.Id = id;
-            cmd.Player = player.Player;
-
-            var result = await mediator.Send(cmd);
-
-            return Ok(result);
-        }
+            => (await endpoints.GetBattlemap(CurrentUser, gameId, id)).ToActionResult();
 
         [Authorize]
         [Route("GetBattlemaps")]
         [HttpGet]
         public async Task<IActionResult> GetBattlemaps(Guid gameId)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetBattleMapsCommand cmd = new GetBattleMapsCommand();
-            cmd.Player = player.Player;
-            cmd.GameID = gameId;
-
-            var result = await mediator.Send(cmd);
-
-            return Ok(result);
-        }
+            => (await endpoints.GetBattlemaps(CurrentUser, gameId)).ToActionResult();
 
         [Authorize]
         [Route("GetLayouts")]
         [HttpGet]
         public async Task<IActionResult> GetLayouts(Guid gameId)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetLayoutsCommand cmd = new GetLayoutsCommand();
-            cmd.GameID = gameId;
-            cmd.Player = player.Player;
-            cmd.Flat = true;
-
-            var result = await mediator.Send(cmd);
-
-            return Ok(result);
-        }
+            => (await endpoints.GetLayouts(CurrentUser, gameId)).ToActionResult();
 
         [Authorize]
         [Route("GetCards")]
         [HttpGet]
         public async Task<IActionResult> GetCards(Guid gameId)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot get cards. You are not a player" });
-            }
-
-            GetAllCardsCommand cmd = new GetAllCardsCommand();
-            cmd.Player = player.Player;
-            cmd.Templates = false;
-            cmd.CustomUis = false;
-
-            var result = await mediator.Send(cmd);
-
-            return Ok(result.Item2);
-        }
+            => (await endpoints.GetCards(CurrentUser, gameId)).ToActionResult();
 
         [Authorize]
         [Route("GetTree")]
         [HttpGet]
         public async Task<IActionResult> GetTree(Guid gameId, string entityType)
-        {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand();
-            playerCmd.GameID = gameId;
-            playerCmd.User = currentUser;
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You cannot add Battlemap. You are not a player" });
-            }
-
-            GetTreeEntriesCommand getTreeEntriesCommand = new GetTreeEntriesCommand()
-            {
-                EntityType = entityType,
-                GameId = gameId,
-                PlayerId = player.Player.Id
-            };
-
-            var result = await mediator.Send(getTreeEntriesCommand);
-
-            return Ok(result);
-        }
-
+            => (await endpoints.GetTree(CurrentUser, gameId, entityType)).ToActionResult();
     }
 }

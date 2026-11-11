@@ -1,25 +1,29 @@
-﻿using NordvikManager.Application.Commands.Game.Player.GetPlayer;
-using NordvikManager.Application.Commands.Map.GetFlatMaps;
-using NordvikManager.Application.Commands.Map.GetMap;
-using NordvikManager.Domain.Entities.Auth;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NordvikManager.Api.Endpoints;
+using NordvikManager.Domain.Entities.Auth;
 using System;
 using System.Threading.Tasks;
 
 namespace NordvikManager.Controllers
 {
+    /// <summary>
+    /// The logic is in <see cref="MapEndpoints"/>, shared with hosts without ASP.NET Core;
+    /// this only binds the request and the caller.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     public class MapController : Controller
     {
-        private readonly IMediator mediator;
+        private readonly MapEndpoints endpoints;
 
         public MapController(IMediator mediator)
         {
-            this.mediator = mediator;
+            endpoints = new MapEndpoints(mediator);
         }
+
+        private User? CurrentUser => HttpContext.Items["User"] as User;
 
         /// <summary>
         /// Gets a map
@@ -29,22 +33,7 @@ namespace NordvikManager.Controllers
         [Authorize]
         [Route("Get")]
         public async Task<IActionResult> GetMap(Guid mapId, Guid gameId)
-        {
-            var user = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand() { User = user, GameID = gameId };
-
-            var player = await mediator.Send(playerCmd);
-
-            GetMapCommand cmd = new GetMapCommand()
-            {
-                Id = mapId,
-                Player = player.Player
-            };
-
-            var res = await mediator.Send(cmd);
-            return Ok(res);
-        }
+            => (await endpoints.GetMap(CurrentUser, mapId, gameId)).ToActionResult();
 
         /// <summary>
         /// Get Flat maps
@@ -54,25 +43,6 @@ namespace NordvikManager.Controllers
         [Authorize]
         [Route("GetAllFlat")]
         public async Task<IActionResult> GetAllFlat(Guid gameId)
-        {
-            var user = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand() { User = user, GameID = gameId };
-
-            var player = await mediator.Send(playerCmd);
-            if (player?.Player == null)
-            {
-                return Unauthorized(new { error = "You are not a player in this game" });
-            }
-
-            GetFlatMapsCommand cmd = new GetFlatMapsCommand()
-            {
-                GameID = gameId,
-                Player = player.Player
-            };
-
-            var res = await mediator.Send(cmd);
-            return Ok(res);
-        }
+            => (await endpoints.GetAllFlat(CurrentUser, gameId)).ToActionResult();
     }
 }

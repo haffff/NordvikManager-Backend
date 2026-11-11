@@ -21,25 +21,11 @@ namespace NordvikManager.Engine.Middlewares
             {
                 await next(context);
             }
-            catch (ResourceNotFoundException ex)
-            {
-                await WriteError(context, ex, 404, LogLevel.Warning);
-            }
-            catch (PermissionException ex)
-            {
-                await WriteError(context, ex, 403, LogLevel.Warning);
-            }
-            catch (WrongArgumentsException ex)
-            {
-                await WriteError(context, ex, 400, LogLevel.Warning);
-            }
-            catch (UploadLimitException ex)
-            {
-                await WriteError(context, ex, 413, LogLevel.Information);
-            }
             catch (Exception ex)
             {
-                await WriteError(context, ex, 500, LogLevel.Error);
+                // The same statuses as the shared API router (ApiExceptions).
+                var (status, level) = NordvikManager.Api.ApiExceptions.Map(ex);
+                await WriteError(context, ex, status, level);
             }
         }
 

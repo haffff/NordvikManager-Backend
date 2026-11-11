@@ -68,20 +68,45 @@ namespace NordvikManager.Tests.WasmHost
             Assert.Contains(list.GameItemList!, g => g.Name == "Browser game");
         }
 
-        [Fact]
-        public async Task ApiDispatcher_AnswersEveryRequestWith501_ForNow()
+        private async Task<Newtonsoft.Json.Linq.JObject> Tunnel(string path, PlayerDTO player, Guid gameId)
         {
             var connection = new RecordingConnection();
-
             await _provider.GetRequiredService<IWebRTCApiDispatcher>().DispatchAsync(
-                new WebRTCApiRequest { Id = "req-1", Method = "GET", Path = "/api/battlemap/GetFullGame" },
-                new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice" }, Guid.NewGuid(), connection);
-
+                new WebRTCApiRequest { Id = "req-1", Method = "GET", Path = path }, player, gameId, connection);
             var json = Newtonsoft.Json.Linq.JObject.FromObject(connection.Sent.Single());
             Assert.Equal("api-response", (string?)json["type"]);
             Assert.Equal("req-1", (string?)json["id"]);
+            return json;
+        }
+
+        [Fact]
+        public async Task ApiDispatcher_IsTheSharedRouter_And501sWhatIsNotMovedYet()
+        {
+            Assert.IsType<NordvikManager.Api.ApiRouter>(_provider.GetRequiredService<IWebRTCApiDispatcher>());
+
+            var json = await Tunnel("/api/user/userinfo", new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice" }, Guid.NewGuid());
+
             Assert.Equal(501, (int?)json["status"]);
-            Assert.False(string.IsNullOrEmpty((string?)json["body"]?["error"]));
+            Assert.Equal(NordvikManager.Api.ApiRouter.NotAvailableMessage, (string?)json["body"]?["error"]);
+        }
+
+        [Fact]
+        public async Task ApiDispatcher_AnswersGetPlayerAndGetFullGame_FromTheRealHandlers()
+        {
+            Guid gameId;
+            var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+            using (var scope = _provider.CreateScope())
+                gameId = (await scope.ServiceProvider.GetRequiredService<IMediator>().Send(
+                    new AddGameCommand { User = gm, Name = "Tunnel game", PasswordRequired = false }))!.Value;
+            var caller = new PlayerDTO { Id = Guid.NewGuid(), Name = "gm", CentralServerUserId = gm.Id };
+
+            var player = await Tunnel("/api/battlemap/GetPlayer", caller, gameId);
+            var game = await Tunnel("/api/battlemap/GetFullGame", caller, gameId);
+
+            Assert.Equal(200, (int?)player["status"]);
+            Assert.Equal("Game Master", (string?)player["body"]?["name"]);
+            Assert.Equal(200, (int?)game["status"]);
+            Assert.Equal("Tunnel game", (string?)game["body"]?["name"]);
         }
 
         private sealed class RecordingConnection : IPlayerConnection

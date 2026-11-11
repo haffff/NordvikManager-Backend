@@ -25,6 +25,7 @@ namespace NordvikManager.Tests.Hosting
             new object[] { typeof(User).Assembly.GetName().Name! },
             new object[] { typeof(NordvikManager.Wasm.WebRtc.BrowserPeerConnectionFactory).Assembly.GetName().Name! },
             new object[] { typeof(NordvikManager.Wasm.Hosting.WasmHost).Assembly.GetName().Name! },
+            new object[] { typeof(NordvikManager.Api.ApiRouter).Assembly.GetName().Name! },
         };
 
         [Theory]

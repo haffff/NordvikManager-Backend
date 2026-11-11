@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The browser-wasm GM host's composition root (WasmHost): the shared layers plus the
-       browser's WebRTC, an in-memory database for now, and what a browser can do. A plain
+       browser's WebRTC, the shared API router, an in-memory database for now, and what a
+       browser can do. A plain
        net10.0 library so the solution builds and tests it (WasmHostTests); the browser-wasm
        executable, NordvikManager.Wasm.Host, only starts it. -->
   <PropertyGroup>
@@ -18,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
     <ProjectReference Include="..\NordvikManager.Wasm.WebRtc\NordvikManager.Wasm.WebRtc.csproj" />
+    <ProjectReference Include="..\NordvikManager.Api\NordvikManager.Api.csproj" />
   </ItemGroup>
 
 </Project>
