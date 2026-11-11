@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <WasmExtraFilesToDeploy Include="index.html" />
+    <WasmExtraFilesToDeploy Include="gm-page.js" />
     <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player.js" Link="selfcheck-player.js" />
     <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
   </ItemGroup>

@@ -1,8 +1,8 @@
 using NordvikManager.Wasm.Host.SelfCheck;
 using System.Runtime.InteropServices.JavaScript;
 
-// The browser-wasm GM host. ?selfcheck runs the self-check (SelfCheck/); hosting a real game
-// (login, Central session, signaling) is not here yet.
+// The browser-wasm GM host: the GM's page (HostPage: log in, games, start a session), or with
+// ?selfcheck the self-check (SelfCheck/).
 var search = JSHost.GlobalThis.GetPropertyAsJSObject("location")?.GetPropertyAsString("search") ?? "";
 if (search.Contains("selfcheck", StringComparison.OrdinalIgnoreCase))
 {
@@ -11,5 +11,5 @@ if (search.Contains("selfcheck", StringComparison.OrdinalIgnoreCase))
 }
 else
 {
-    Console.WriteLine("NordvikManager GM host: only the self-check (?selfcheck) is available so far.");
+    await NordvikManager.Wasm.Host.HostPage.RunAsync();
 }
