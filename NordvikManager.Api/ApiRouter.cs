@@ -29,6 +29,7 @@ namespace NordvikManager.Api
     public sealed class ApiRouter : IWebRTCApiDispatcher
     {
         public const string NotAvailableMessage = "This request isn't available yet in games hosted in a browser.";
+        public const string NativeOnlyMessage = "This is only available on a GM server, not in games hosted in a browser.";
 
         private readonly IServiceScopeFactory _scopes;
         private readonly ILogger<ApiRouter> _logger;
@@ -55,12 +56,22 @@ namespace NordvikManager.Api
 
         private async Task<(int Status, JToken? Body)> AnswerAsync(WebRTCApiRequest request, PlayerDTO player, Guid gameId)
         {
-            var route = _routes.Match(request.Method, request.Path, out var routeValues);
+            // As WebRTCInProcessDispatcher: the binary resource read goes to its base64 variant.
+            var path = request.Path.Trim('/');
+            if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(path, "api/materials/resource", StringComparison.OrdinalIgnoreCase))
+                path = "api/materials/ResourceWebRTC";
+
+            var route = _routes.Match(request.Method, path, out var routeValues);
+            if (route == null && ApiNativeOnly.IsNativeOnlyPath(path))
+                return (501, Json(new { error = NativeOnlyMessage }));
             if (route == null)
             {
                 _logger.LogWarning("Not available in this host yet: {Method} {Path} from {Player}", request.Method, request.Path, player.Name);
                 return (501, Json(new { error = NotAvailableMessage }));
             }
+            if (route.NativeOnly)
+                return (501, Json(new { error = NativeOnlyMessage }));
 
             try
             {
@@ -93,6 +104,9 @@ namespace NordvikManager.Api
                 // ASP.NET Core answers an Ok with a null body as 204.
                 if (result.HasBody && result.Body == null && result.StatusCode == 200)
                     return (204, null);
+                // Raw bytes can't go over the data channel (the native tunnel fails them too).
+                if (result.Kind == ApiResultKind.File)
+                    return (500, Json(new { error = "A binary response can't be sent over the data channel." }));
                 // Content(json, "application/json"): the JSON as written.
                 if (result.Kind == ApiResultKind.Content)
                     return (result.StatusCode, result.Body is string raw && raw.Length > 0 ? JToken.Parse(raw) : null);

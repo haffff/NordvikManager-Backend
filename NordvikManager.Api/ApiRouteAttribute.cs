@@ -20,5 +20,11 @@ namespace NordvikManager.Api
         public string Method { get; }
 
         public string Path { get; }
+
+        /// <summary>
+        /// Served by the native server only (e.g. files on the server's own disk): a host without
+        /// one answers 501 saying so.
+        /// </summary>
+        public bool NativeOnly { get; set; }
     }
 }

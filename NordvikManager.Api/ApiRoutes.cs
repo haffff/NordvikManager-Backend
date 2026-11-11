@@ -25,7 +25,7 @@ namespace NordvikManager.Api
                     {
                         if (method.ReturnType != typeof(Task<ApiResult>) && method.ReturnType != typeof(ApiResult))
                             throw new InvalidOperationException($"{type.Name}.{method.Name} must return ApiResult or Task<ApiResult>.");
-                        var route = new ApiRoute(attribute.Method, attribute.Path, type, method);
+                        var route = new ApiRoute(attribute.Method, attribute.Path, type, method, attribute.NativeOnly);
                         if (!routes.TryAdd(Key(route.Method, route.Path), route))
                             throw new InvalidOperationException($"Two endpoints answer {route.Method} {route.Path}.");
                     }
@@ -79,5 +79,5 @@ namespace NordvikManager.Api
         private static string Key(string method, string path) => method + " " + path;
     }
 
-    public sealed record ApiRoute(string Method, string Path, Type EndpointType, MethodInfo Handler);
+    public sealed record ApiRoute(string Method, string Path, Type EndpointType, MethodInfo Handler, bool NativeOnly = false);
 }

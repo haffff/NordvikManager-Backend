@@ -12,13 +12,14 @@ Only the self-check (`index.html?selfcheck`). It runs the host in the tab as it 
 - MediatR + EF Core (in memory) create and list a game;
 - the lobby opens; the player connects over the browser's WebRTC;
 - the heartbeat is answered;
-- tunnelled REST: `GetPlayer` and `GetFullGame` answered 200 by the shared endpoints through `ApiRouter`; a route not moved to them yet answers 501;
+- tunnelled REST through `ApiRouter` and the shared endpoints: `GetPlayer`, `GetFullGame`, `session/whoami` (the channel's game), `user/userinfo` (the caller); a server-only route (`api/meta`) answers 501 saying so;
+- a file uploaded in parts (`materials/UploadStart`, `UploadPart`, `UploadFinish`: upload store, fixed quota, database) and read back through `materials/resource`; addon step definitions;
 - a chat message goes through `GameLobby` (player resolution, `ChatHandler`, MediatR) and comes back;
 - a 31 504-char chat (emoji included) goes both ways chunked: chunk reassembly and the send pump.
 
 ## Not yet
 
-- Most tunnelled REST requests: only the controllers moved to shared endpoints (`NordvikManager.Api`, see `ApiRouteCoverageTests` for the list still to move) are answered; the rest get 501, so a real player client can't fully load a game yet.
+- Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered.
 - Hosting a real game: login, Central session, signaling to Central (Central's CORS must allow the host's origin), where the host is served from.
 - Keeping games across a reload (browser storage).
 

@@ -68,11 +68,65 @@ namespace NordvikManager.Tests.WasmHost
             Assert.Contains(list.GameItemList!, g => g.Name == "Browser game");
         }
 
-        private async Task<Newtonsoft.Json.Linq.JObject> Tunnel(string path, PlayerDTO player, Guid gameId)
+        // A browser host has no settings file: its upload limits are fixed, and can't be changed.
+        [Fact]
+        public void ServerSettings_AreFixed_WithTheBrowserHostsUploadLimits()
+        {
+            var store = _provider.GetRequiredService<NordvikManager.Infrastructure.Interfaces.IServerSettingsStore>();
+
+            Assert.IsType<FixedServerSettingsStore>(store);
+            Assert.Equal(FixedServerSettingsStore.GmGameLimitMb, store.Load().Uploads.GmGameLimitMb);
+            Assert.Equal(FixedServerSettingsStore.PlayerLimitMb, store.Load().Uploads.PlayerLimitMb);
+            Assert.ThrowsAny<Exception>(() => store.Update(s => s.Uploads.PlayerLimitMb = 0));
+            Assert.Equal(FixedServerSettingsStore.PlayerLimitMb, store.Load().Uploads.PlayerLimitMb);
+        }
+
+        // Materials through the browser host's tunnel, real handlers: a file uploaded in parts,
+        // then read back by api/materials/resource (rewritten to its base64 variant, as natively).
+        [Fact]
+        public async Task ApiDispatcher_UploadsAResourceInParts_AndReadsItBack()
+        {
+            Guid gameId;
+            var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+            using (var scope = _provider.CreateScope())
+                gameId = (await scope.ServiceProvider.GetRequiredService<IMediator>().Send(
+                    new AddGameCommand { User = gm, Name = "Upload game", PasswordRequired = false }))!.Value;
+            var caller = new PlayerDTO { Id = Guid.NewGuid(), Name = "gm", CentralServerUserId = gm.Id };
+            var bytes = System.Text.Encoding.UTF8.GetBytes("a small map, but a map");
+
+            var start = await Tunnel("/api/materials/UploadStart", caller, gameId, "POST",
+                Newtonsoft.Json.Linq.JObject.FromObject(new { name = "map.png", mimeType = "image/png", size = bytes.Length }));
+            Assert.Equal(200, (int?)start["status"]);
+            var uploadId = (string?)start["body"]?["uploadId"];
+            var part = await Tunnel("/api/materials/UploadPart", caller, gameId, "POST",
+                Newtonsoft.Json.Linq.JObject.FromObject(new { uploadId, offset = 0, data = Convert.ToBase64String(bytes) }));
+            Assert.Equal(200, (int?)part["status"]);
+            var finish = await Tunnel("/api/materials/UploadFinish", caller, gameId, "POST",
+                Newtonsoft.Json.Linq.JObject.FromObject(new { uploadId }));
+            Assert.Equal(200, (int?)finish["status"]);
+            var id = (string?)finish["body"]?["id"];
+
+            var read = await Tunnel("/api/materials/resource", caller, gameId, query: new() { ["id"] = id! });
+
+            Assert.Equal(200, (int?)read["status"]);
+            Assert.Equal(Convert.ToBase64String(bytes), (string?)read["body"]?["data"]);
+        }
+
+        [Fact]
+        public async Task ApiDispatcher_DiskLinking_IsNativeOnly()
+        {
+            var json = await Tunnel("/api/materials/BrowseLocalDirectory", new PlayerDTO { Id = Guid.NewGuid(), Name = "gm" }, Guid.NewGuid());
+
+            Assert.Equal(501, (int?)json["status"]);
+            Assert.Equal(NordvikManager.Api.ApiRouter.NativeOnlyMessage, (string?)json["body"]?["error"]);
+        }
+
+        private async Task<Newtonsoft.Json.Linq.JObject> Tunnel(string path, PlayerDTO player, Guid gameId, string method = "GET",
+            Newtonsoft.Json.Linq.JToken? body = null, System.Collections.Generic.Dictionary<string, string>? query = null)
         {
             var connection = new RecordingConnection();
             await _provider.GetRequiredService<IWebRTCApiDispatcher>().DispatchAsync(
-                new WebRTCApiRequest { Id = "req-1", Method = "GET", Path = path }, player, gameId, connection);
+                new WebRTCApiRequest { Id = "req-1", Method = method, Path = path, Body = body, Query = query }, player, gameId, connection);
             var json = Newtonsoft.Json.Linq.JObject.FromObject(connection.Sent.Single());
             Assert.Equal("api-response", (string?)json["type"]);
             Assert.Equal("req-1", (string?)json["id"]);
@@ -80,14 +134,14 @@ namespace NordvikManager.Tests.WasmHost
         }
 
         [Fact]
-        public async Task ApiDispatcher_IsTheSharedRouter_And501sWhatIsNotMovedYet()
+        public async Task ApiDispatcher_IsTheSharedRouter_And501sServerOnlyRoutes()
         {
             Assert.IsType<NordvikManager.Api.ApiRouter>(_provider.GetRequiredService<IWebRTCApiDispatcher>());
 
             var json = await Tunnel("/api/meta", new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice" }, Guid.NewGuid());
 
             Assert.Equal(501, (int?)json["status"]);
-            Assert.Equal(NordvikManager.Api.ApiRouter.NotAvailableMessage, (string?)json["body"]?["error"]);
+            Assert.Equal(NordvikManager.Api.ApiRouter.NativeOnlyMessage, (string?)json["body"]?["error"]);
         }
 
         [Fact]

@@ -220,6 +220,24 @@ namespace NordvikManager.Tests.Api
             Assert.Equal("fast", (string?)response["body"]!["mode"]);
         }
 
+        // Server-only routes (files on the server's own disk) are known, but not served here.
+        [Fact]
+        public async Task ANativeOnlyRoute_Is501_SayingSo()
+        {
+            var response = await Send("POST", "api/sample/linkdisk");
+
+            Assert.Equal(501, (int)response["status"]!);
+            Assert.Equal(ApiRouter.NativeOnlyMessage, (string?)response["body"]!["error"]);
+        }
+
+        // Raw bytes can't go over the data channel: the native tunnel fails them too (its JSON
+        // read of the response throws), which is why clients use the base64 variants.
+        [Fact]
+        public async Task AFileResult_Is500()
+        {
+            Assert.Equal(500, (int)(await Send("GET", "api/sample/bytes"))["status"]!);
+        }
+
         [Fact]
         public async Task AnUnknownRoute_Is501()
         {
@@ -272,6 +290,12 @@ namespace NordvikManager.Tests.Api
             [ApiRoute("GET", "api/Sample/Service")]
             public Task<ApiResult> Service([ApiService] Recorder recorder)
                 => Task.FromResult(ApiResult.Ok(new { same = ReferenceEquals(recorder, _recorder) }));
+
+            [ApiRoute("POST", "api/Sample/LinkDisk", NativeOnly = true)]
+            public ApiResult LinkDisk() => ApiResult.Ok();
+
+            [ApiRoute("GET", "api/Sample/Bytes")]
+            public ApiResult Bytes() => ApiResult.File(new byte[] { 1, 2, 3 }, "image/png");
 
             [ApiRoute("POST", "api/Sample/{gameId}/start")]
             public ApiResult Start(Guid gameId, string mode) => ApiResult.Ok(new { gameId, mode });

@@ -11,15 +11,13 @@ namespace NordvikManager.Tests.Api
 {
     // Hosts without ASP.NET Core answer tunnelled requests from the shared endpoints (ApiRoutes),
     // so a controller action without one is a request the browser-wasm host can't answer. Every
-    // action of a migrated controller has an endpoint with its method and path; every endpoint
-    // is a real action's; the controllers not migrated yet are listed here, and shrink.
+    // action has an endpoint with its method and path, unless its controller is about running a
+    // server (listed here, with why); every endpoint is a real action's. Single actions that only
+    // make sense on a server are endpoints with [ApiRoute(..., NativeOnly = true)] (they 501).
     public class ApiRouteCoverageTests
     {
-        // Answered 501 by hosts without ASP.NET Core until moved to endpoints (BattleMap and Map show how).
-        private static readonly HashSet<string> NotMigratedYet = new()
-        {
-            "Addon", "Backup", "Materials", "Meta", "ServerSettings", "Update",
-        };
+        // About running a native server (ApiNativeOnly, with why); a browser host answers them 501.
+        private static IReadOnlyDictionary<string, string> NativeOnlyControllers => ApiNativeOnly.Controllers;
 
         private static IEnumerable<Type> Controllers() => typeof(Startup).Assembly.GetTypes()
             .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract);
@@ -55,7 +53,7 @@ namespace NordvikManager.Tests.Api
         public void EveryActionOfAMigratedController_HasASharedEndpoint()
         {
             var missing = Actions()
-                .Where(a => !NotMigratedYet.Contains(a.Controller))
+                .Where(a => !NativeOnlyControllers.ContainsKey(a.Controller))
                 .Where(a => ApiRoutes.Shared.Find(a.Method, a.Path) == null)
                 .Select(a => $"{a.Method} {a.Path}")
                 .ToList();
@@ -77,13 +75,13 @@ namespace NordvikManager.Tests.Api
         }
 
         [Fact]
-        public void TheNotMigratedList_NamesRealControllers_ThatHaveNoEndpointYet()
+        public void TheNativeOnlyList_NamesRealControllers_ThatHaveNoEndpoint()
         {
             var controllers = Controllers().Select(Name).ToHashSet();
-            var migrated = ApiRoutes.Shared.All.Select(r => r.Path.Split('/')[1]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var shared = ApiRoutes.Shared.All.Select(r => r.Path.Split('/')[1]).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            Assert.Empty(NotMigratedYet.Where(c => !controllers.Contains(c)));
-            Assert.Empty(NotMigratedYet.Where(migrated.Contains));
+            Assert.Empty(NativeOnlyControllers.Keys.Where(c => !controllers.Contains(c)));
+            Assert.Empty(NativeOnlyControllers.Keys.Where(shared.Contains));
         }
     }
 }
