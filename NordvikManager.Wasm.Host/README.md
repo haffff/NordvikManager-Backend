@@ -4,9 +4,20 @@ The browser-wasm GM host: the GM backend running in a browser tab instead of the
 
 Not in the solution: browser-wasm needs the `wasm-tools` workload. The composition is in the solution and tested on the desktop (`WasmHostTests`).
 
-## What works so far
+## The GM's page
 
-Only the self-check (`index.html?selfcheck`). It runs the host in the tab as it would host a game, with Central left out: the real `WebRTCSessionService` and `GameLobby` serve an in-page player (`SelfCheck/selfcheck-player.js`, speaking the player client's data channel protocol) connected through in-page signaling. Each step prints a `CHECK` line:
+`index.html` is the GM's page: log in to Central, see your games, create one, start or stop its session. The host runs in the tab (`HostPage`, `HostGm`): the GM's Central tokens are held by the host (a browser can't keep Central's cookies), and the GM's actions run the same shared endpoints as everyone, with those tokens. The logged-in GM is the host's local admin. Central is the page's own origin (serve the host from Central's domain and no CORS is needed), or `?central=https://...`; otherwise Central's `CORS_ORIGIN` must list the page's origin. Keep the tab open while playing. Games live in memory: a reload starts empty (and creates new Central sessions).
+
+`gm-e2e.cjs` drives it against a real Central in headless Chrome (log in, create a game, start, stop):
+
+```bash
+# a Central of your own: CORS_ORIGIN=http://localhost:<port>, an account (npm run seed with ADMIN_USERNAME/ADMIN_PASSWORD)
+node NordvikManager.Wasm.Host/gm-e2e.cjs <AppBundle> [path/to/playwright] <port> <centralUrl> <user> <password>
+```
+
+## The self-check
+
+`index.html?selfcheck`. It runs the host in the tab as it would host a game, with Central left out: the real `WebRTCSessionService` and `GameLobby` serve an in-page player (`SelfCheck/selfcheck-player.js`, speaking the player client's data channel protocol) connected through in-page signaling. Each step prints a `CHECK` line:
 
 - the host builds (every registration validated);
 - MediatR + EF Core (in memory) create and list a game;
@@ -20,7 +31,8 @@ Only the self-check (`index.html?selfcheck`). It runs the host in the tab as it 
 ## Not yet
 
 - Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered.
-- Hosting a real game: login, Central session, signaling to Central (Central's CORS must allow the host's origin), where the host is served from.
+- A real player client joining a game hosted in the tab (the GM side works against a real Central; the player side has only been the self-check's in-page player).
+- Where the host page is served from (from Central's domain, it needs no CORS).
 - Keeping games across a reload (browser storage).
 
 ## Run the self-check
