@@ -1,8 +1,39 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>NordvikManager GM host</title></head>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NordvikManager GM host</title>
+<style>
+  :root { --bg: #f5f6f8; --fg: #1d222b; --muted: #5d6573; --line: #d6dae2; --accent: #2f5fd0; --ok: #1e7a46; --error: #b3261e; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171d; --fg: #e3e7ee; --muted: #9aa2b1; --line: #2c3240; --accent: #82a4ff; --ok: #6fd39b; --error: #ff8a80; color-scheme: dark; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; padding: 32px max(16px, env(safe-area-inset-left)); }
+  main, header { max-width: 640px; margin: 0 auto; }
+  header { display: grid; gap: 4px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  #main { display: grid; gap: 16px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 10px; }
+  label { display: grid; gap: 4px; }
+  input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: white; cursor: pointer; justify-self: start; }
+  button.stop, #logout { background: transparent; color: var(--accent); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  li .name { flex: 1 1 160px; }
+  #status { min-height: 1.5em; }
+  #status[data-kind="ok"] { color: var(--ok); }
+  #status[data-kind="error"] { color: var(--error); }
+</style>
+</head>
 <body>
-<p id="status">Starting the GM host…</p>
+<header>
+  <h1>Game host</h1>
+  <p class="muted">Your game runs in this tab. Central: <span id="central">…</span></p>
+  <p id="status" role="status">Starting the host…</p>
+</header>
+<main id="main"></main>
 <script type="module" src="./main.js"></script>
 </body>
 </html>

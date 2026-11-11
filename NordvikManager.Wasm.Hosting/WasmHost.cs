@@ -62,7 +62,12 @@ namespace NordvikManager.Wasm.Hosting
             services.AddSingleton<IPeerConnectionFactory>(new BrowserPeerConnectionFactory(rtc));
             // Tunnelled REST from the shared endpoints; routes not moved to them yet answer 501.
             services.AddSingleton(ApiRoutes.Shared);
-            services.AddSingleton<IWebRTCApiDispatcher, ApiRouter>();
+            services.AddSingleton<ApiRouter>();
+            services.AddSingleton<IWebRTCApiDispatcher>(sp => sp.GetRequiredService<ApiRouter>());
+
+            // The GM using this host in its own tab, and so its local admin.
+            services.AddSingleton<HostGm>();
+            services.AddSingleton<ILocalAdminService, HostLocalAdmin>();
         }
 
         /// <summary>Every registration is checked as the provider is built.</summary>
