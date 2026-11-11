@@ -29,7 +29,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             seed.SaveChanges();
         }
 
-        private GetResourceContentCommandHandler Handler() => new(Mapper, Db, storage.Object, new NordvikManager.Imaging.SkiaThumbnailGenerator());
+        private GetResourceContentCommandHandler Handler() => new(Mapper, Db, storage.Object, new NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator());
 
         private Task<ResourceContent?> Get(Guid id, string? ifVersion = null, bool thumbnail = false) =>
             Handler().Handle(new GetResourceContentCommand { GameID = gameId, ID = id, IfVersion = ifVersion, Thumbnail = thumbnail }, CancellationToken.None);

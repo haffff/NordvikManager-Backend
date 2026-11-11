@@ -13,7 +13,7 @@ namespace NordvikManager.Application.Helpers
 
     /// <summary>
     /// Makes resource thumbnails. Provided by the host, so Application carries no imaging
-    /// library: the native server uses SkiaSharp (NordvikManager.Imaging). A host that registers
+    /// library: the native server uses SkiaSharp (NordvikManager.Infrastructure.Imaging). A host that registers
     /// none gets <see cref="NoThumbnailGenerator"/>, and resources are served at full size.
     /// </summary>
     public interface IThumbnailGenerator

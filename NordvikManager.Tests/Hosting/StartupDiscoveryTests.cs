@@ -57,7 +57,7 @@ namespace NordvikManager.Tests.Hosting
         [Fact]
         public void ConfigureServices_RegistersTheSkiaThumbnailGenerator()
         {
-            Assert.Equal(new[] { typeof(NordvikManager.Imaging.SkiaThumbnailGenerator) },
+            Assert.Equal(new[] { typeof(NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator) },
                 ConfiguredServices().Where(d => d.ServiceType == typeof(NordvikManager.Application.Helpers.IThumbnailGenerator)).Select(d => d.ImplementationType));
         }
     }
