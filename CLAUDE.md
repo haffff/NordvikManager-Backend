@@ -55,6 +55,7 @@ A browser-wasm GM host has no ASP.NET Core, so the REST requests players tunnel 
 - `ApiRouteCoverageTests`: every controller action has an endpoint with its method and path, and every endpoint is an action's, except the controllers about running a server, listed with why in `ApiNativeOnly` (Backup, Meta, ServerSettings, Update; their logic stays in the controller, and the browser host answers them 501 "only on a GM server"). A server-only action of a shared controller is an endpoint with `[ApiRoute(..., NativeOnly = true)]` (Materials' disk linking). A new controller action needs an endpoint, or a place on that list.
 - `ApiResult.File` (raw bytes) is native only: the data channel can't carry it, so clients read `api/materials/resource` through its base64 variant (`ResourceWebRTC`; both tunnels rewrite to it).
 - The browser host has fixed server settings (`FixedServerSettingsStore`: constant upload limits, nothing to change).
+- The browser host ships the built-in addons (`NordvikManager/BuiltInAddons/`) in the runtime's filesystem (`WasmFilesToIncludeInFileSystem` → `/BuiltInAddons/`; `AppContext.BaseDirectory` is `/` there), so `BuiltInAddons` finds them unchanged. It has no addon registry: `AddonRepositoryService` only fails when the registry is actually used, so installs that don't need it (built-ins) work without one.
 
 ## CQRS with MediatR
 

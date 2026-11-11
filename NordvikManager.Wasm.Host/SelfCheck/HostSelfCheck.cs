@@ -119,6 +119,33 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                 });
                 _gameId = gameId.ToString();
 
+                await Check("built-in addons in the bundle (Basics installed in a new game)", async () =>
+                {
+                    var builtIns = provider.GetRequiredService<NordvikManager.Application.Services.IBuiltInAddons>().GetAll();
+                    if (!builtIns.Any(b => b.Key == "basics"))
+                        throw new Exception($"no Basics under {AppContext.BaseDirectory} ({builtIns.Count} built-ins)");
+                    using var scope = provider.CreateScope();
+                    var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+                    var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+                    var withBasics = await mediator.Send(new AddGameCommand { User = gm, Name = "Basics game", PasswordRequired = false, AddonsSelected = new[] { "basics" } })
+                        ?? throw new Exception("AddGameCommand gave no game");
+                    var system = await mediator.Send(new GetSystemPlayerCommand { GameID = withBasics });
+                    // AddGame installs them in the background (as natively): wait for it.
+                    var started = DateTime.UtcNow;
+                    while (true)
+                    {
+                        using var check = provider.CreateScope();
+                        var addons = await check.ServiceProvider.GetRequiredService<IMediator>().Send(
+                            new NordvikManager.Application.Commands.Addons.GetAddons.GetAddonsCommand { GameId = withBasics, Player = system, Flat = true });
+                        if (addons.Any(a => a.Key == "basics"))
+                            break;
+                        if (DateTime.UtcNow - started > TimeSpan.FromSeconds(30))
+                            throw new Exception($"Basics wasn't installed within 30 s ({string.Join(", ", addons.Select(a => a.Key))})");
+                        await Task.Delay(250);
+                    }
+                    return $"{string.Join(", ", builtIns.Select(b => $"{b.Key} {b.Version}"))}; installed in a new game in {(DateTime.UtcNow - started).TotalSeconds:0.0} s";
+                });
+
                 await Check("lobby opened", async () =>
                 {
                     // As SessionController.StartSession does, before any peer connects.
