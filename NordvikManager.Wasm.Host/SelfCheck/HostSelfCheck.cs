@@ -77,6 +77,33 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return Task.FromResult("every registration validated");
                 });
 
+                await Check("games kept in the browser (SQLite in wasm, migrations, IndexedDB, restore)", async () =>
+                {
+                    await JsBrowserFileStore.InitializeAsync();
+                    var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+                    var name = "Kept " + Guid.NewGuid().ToString("N")[..8];
+                    const string first = "/selfcheck/first.db", second = "/selfcheck/second.db";
+                    await using (var sqliteHost = WasmHost.Build(WasmHost.Configuration("http://localhost:9", databasePath: first), new JsBrowserRtc(),
+                        services => services.Replace(ServiceDescriptor.Singleton<ISignalingService>(new InPageSignaling()))))
+                    {
+                        using var scope = sqliteHost.CreateScope();
+                        await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new AddGameCommand { User = gm, Name = name, PasswordRequired = false });
+                        Expect(await new DatabaseFilePersistence(first, new JsBrowserFileStore("selfcheck.db")).SaveIfChangedAsync(), "nothing saved");
+                    }
+
+                    // As after a reload: a new file, from what IndexedDB holds.
+                    Expect(await DatabaseFilePersistence.RestoreAsync(second, new JsBrowserFileStore("selfcheck.db")), "nothing restored");
+                    await using var reloaded = WasmHost.Build(WasmHost.Configuration("http://localhost:9", databasePath: second), new JsBrowserRtc(),
+                        services => services.Replace(ServiceDescriptor.Singleton<ISignalingService>(new InPageSignaling())));
+                    using var check = reloaded.CreateScope();
+                    var list = await check.ServiceProvider.GetRequiredService<IMediator>().Send(new GetGameListCommand { UserId = gm.Id });
+                    Expect(list.GameItemList?.Any(g => g.Name == name) == true, "the game isn't there after restoring");
+                    var bytes = new System.IO.FileInfo(second).Length;
+                    // Building these hosts pointed the process-wide PermissionsExtension at them: back to the main one.
+                    NordvikManager.Application.ApplicationLayerModule.AfterBuild(provider);
+                    return $"'{name}' saved, restored into a new file, listed ({bytes} bytes)";
+                });
+
                 Guid gameId = default;
                 await Check("game created and listed (MediatR, EF Core in memory)", async () =>
                 {

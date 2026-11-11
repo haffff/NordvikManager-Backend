@@ -90,6 +90,8 @@ async function stopGame(game) {
 export function start(centralUrl) {
     globalThis.getDotnetRuntime(0).getAssemblyExports("NordvikManager.Wasm.Host").then((exports) => {
         host = exports.NordvikManager.Wasm.Host.HostPage;
+        // Hidden or closing: save what changed since the last periodic save.
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") host.SaveNow(); });
         $("#central").textContent = centralUrl;
         renderLogin();
         status("Ready.");
