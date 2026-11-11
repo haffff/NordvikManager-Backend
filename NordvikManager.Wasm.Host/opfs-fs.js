@@ -15,8 +15,9 @@ const ENOENT = 44;
 const EPERM = 63;
 const EINVAL = 28;
 
-// Read by the self-check (HostSelfCheck): how many times a file was flushed.
-globalThis.nordvikOpfs = { flushes: 0 };
+// Read by the self-check (HostSelfCheck): how many times a file was flushed, and how many of
+// those were SQLite's fsync (a commit).
+globalThis.nordvikOpfs = { flushes: 0, fsyncs: 0 };
 
 function flush(entry) {
   entry.handle.flush();
@@ -89,7 +90,10 @@ export async function mountOpfs(FS, mountPoint, names, { seed = async () => null
   const fileStreamOps = {
     open() {},
     close(stream) { flush(stream.node.entry); },
-    fsync(stream) { flush(stream.node.entry); },
+    fsync(stream) {
+      globalThis.nordvikOpfs.fsyncs++;
+      flush(stream.node.entry);
+    },
     read(stream, buffer, offset, length, position) {
       return stream.node.entry.handle.read(buffer.subarray(offset, offset + length), { at: position });
     },

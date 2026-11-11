@@ -35,6 +35,10 @@ async function open(context, url, until, ms) {
   return { page, seen, line: await Promise.race([line, new Promise((r) => setTimeout(() => r(null), ms))]) };
 }
 
+// The writer prints "WRITING n commits" after its nth commit; the checker "... N rows ...".
+const committed = (lines) => Math.max(0, ...lines.map((l) => Number(/^WRITING (\d+) /.exec(l)?.[1] ?? 0)));
+const rows = (line) => Number(/ (\d+) rows/.exec(line ?? '')?.[1] ?? -1);
+
 server.listen(0, async () => {
   const url = `http://localhost:${server.address().port}/index.html`;
   fs.rmSync(profile, { recursive: true, force: true });
@@ -47,20 +51,23 @@ server.listen(0, async () => {
     await first.page.evaluate(() => globalThis.nordvikHostWorker.terminate());
     await first.page.close();
     const afterTerminate = await open(browser, `${url}?selfcheck=crash-check`, /^INTEGRITY /, 120000);
-    step('intact after the worker was terminated mid-commit', /^INTEGRITY ok /.test(afterTerminate.line ?? ''), afterTerminate.line ?? afterTerminate.seen.slice(-5).join(' | '));
+    step('intact after the worker was terminated mid-commit', /^INTEGRITY ok /.test(afterTerminate.line ?? '') && !/HOT MAGIC/.test(afterTerminate.line), afterTerminate.line ?? afterTerminate.seen.slice(-5).join(' | '));
+    step('no commit the writer reported was lost', rows(afterTerminate.line) >= committed(first.seen), `${rows(afterTerminate.line)} rows, ${committed(first.seen)} reported`);
     await afterTerminate.page.close();
     await browser.close();
 
     const writer = await chromium.launchPersistentContext(profile, browserOptions);
-    const { line: writing } = await open(writer, `${url}?selfcheck=crash-write`, /^WRITING /, 120000);
+    const { line: writing, seen: writerSeen } = await open(writer, `${url}?selfcheck=crash-write`, /^WRITING /, 120000);
     step('the writer commits in a loop again', !!writing, writing);
     await new Promise((r) => setTimeout(r, 1500)); // well into the loop
+    const reported = committed(writerSeen); // before the close: whatever it prints after can't count
     await writer.close(); // the tab, its worker and any commit in flight: gone
     step('the browser was closed mid-write', true);
 
     const checker = await chromium.launchPersistentContext(profile, browserOptions);
     const { line: verdict, seen } = await open(checker, `${url}?selfcheck=crash-check`, /^INTEGRITY /, 120000);
-    step('intact after the browser was closed mid-commit', /^INTEGRITY ok /.test(verdict ?? ''), verdict ?? seen.slice(-5).join(' | '));
+    step('intact after the browser was closed mid-commit', /^INTEGRITY ok /.test(verdict ?? '') && !/HOT MAGIC/.test(verdict), verdict ?? seen.slice(-5).join(' | '));
+    step('no commit the writer reported was lost (browser closed)', rows(verdict) >= reported, `${rows(verdict)} rows, ${reported} reported`);
     await checker.close();
   } catch (e) {
     failed = true;

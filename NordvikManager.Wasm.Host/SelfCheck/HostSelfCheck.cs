@@ -32,8 +32,10 @@ namespace NordvikManager.Wasm.Host.SelfCheck
         /// <summary>The self-check's own file on OPFS (host-worker.js mounts it; the GM's data.db isn't touched).</summary>
         public const string SelfCheckDatabase = "/opfs/selfcheck.db";
 
-        // How many times opfs-fs.js flushed a file to OPFS (fsync and close).
+        // How many times opfs-fs.js flushed a file to OPFS (fsync, close, delete), and how many of
+        // those were SQLite's fsync.
         private static double Flushes() => JSHost.GlobalThis.GetPropertyAsJSObject("nordvikOpfs")?.GetPropertyAsDouble("flushes") ?? 0;
+        private static double Fsyncs() => JSHost.GlobalThis.GetPropertyAsJSObject("nordvikOpfs")?.GetPropertyAsDouble("fsyncs") ?? 0;
 
         [JSImport("init", "selfcheck-player")] private static partial Task PlayerInit();
         [JSImport("offer", "selfcheck-player")] private static partial Task<string> PlayerOffer();
@@ -114,9 +116,24 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     var list = await check.ServiceProvider.GetRequiredService<IMediator>().Send(new GetGameListCommand { UserId = gm.Id });
                     Expect(list.GameItemList?.Any(g => g.Name == name) == true, "the game isn't there after a rebuild");
                     var bytes = new System.IO.FileInfo(SelfCheckDatabase).Length;
+
+                    // A commit on a connection that stays open: SQLite's own fsync reaches OPFS
+                    // (not only the flushes of closing or deleting a file).
+                    using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={SelfCheckDatabase};Pooling=False"))
+                    {
+                        connection.Open();
+                        using var setup = connection.CreateCommand();
+                        setup.CommandText = "CREATE TABLE IF NOT EXISTS selfcheck_commits (x);";
+                        setup.ExecuteNonQuery();
+                        var fsyncsBefore = Fsyncs();
+                        using var insert = connection.CreateCommand();
+                        insert.CommandText = "INSERT INTO selfcheck_commits VALUES (1);";
+                        insert.ExecuteNonQuery();
+                        Expect(Fsyncs() > fsyncsBefore, "a commit didn't fsync to OPFS");
+                    }
                     // Building these hosts pointed the process-wide PermissionsExtension at them: back to the main one.
                     NordvikManager.Application.ApplicationLayerModule.AfterBuild(provider);
-                    return $"'{name}' kept, listed by a new host ({bytes} bytes on OPFS, {flushed} flushes)";
+                    return $"'{name}' kept, listed by a new host ({bytes} bytes on OPFS, {flushed} flushes); a commit fsyncs to OPFS";
                 });
 
                 Guid gameId = default;

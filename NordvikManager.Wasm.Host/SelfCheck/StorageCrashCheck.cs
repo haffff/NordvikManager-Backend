@@ -69,13 +69,27 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                             bad++;
                     }
                 }
-                var journal = System.IO.File.Exists(Database + "-journal");
-                Console.WriteLine($"INTEGRITY {(integrity == "ok" && bad == 0 && rows > 0 ? "ok" : "BAD")} integrity_check={integrity}, {rows} rows, {bad} damaged, journal left={journal}");
+                Console.WriteLine($"INTEGRITY {(integrity == "ok" && bad == 0 && rows > 0 ? "ok" : "BAD")} integrity_check={integrity}, {rows} rows, {bad} damaged, journal left: {Journal()}");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"INTEGRITY BAD {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        // A journal still there after SQLite opened the file: a hot one (its header starts with
+        // SQLite's journal magic, d9 d5 05 f9 20 a1 63 d7) should have been rolled back and deleted;
+        // one without it (an unfinished header) isn't hot and is harmless.
+        private static string Journal()
+        {
+            var path = Database + "-journal";
+            if (!System.IO.File.Exists(path))
+                return "none";
+            var head = new byte[12];
+            using var file = System.IO.File.OpenRead(path);
+            var read = file.Read(head, 0, head.Length);
+            var magic = read >= 8 && head.AsSpan(0, 8).SequenceEqual(new byte[] { 0xd9, 0xd5, 0x05, 0xf9, 0x20, 0xa1, 0x63, 0xd7 });
+            return $"{file.Length} bytes, {(magic ? "HOT MAGIC" : "no magic")}, starts {Convert.ToHexString(head, 0, read)}";
         }
 
         private static long Checksum(byte[] data)
