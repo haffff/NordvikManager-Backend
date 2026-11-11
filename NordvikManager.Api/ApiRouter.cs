@@ -20,7 +20,7 @@ namespace NordvikManager.Api
     /// <list type="bullet">
     /// <item>the caller is the channel's player, as GetUserIntoItemsMiddleWare makes it;</item>
     /// <item>the session's game id replaces any the client sent;</item>
-    /// <item>parameters are bound as model binding does (query, JSON body, data annotations);</item>
+    /// <item>parameters are bound as model binding does (query, JSON body, data annotations, [ApiService] as [FromServices]);</item>
     /// <item>exceptions answer as HandleExceptionMiddleWare does (<see cref="ApiExceptions"/>);</item>
     /// <item>the body is written with the controllers' JSON (<see cref="ApiJson"/>), Ok(null) as 204.</item>
     /// </list>
@@ -55,7 +55,7 @@ namespace NordvikManager.Api
 
         private async Task<(int Status, JToken? Body)> AnswerAsync(WebRTCApiRequest request, PlayerDTO player, Guid gameId)
         {
-            var route = _routes.Find(request.Method, request.Path);
+            var route = _routes.Match(request.Method, request.Path, out var routeValues);
             if (route == null)
             {
                 _logger.LogWarning("Not available in this host yet: {Method} {Path} from {Player}", request.Method, request.Path, player.Name);
@@ -72,17 +72,30 @@ namespace NordvikManager.Api
                 foreach (var (key, value) in request.Query ?? new Dictionary<string, string>())
                     query[key] = value;
                 query["gameId"] = gameId.ToString();
+                // A route value binds before the query, as in ASP.NET Core.
+                foreach (var (key, value) in routeValues)
+                    query[key] = value;
 
                 var user = await CallerAsync(player, services);
-                if (!TryBind(route.Handler, query, request.Body, user, out var arguments, out var bindingError))
+                // A tunnelled request carries no cookies, and takes none back (as the native tunnel).
+                var context = new ApiContext(user, gameId);
+                if (!TryBind(route.Handler, query, request.Body, user, context, services, out var arguments, out var bindingError))
                     return (400, Json(new { error = bindingError }));
 
-                var endpoint = ActivatorUtilities.CreateInstance(services, route.EndpointType);
-                var result = await (Task<ApiResult>)route.Handler.Invoke(endpoint, arguments)!;
+                // An endpoint logging as its controller did takes a plain ILogger (the controller
+                // passes its own); here it gets one named after the endpoint.
+                var endpoint = TakesLogger(route.EndpointType)
+                    ? ActivatorUtilities.CreateInstance(services, route.EndpointType, services.GetRequiredService<ILoggerFactory>().CreateLogger(route.EndpointType))
+                    : ActivatorUtilities.CreateInstance(services, route.EndpointType);
+                var returned = route.Handler.Invoke(endpoint, arguments);
+                var result = returned is Task<ApiResult> pending ? await pending : (ApiResult)returned!;
 
                 // ASP.NET Core answers an Ok with a null body as 204.
                 if (result.HasBody && result.Body == null && result.StatusCode == 200)
                     return (204, null);
+                // Content(json, "application/json"): the JSON as written.
+                if (result.Kind == ApiResultKind.Content)
+                    return (result.StatusCode, result.Body is string raw && raw.Length > 0 ? JToken.Parse(raw) : null);
                 if (result.StatusCode >= 400)
                     _logger.LogInformation("{Method} {Path} from {Player} → {Status}", request.Method, route.Path, player.Name, result.StatusCode);
                 return (result.StatusCode, result.HasBody ? Json(result.Body) : null);
@@ -116,7 +129,7 @@ namespace NordvikManager.Api
         }
 
         private static bool TryBind(MethodInfo method, IReadOnlyDictionary<string, string> query, JToken? body, User? user,
-            out object?[] arguments, out string? error)
+            ApiContext context, IServiceProvider services, out object?[] arguments, out string? error)
         {
             var parameters = method.GetParameters();
             arguments = new object?[parameters.Length];
@@ -127,12 +140,23 @@ namespace NordvikManager.Api
                 var type = parameter.ParameterType;
                 if (type == typeof(User))
                     arguments[i] = user;
+                else if (type == typeof(ApiContext))
+                    arguments[i] = context;
+                else if (parameter.GetCustomAttribute<ApiServiceAttribute>() != null)
+                    arguments[i] = services.GetRequiredService(type);
                 else if (type == typeof(CancellationToken))
                     arguments[i] = CancellationToken.None;
-                else if (IsSimple(type))
+                else if (IsSimple(type) && parameter.GetCustomAttribute<ApiBodyAttribute>() == null)
                 {
                     if (!query.TryGetValue(parameter.Name!, out var text))
+                    {
+                        if (parameter.GetCustomAttribute<RequiredAttribute>() != null)
+                        {
+                            error = $"The {parameter.Name} field is required.";
+                            return false;
+                        }
                         arguments[i] = parameter.HasDefaultValue ? parameter.DefaultValue : Default(type);
+                    }
                     else if (!TryConvert(text, type, out arguments[i]))
                     {
                         error = $"The value '{text}' is not valid for {parameter.Name}.";
@@ -175,6 +199,9 @@ namespace NordvikManager.Api
             }
             return true;
         }
+
+        private static bool TakesLogger(Type type)
+            => type.GetConstructors().Any(c => c.GetParameters().Any(p => p.ParameterType == typeof(ILogger)));
 
         private static bool IsSimple(Type type)
         {

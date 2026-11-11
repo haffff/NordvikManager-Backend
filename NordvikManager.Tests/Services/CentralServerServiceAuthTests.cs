@@ -118,6 +118,21 @@ namespace NordvikManager.Tests.Services
                 _central.Requests.Select(r => r.RequestUri!.AbsolutePath));
         }
 
+        // A caller who brought no access token (a tunnelled player request carries no cookies)
+        // must not be refreshed with the host's own refresh token: in the browser host that is
+        // the GM's login, and the retry would act as the GM.
+        [Fact]
+        public async Task Unauthorized_ForACallerWithoutAnAccessToken_IsNotRefreshedWithTheHostsToken()
+        {
+            _tokens.Setup(t => t.RefreshToken).Returns("gm-refresh");
+            _central.Respond = _ => new HttpResponseMessage(HttpStatusCode.Unauthorized);
+
+            Assert.Null(await _service.GetKeyboardBindingsAsync(""));
+
+            Assert.Single(_central.Requests);
+            _tokens.Verify(t => t.Refreshed(It.IsAny<CentralTokens>()), Times.Never);
+        }
+
         [Fact]
         public async Task Unauthorized_WithoutARefreshToken_GivesUp()
         {

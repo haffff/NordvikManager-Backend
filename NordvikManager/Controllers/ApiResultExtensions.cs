@@ -15,6 +15,7 @@ namespace NordvikManager.Controllers
             ApiResultKind.NotFound => result.HasBody ? new NotFoundObjectResult(result.Body) : new NotFoundResult(),
             ApiResultKind.Conflict => new ConflictObjectResult(result.Body),
             ApiResultKind.NoContent => new NoContentResult(),
+            ApiResultKind.Content => new ContentResult { Content = (string?)result.Body, ContentType = result.ContentType, StatusCode = result.StatusCode },
             _ => result.HasBody ? new ObjectResult(result.Body) { StatusCode = result.StatusCode } : new StatusCodeResult(result.StatusCode),
         };
     }

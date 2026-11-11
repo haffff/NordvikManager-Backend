@@ -138,9 +138,24 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return $"200, game '{response["body"]?["name"]}'";
                 });
 
-                await Check("a route not moved to the shared endpoints yet answers 501", async () =>
+                await Check("tunnelled session/whoami gives the channel's game (ApiContext)", async () =>
+                {
+                    var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/session/whoami"), "the api-response"));
+                    Expect((int?)response["status"] == 200, "status " + response["status"]);
+                    Expect((string?)response["body"]?["gameId"] == _gameId, "game " + response["body"]?["gameId"]);
+                    return "200, the session's game";
+                });
+
+                await Check("tunnelled user/userinfo gives the caller", async () =>
                 {
                     var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/user/userinfo"), "the api-response"));
+                    Expect((int?)response["status"] == 200, "status " + response["status"] + " " + response["body"]);
+                    return "200 " + response["body"]?.ToString(Newtonsoft.Json.Formatting.None);
+                });
+
+                await Check("a route not moved to the shared endpoints yet answers 501", async () =>
+                {
+                    var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/meta"), "the api-response"));
                     Expect((int?)response["status"] == 501, "status " + response["status"]);
                     return (string?)response["body"]?["error"] ?? "";
                 });

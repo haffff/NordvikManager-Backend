@@ -84,7 +84,7 @@ namespace NordvikManager.Tests.WasmHost
         {
             Assert.IsType<NordvikManager.Api.ApiRouter>(_provider.GetRequiredService<IWebRTCApiDispatcher>());
 
-            var json = await Tunnel("/api/user/userinfo", new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice" }, Guid.NewGuid());
+            var json = await Tunnel("/api/meta", new PlayerDTO { Id = Guid.NewGuid(), Name = "Alice" }, Guid.NewGuid());
 
             Assert.Equal(501, (int?)json["status"]);
             Assert.Equal(NordvikManager.Api.ApiRouter.NotAvailableMessage, (string?)json["body"]?["error"]);

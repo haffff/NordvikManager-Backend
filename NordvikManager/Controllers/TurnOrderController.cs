@@ -1,10 +1,8 @@
-using NordvikManager.Application.Commands.Game.Player.GetPlayer;
-using NordvikManager.Application.Commands.TurnOrder;
-using NordvikManager.Application.Exceptions;
-using NordvikManager.Domain.Entities.Auth;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NordvikManager.Api.Endpoints;
+using NordvikManager.Domain.Entities.Auth;
 using System;
 using System.Threading.Tasks;
 
@@ -13,40 +11,25 @@ namespace NordvikManager.Controllers
     /// <summary>
     /// Reading a map's turn order. Changes go over the turnorder_* WebSocket commands;
     /// after each, clients fetch the order here, each seeing only what they may.
+    /// The logic is in <see cref="TurnOrderEndpoints"/>, shared with hosts without ASP.NET Core.
     /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     public class TurnOrderController : Controller
     {
-        private readonly IMediator mediator;
+        private readonly TurnOrderEndpoints endpoints;
 
         public TurnOrderController(IMediator mediator)
         {
-            this.mediator = mediator;
+            endpoints = new TurnOrderEndpoints(mediator);
         }
+
+        private User? CurrentUser => HttpContext.Items["User"] as User;
 
         /// <summary>The map's turn order: hidden entries left out unless the player can edit the map.</summary>
         [HttpGet]
         [Authorize]
         public async Task<IActionResult> Get(Guid gameId, Guid mapId)
-        {
-            var user = HttpContext.Items["User"] as User;
-            var player = await mediator.Send(new GetPlayerCommand { User = user, GameID = gameId });
-            if (player?.Player == null)
-                return Unauthorized(new { error = "You are not a player in this game" });
-
-            try
-            {
-                return Ok(await mediator.Send(new GetTurnOrderCommand { GameId = gameId, MapId = mapId, Player = player.Player }));
-            }
-            catch (PermissionException)
-            {
-                return Forbid();
-            }
-            catch (ResourceNotFoundException)
-            {
-                return NotFound();
-            }
-        }
+            => (await endpoints.Get(CurrentUser, gameId, mapId)).ToActionResult();
     }
 }
