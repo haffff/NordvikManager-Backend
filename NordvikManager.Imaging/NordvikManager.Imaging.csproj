@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The native server's image work (SkiaSharp), kept out of Application so a browser-wasm
+       GM host doesn't download SkiaSharp and its native binaries. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.152.1" />
+    <!-- The main SkiaSharp package only bundles native binaries for Windows/macOS by default —
+         Linux needs this opt-in explicitly, or SkiaSharp throws DllNotFoundException at runtime
+         (this is what broke thumbnail generation on the ubuntu-latest CI runner). -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.152.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
+  </ItemGroup>
+
+</Project>

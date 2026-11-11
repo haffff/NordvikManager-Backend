@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NordvikManager.Application.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NordvikManager.RealTime", "NordvikManager.RealTime\NordvikManager.RealTime.csproj", "{456F2DEA-BA9D-44CF-AB7F-9EB516B0D147}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NordvikManager.Imaging", "NordvikManager.Imaging\NordvikManager.Imaging.csproj", "{57455004-38BB-4A87-9753-F66445DBFB42}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{456F2DEA-BA9D-44CF-AB7F-9EB516B0D147}.Release|x64.Build.0 = Release|Any CPU
 		{456F2DEA-BA9D-44CF-AB7F-9EB516B0D147}.Release|x86.ActiveCfg = Release|Any CPU
 		{456F2DEA-BA9D-44CF-AB7F-9EB516B0D147}.Release|x86.Build.0 = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|x64.Build.0 = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Debug|x86.Build.0 = Debug|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|Any CPU.Build.0 = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|x64.ActiveCfg = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|x64.Build.0 = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|x86.ActiveCfg = Release|Any CPU
+		{57455004-38BB-4A87-9753-F66445DBFB42}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
