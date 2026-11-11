@@ -60,10 +60,12 @@ namespace NordvikManager.Wasm.Hosting
         }
 
         /// <summary>Every registration is checked as the provider is built.</summary>
-        public static ServiceProvider Build(IConfiguration configuration, IBrowserRtc rtc)
+        /// <param name="configure">Changes after the host's own registrations (e.g. another <see cref="ISignalingService"/>).</param>
+        public static ServiceProvider Build(IConfiguration configuration, IBrowserRtc rtc, Action<IServiceCollection>? configure = null)
         {
             var services = new ServiceCollection();
             ConfigureServices(services, configuration, rtc);
+            configure?.Invoke(services);
             var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
             ApplicationLayerModule.AfterBuild(provider);
             return provider;

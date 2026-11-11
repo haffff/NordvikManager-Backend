@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The browser-wasm GM host: starts WasmHost (NordvikManager.Wasm.Hosting) in a browser tab.
+       For now it only has the self-check (?selfcheck, see README.md). Not in the solution:
+       browser-wasm needs the wasm-tools workload. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmMainJSPath>main.js</WasmMainJSPath>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Browser-wasm turns reflection-based System.Text.Json off by default; the shared
+         layers use it. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- MediatR, the handler/step scans, EF Core and Jint work by reflection. -->
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <WasmExtraFilesToDeploy Include="index.html" />
+    <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player.js" Link="selfcheck-player.js" />
+    <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Wasm.Hosting\NordvikManager.Wasm.Hosting.csproj" />
+  </ItemGroup>
+
+</Project>
