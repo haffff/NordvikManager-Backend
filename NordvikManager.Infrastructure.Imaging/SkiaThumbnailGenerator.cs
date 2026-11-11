@@ -1,7 +1,7 @@
 using NordvikManager.Application.Helpers;
 using SkiaSharp;
 
-namespace NordvikManager.Imaging
+namespace NordvikManager.Infrastructure.Imaging
 {
     /// <summary>Resource thumbnails with SkiaSharp.</summary>
     public sealed class SkiaThumbnailGenerator : IThumbnailGenerator

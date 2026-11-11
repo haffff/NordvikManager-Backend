@@ -9,7 +9,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
 {
     public class GetResourceThumbnailCommandHandlerTests : HandlerTestBase
     {
-        private GetResourceThumbnailCommandHandler Handler() => new(Mapper, Db, Storage, new NordvikManager.Imaging.SkiaThumbnailGenerator());
+        private GetResourceThumbnailCommandHandler Handler() => new(Mapper, Db, Storage, new NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator());
 
         // A real, decodable PNG — needed since the handler actually runs it through
         // SkiaSharp's decoder, not just a byte-array stand-in.

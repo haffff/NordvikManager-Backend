@@ -63,7 +63,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="MySql.EntityFrameworkCore" Version="10.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.7" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.1.7" />
@@ -90,7 +89,8 @@
     <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
     <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
-    <ProjectReference Include="..\NordvikManager.Imaging\NordvikManager.Imaging.csproj" />
+    <ProjectReference Include="..\NordvikManager.Infrastructure.Imaging\NordvikManager.Infrastructure.Imaging.csproj" />
+    <ProjectReference Include="..\NordvikManager.Infrastructure.MySql\NordvikManager.Infrastructure.MySql.csproj" />
   </ItemGroup>
 
 </Project>

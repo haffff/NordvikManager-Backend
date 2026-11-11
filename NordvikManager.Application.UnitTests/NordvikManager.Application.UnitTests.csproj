@@ -21,7 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
-    <ProjectReference Include="..\NordvikManager.Imaging\NordvikManager.Imaging.csproj" />
+    <ProjectReference Include="..\NordvikManager.Infrastructure.Imaging\NordvikManager.Infrastructure.Imaging.csproj" />
   </ItemGroup>
 
   <ItemGroup>
