@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A real-browser check of NordvikManager.Wasm.WebRtc (see README.md). Not in the solution:
+       browser-wasm needs the wasm-tools workload. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <WasmMainJSPath>main.js</WasmMainJSPath>
+    <AssemblyName>WasmRtcHarness</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Browser-wasm turns reflection-based System.Text.Json off by default; the shared layers
+         use it (as does Newtonsoft, unaffected), so a GM host turns it back on. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <WasmExtraFilesToDeploy Include="index.html" />
+    <WasmExtraFilesToDeploy Include="player.js" />
+    <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Wasm.WebRtc\NordvikManager.Wasm.WebRtc.csproj" />
+  </ItemGroup>
+
+</Project>
