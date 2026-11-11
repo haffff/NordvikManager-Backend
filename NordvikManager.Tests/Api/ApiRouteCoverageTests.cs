@@ -18,7 +18,7 @@ namespace NordvikManager.Tests.Api
         // Answered 501 by hosts without ASP.NET Core until moved to endpoints (BattleMap and Map show how).
         private static readonly HashSet<string> NotMigratedYet = new()
         {
-            "Addon", "Backup", "GameList", "Materials", "Meta", "ServerSettings", "Session", "Update", "User",
+            "Addon", "Backup", "Materials", "Meta", "ServerSettings", "Update",
         };
 
         private static IEnumerable<Type> Controllers() => typeof(Startup).Assembly.GetTypes()

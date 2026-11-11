@@ -55,7 +55,7 @@ namespace NordvikManager.Api
 
         private async Task<(int Status, JToken? Body)> AnswerAsync(WebRTCApiRequest request, PlayerDTO player, Guid gameId)
         {
-            var route = _routes.Find(request.Method, request.Path);
+            var route = _routes.Match(request.Method, request.Path, out var routeValues);
             if (route == null)
             {
                 _logger.LogWarning("Not available in this host yet: {Method} {Path} from {Player}", request.Method, request.Path, player.Name);
@@ -72,12 +72,21 @@ namespace NordvikManager.Api
                 foreach (var (key, value) in request.Query ?? new Dictionary<string, string>())
                     query[key] = value;
                 query["gameId"] = gameId.ToString();
+                // A route value binds before the query, as in ASP.NET Core.
+                foreach (var (key, value) in routeValues)
+                    query[key] = value;
 
                 var user = await CallerAsync(player, services);
-                if (!TryBind(route.Handler, query, request.Body, user, services, out var arguments, out var bindingError))
+                // A tunnelled request carries no cookies, and takes none back (as the native tunnel).
+                var context = new ApiContext(user, gameId);
+                if (!TryBind(route.Handler, query, request.Body, user, context, services, out var arguments, out var bindingError))
                     return (400, Json(new { error = bindingError }));
 
-                var endpoint = ActivatorUtilities.CreateInstance(services, route.EndpointType);
+                // An endpoint logging as its controller did takes a plain ILogger (the controller
+                // passes its own); here it gets one named after the endpoint.
+                var endpoint = TakesLogger(route.EndpointType)
+                    ? ActivatorUtilities.CreateInstance(services, route.EndpointType, services.GetRequiredService<ILoggerFactory>().CreateLogger(route.EndpointType))
+                    : ActivatorUtilities.CreateInstance(services, route.EndpointType);
                 var returned = route.Handler.Invoke(endpoint, arguments);
                 var result = returned is Task<ApiResult> pending ? await pending : (ApiResult)returned!;
 
@@ -120,7 +129,7 @@ namespace NordvikManager.Api
         }
 
         private static bool TryBind(MethodInfo method, IReadOnlyDictionary<string, string> query, JToken? body, User? user,
-            IServiceProvider services, out object?[] arguments, out string? error)
+            ApiContext context, IServiceProvider services, out object?[] arguments, out string? error)
         {
             var parameters = method.GetParameters();
             arguments = new object?[parameters.Length];
@@ -131,6 +140,8 @@ namespace NordvikManager.Api
                 var type = parameter.ParameterType;
                 if (type == typeof(User))
                     arguments[i] = user;
+                else if (type == typeof(ApiContext))
+                    arguments[i] = context;
                 else if (parameter.GetCustomAttribute<ApiServiceAttribute>() != null)
                     arguments[i] = services.GetRequiredService(type);
                 else if (type == typeof(CancellationToken))
@@ -188,6 +199,9 @@ namespace NordvikManager.Api
             }
             return true;
         }
+
+        private static bool TakesLogger(Type type)
+            => type.GetConstructors().Any(c => c.GetParameters().Any(p => p.ParameterType == typeof(ILogger)));
 
         private static bool IsSimple(Type type)
         {

@@ -34,8 +34,47 @@ namespace NordvikManager.Api
             return new ApiRoutes(routes);
         }
 
+        /// <summary>The route registered with exactly this method and path (template), if any.</summary>
         public ApiRoute? Find(string method, string path)
             => _routes.TryGetValue(Key(method.ToUpperInvariant(), path.Trim('/')), out var route) ? route : null;
+
+        /// <summary>
+        /// The route a request path answers to: an exact one, or a template whose {name} segments
+        /// match any one segment (their values in <paramref name="routeValues"/>).
+        /// </summary>
+        public ApiRoute? Match(string method, string path, out Dictionary<string, string> routeValues)
+        {
+            routeValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            method = method.ToUpperInvariant();
+            path = path.Trim('/');
+            if (_routes.TryGetValue(Key(method, path), out var exact))
+                return exact;
+
+            var segments = path.Split('/');
+            foreach (var route in _routes.Values)
+            {
+                if (route.Method != method || !route.Path.Contains('{'))
+                    continue;
+                var template = route.Path.Split('/');
+                if (template.Length != segments.Length)
+                    continue;
+                var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var matches = true;
+                for (var i = 0; i < template.Length && matches; i++)
+                {
+                    if (template[i].StartsWith('{') && template[i].EndsWith('}'))
+                        values[template[i][1..^1]] = Uri.UnescapeDataString(segments[i]);
+                    else
+                        matches = string.Equals(template[i], segments[i], StringComparison.OrdinalIgnoreCase);
+                }
+                if (matches)
+                {
+                    routeValues = values;
+                    return route;
+                }
+            }
+            return null;
+        }
 
         private static string Key(string method, string path) => method + " " + path;
     }

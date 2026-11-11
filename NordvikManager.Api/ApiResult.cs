@@ -51,7 +51,7 @@ namespace NordvikManager.Api
         public static ApiResult NoContent() => new(ApiResultKind.NoContent, 204, false, null);
 
         /// <summary>Text written as is (Content(text, contentType)); the router reads it as JSON.</summary>
-        public static ApiResult Content(string text, string contentType) => new(ApiResultKind.Content, 200, true, text) { ContentType = contentType };
+        public static ApiResult Content(string text, string? contentType, int statusCode = 200) => new(ApiResultKind.Content, statusCode, true, text) { ContentType = contentType };
 
         public string? ContentType { get; private init; }
         public static ApiResult Status(int statusCode, object? body = null) => new(ApiResultKind.Status, statusCode, body != null, body);
