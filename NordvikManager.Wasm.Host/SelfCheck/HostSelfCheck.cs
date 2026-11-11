@@ -121,9 +121,26 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return "200";
                 });
 
-                await Check("tunnelled REST request answered 501 (no dispatcher yet)", async () =>
+                await Check("tunnelled GetPlayer answered by the shared endpoint (ApiRouter)", async () =>
+                {
+                    var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/battlemap/GetPlayer"), "the api-response"));
+                    Expect((int?)response["status"] == 200, "status " + response["status"] + " " + response["body"]);
+                    Expect((string?)response["body"]?["name"] == "Alice", "player " + response["body"]?["name"]);
+                    Expect((string?)response["body"]?["centralServerUserId"] == PlayerUserId, "camelCase body with the caller's id");
+                    return "200, player Alice";
+                });
+
+                await Check("tunnelled GetFullGame answered by the shared endpoint", async () =>
                 {
                     var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/battlemap/GetFullGame"), "the api-response"));
+                    Expect((int?)response["status"] == 200, "status " + response["status"] + " " + response["body"]);
+                    Expect((string?)response["body"]?["name"] == "Self-check game", "game " + response["body"]?["name"]);
+                    return $"200, game '{response["body"]?["name"]}'";
+                });
+
+                await Check("a route not moved to the shared endpoints yet answers 501", async () =>
+                {
+                    var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/user/userinfo"), "the api-response"));
                     Expect((int?)response["status"] == 501, "status " + response["status"]);
                     return (string?)response["body"]?["error"] ?? "";
                 });

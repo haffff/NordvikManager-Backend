@@ -29,6 +29,7 @@ Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 NordvikManager (API/Presentation: ASP.NET Core host, controllers, SIPSorcery; picks the adapters below)
     → NordvikManager.Infrastructure.Imaging  (adapter: SkiaSharp thumbnails — native host only)
     → NordvikManager.Infrastructure.MySql  (adapter: MySQL provider — native host only)
+    → NordvikManager.Api  (REST endpoints without ASP.NET Core: the controllers' logic, ApiRouter)
     → NordvikManager.RealTime  (lobby, WebSocket-command handlers, action engine, WebRTC session + signaling)
     → NordvikManager.Application  (commands, handlers, DTOs, services)
     → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
@@ -45,6 +46,13 @@ Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikM
 - `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` or `NordvikManager.RealTime` (controllers, WebRTC dispatchers, WebSocket handlers, services).
 - The UI/Presentation layer (`NordvikManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
 - When you need a new DB operation in a dispatcher or controller, create a Command + Handler pair in `Application/Commands/` and call `mediator.Send()`.
+
+## Shared REST endpoints (NordvikManager.Api)
+
+A browser-wasm GM host has no ASP.NET Core, so the REST requests players tunnel over the data channel are answered there by `ApiRouter` from shared endpoint classes (`NordvikManager.Api/Endpoints/`), instead of replaying them through the ASP.NET pipeline as the native server does. A controller moved to this pattern keeps its routes and attributes and only delegates: `(await endpoints.X(CurrentUser, ...)).ToActionResult()`. The endpoint method has the action's logic, returns `ApiResult` (`Ok`, `Unauthorized`, ... mapped by `ToActionResult` to the same MVC result types) and carries `[ApiRoute("GET", "api/Controller/Action")]`; a `User` parameter is the caller, simple parameters bind from the query, one complex one from the JSON body.
+
+- `ApiJson` is the JSON of both (Startup's `AddJsonOptions` calls `ApiJson.Configure`; `ApiJsonTests`); `ApiExceptions` maps exceptions for both (`HandleExceptionMiddleWare` uses it).
+- `ApiRouteCoverageTests`: every action of a moved controller has an endpoint with its method and path, every endpoint is an action's; controllers not moved yet are listed there (`NotMigratedYet`) and answer 501 in the browser host. Moved so far: BattleMap, Map.
 
 ## CQRS with MediatR
 
@@ -159,5 +167,5 @@ Key appsettings entries:
 1. Entity model in `Domain/Entities/` implementing `IEntity` or `INamedEntity`
 2. Command + Handler pair in `Application/Commands/{Feature}/`
 3. DTO in `Application/DataTransferObjects/` + mapping in `Mapping/AppMapper.cs` (and its snapshot pair)
-4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`
+4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`. For a controller already moved to shared endpoints (see below), the logic goes in its `NordvikManager.Api/Endpoints/*Endpoints` method with an `[ApiRoute]`, and the action only delegates
 5. Tests in `Application.UnitTests/Commands/` (handler) and `NordvikManager.Tests/Controllers/` (controller)

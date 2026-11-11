@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NordvikManager.Api;
 using NordvikManager.Application;
 using NordvikManager.Infrastructure;
 using NordvikManager.Services.Implementations;
@@ -56,7 +57,9 @@ namespace NordvikManager.Wasm.Hosting
             services.AddSingleton<ICentralTokenStore>(sp => sp.GetRequiredService<HeldCentralTokens>());
             services.AddSingleton<ICentralServerService, CentralServerService>();
             services.AddSingleton<IPeerConnectionFactory>(new BrowserPeerConnectionFactory(rtc));
-            services.AddSingleton<IWebRTCApiDispatcher, UnavailableApiDispatcher>();
+            // Tunnelled REST from the shared endpoints; routes not moved to them yet answer 501.
+            services.AddSingleton(ApiRoutes.Shared);
+            services.AddSingleton<IWebRTCApiDispatcher, ApiRouter>();
         }
 
         /// <summary>Every registration is checked as the provider is built.</summary>
