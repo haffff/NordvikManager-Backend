@@ -17,20 +17,25 @@ namespace NordvikManager.Wasm.Hosting
     /// The browser-wasm GM host's services: the same layers as the native server
     /// (<see cref="InfrastructureLayerModule"/>, <see cref="ApplicationLayerModule"/>,
     /// <see cref="RealTimeLayerModule"/>), with the browser's own WebRTC, the host's own Central
-    /// tokens, WebSocket-only signaling and an in-memory database.
+    /// tokens, WebSocket-only signaling, and a SQLite file kept in the browser
+    /// (<see cref="DatabaseFilePersistence"/>), or an in-memory database.
     /// </summary>
     public static class WasmHost
     {
         /// <summary>The host's settings; <paramref name="overrides"/> replace any of them.</summary>
-        public static IConfiguration Configuration(string centralServerUrl, IDictionary<string, string?>? overrides = null)
+        /// <param name="databasePath">
+        /// A SQLite file (as the native server uses), migrated when the host is built; without one,
+        /// an in-memory database that lasts as long as the host.
+        /// </param>
+        public static IConfiguration Configuration(string centralServerUrl, IDictionary<string, string?>? overrides = null, string? databasePath = null)
         {
             var settings = new Dictionary<string, string?>
             {
                 ["CentralServerUrl"] = centralServerUrl,
                 // The long-polling handshake can't go through fetch().
                 ["Signaling:Transport"] = "WebSocket",
-                ["UseSqlite"] = "false",
-                ["ConnectionStrings:DBData"] = "nordvik-wasm-host",
+                ["UseSqlite"] = databasePath == null ? "false" : "true",
+                ["ConnectionStrings:DBData"] = databasePath == null ? "nordvik-wasm-host" : $"Data Source={databasePath}",
             };
             foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
                 settings[key] = value;
@@ -48,7 +53,8 @@ namespace NordvikManager.Wasm.Hosting
                 logging.SetMinimumLevel(LogLevel.Information);
             });
 
-            // An in-memory database (named by ConnectionStrings:DBData) until browser storage.
+            // SQLite (UseSqlite: Infrastructure's own), or else an in-memory database named by
+            // ConnectionStrings:DBData.
             InfrastructureLayerModule.Register(services, configuration,
                 (options, name) => options.UseInMemoryDatabase(name ?? "nordvik-wasm-host"));
             // No settings file in a browser: fixed settings, constant upload limits.
@@ -79,7 +85,26 @@ namespace NordvikManager.Wasm.Hosting
             configure?.Invoke(services);
             var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
             ApplicationLayerModule.AfterBuild(provider);
+            if (configuration.GetValue<bool>("UseSqlite"))
+                MigrateSqlite(provider, configuration);
             return provider;
+        }
+
+        // As the native server's startup: the real migrations. Then a rollback journal instead of
+        // WAL (what EF Core sets up), so a commit is in the file itself and the file alone can be
+        // copied to the browser's storage.
+        private static void MigrateSqlite(IServiceProvider provider, IConfiguration configuration)
+        {
+            // SQLite doesn't make the file's folder (a browser's filesystem starts empty).
+            var file = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(configuration.GetConnectionString("DBData")).DataSource;
+            var folder = Path.GetDirectoryName(Path.GetFullPath(file));
+            if (!string.IsNullOrEmpty(folder))
+                Directory.CreateDirectory(folder);
+
+            using var scope = provider.CreateScope();
+            var database = ((DbContext)scope.ServiceProvider.GetRequiredService<NordvikManager.Infrastructure.Interfaces.IDbContext>()).Database;
+            database.Migrate();
+            database.ExecuteSqlRaw("PRAGMA journal_mode=DELETE;");
         }
     }
 }

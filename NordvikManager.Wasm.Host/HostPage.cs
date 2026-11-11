@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NordvikManager.Wasm.Hosting;
@@ -12,12 +13,18 @@ namespace NordvikManager.Wasm.Host
     /// The GM's page: the host runs in this tab (WasmHost, the browser's WebRTC, signaling to
     /// Central), and gm-page.js is its UI, calling <see cref="Login"/> and <see cref="Call"/>.
     /// Central is the page's own origin (the host served from Central needs no CORS), or
-    /// <c>?central=</c>. Runs until the tab closes.
+    /// <c>?central=</c>. Runs until the tab closes. Games are kept in the browser: a SQLite file
+    /// restored from IndexedDB before the host starts and saved back after changes
+    /// (<see cref="DatabaseFilePersistence"/>).
     /// </summary>
     [SupportedOSPlatform("browser")]
     public static partial class HostPage
     {
+        private const string DatabasePath = "/nordvik/data.db";
+        private static readonly TimeSpan SaveEvery = TimeSpan.FromSeconds(2);
+
         private static HostGm? _gm;
+        private static DatabaseFilePersistence? _persistence;
 
         [JSImport("start", "gm-page")]
         private static partial void StartPage(string centralUrl);
@@ -29,8 +36,19 @@ namespace NordvikManager.Wasm.Host
                 ?? location.GetPropertyAsString("origin")!;
 
             await JsBrowserRtc.InitializeAsync();
-            var provider = WasmHost.Build(WasmHost.Configuration(central), new JsBrowserRtc());
+            await JsBrowserFileStore.InitializeAsync();
+
+            // The games saved in this browser, back before the host opens them.
+            var store = new JsBrowserFileStore();
+            var restored = await DatabaseFilePersistence.RestoreAsync(DatabasePath, store);
+            Console.WriteLine(restored ? "Games restored from this browser." : "No games saved in this browser yet.");
+
+            var provider = WasmHost.Build(WasmHost.Configuration(central, databasePath: DatabasePath), new JsBrowserRtc());
             _gm = provider.GetRequiredService<HostGm>();
+            _persistence = new DatabaseFilePersistence(DatabasePath, store,
+                provider.GetRequiredService<ILoggerFactory>().CreateLogger<DatabaseFilePersistence>());
+            await _persistence.SaveIfChangedAsync(); // a new or migrated database
+            _ = _persistence.RunAsync(SaveEvery);
 
             await JSHost.ImportAsync("gm-page", "../gm-page.js");
             StartPage(central);
@@ -45,6 +63,14 @@ namespace NordvikManager.Wasm.Host
 
         [JSExport]
         internal static void Logout() => _gm!.Logout();
+
+        /// <summary>Saves changes now (the page is being hidden or closed).</summary>
+        [JSExport]
+        internal static async Task SaveNow()
+        {
+            if (_persistence != null)
+                await _persistence.SaveIfChangedAsync();
+        }
 
         [JSExport]
         internal static string? UserName() => _gm?.User?.UserName;

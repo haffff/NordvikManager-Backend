@@ -96,6 +96,25 @@ async function ensurePlayerAccount() {
     step('after a reload the player reconnects and the chat history comes back', back);
     await player.screenshot({ path: path.join(path.dirname(playerRoot), 'player-chat.png') });
 
+    // The GM reloads the host page: the game and its chat come back from this browser's storage.
+    await gm.waitForTimeout(3000); // past the periodic save
+    await gm.reload();
+    await gm.waitForSelector('#login-submit', { timeout: 60000 });
+    await gm.fill('#username', GM.user);
+    await gm.fill('#password', GM.password);
+    await gm.click('#login-submit');
+    await gm.waitForSelector('li[data-game] .start', { timeout: 30000 });
+    const listed = await gm.$$eval('li[data-game] .name', (names) => names.map((n) => n.textContent));
+    step('after the GM reloads, the game is still there', listed.includes('Player join test'), listed.join(', '));
+    await gm.click('li[data-game] .start');
+    await gm.waitForFunction(() => /is running|Could not start/.test(document.querySelector('#status').textContent), null, { timeout: 60000 });
+    const restarted = await gm.textContent('#status');
+    step('the game starts again on the same Central session', restarted.includes(sessionId), restarted);
+
+    await player.reload();
+    const kept = await player.waitForSelector(`text=${message}`, { timeout: 90000 }).then(() => true, () => false);
+    step('the player rejoins and the chat from before the GM reload is there', kept);
+
     const notAnswered = hostLog.filter((l) => /Not available in this host|only available on a GM server|→ (4|5)\d\d|returning (4|5)\d\d/.test(l));
     console.log('HOST NON-2xx ANSWERS:\n' + (notAnswered.join('\n') || '(none)'));
     const errors = playerLog.filter((l) => /error|failed|501|500/i.test(l));

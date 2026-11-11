@@ -15,6 +15,8 @@
     <!-- Browser-wasm turns reflection-based System.Text.Json off by default; the shared
          layers use it. -->
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- Links SQLite (SQLitePCLRaw's e_sqlite3.a) into the runtime: games are kept in a SQLite file. -->
+    <WasmBuildNative>true</WasmBuildNative>
     <!-- MediatR, the handler/step scans, EF Core and Jint work by reflection. -->
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
@@ -22,6 +24,7 @@
   <ItemGroup>
     <WasmExtraFilesToDeploy Include="index.html" />
     <WasmExtraFilesToDeploy Include="gm-page.js" />
+    <WasmExtraFilesToDeploy Include="nordvik-storage.js" />
     <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player.js" Link="selfcheck-player.js" />
     <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
   </ItemGroup>
