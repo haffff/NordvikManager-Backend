@@ -44,7 +44,15 @@ namespace NordvikManager.Api
 
         public async Task DispatchAsync(WebRTCApiRequest request, PlayerDTO player, Guid gameId, IPlayerConnection connection)
         {
-            var (status, body) = await AnswerAsync(request, player, gameId);
+            // The session's game id is the authoritative one for this channel.
+            var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in request.Query ?? new Dictionary<string, string>())
+                query[key] = value;
+            query["gameId"] = gameId.ToString();
+
+            var (status, body) = await AnswerAsync(request.Method, request.Path, query, request.Body, player.Name,
+                // A tunnelled request carries no cookies, and takes none back (as the native tunnel).
+                async services => new ApiContext(await CallerAsync(player, services), gameId));
             await connection.SendMessageToPlayer(new
             {
                 type = "api-response",
@@ -54,20 +62,35 @@ namespace NordvikManager.Api
             });
         }
 
-        private async Task<(int Status, JToken? Body)> AnswerAsync(WebRTCApiRequest request, PlayerDTO player, Guid gameId)
+        /// <summary>
+        /// A call by the host itself (its own GM, in its own page), with the host's context: its
+        /// caller and its Central tokens as cookies. Never reached from a data channel; the context's
+        /// cookie changes are for the host to keep. Binding, errors and JSON as for the tunnel.
+        /// </summary>
+        public Task<(int Status, JToken? Body)> InvokeAsync(ApiContext context, string method, string path,
+            JToken? body = null, IReadOnlyDictionary<string, string>? query = null)
+        {
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in query ?? new Dictionary<string, string>())
+                values[key] = value;
+            return AnswerAsync(method, path, values, body, context.User?.UserName, _ => Task.FromResult(context));
+        }
+
+        private async Task<(int Status, JToken? Body)> AnswerAsync(string method, string requestPath, Dictionary<string, string> query,
+            JToken? requestBody, string? callerName, Func<IServiceProvider, Task<ApiContext>> makeContext)
         {
             // As WebRTCInProcessDispatcher: the binary resource read goes to its base64 variant.
-            var path = request.Path.Trim('/');
-            if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase)
+            var path = requestPath.Trim('/');
+            if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(path, "api/materials/resource", StringComparison.OrdinalIgnoreCase))
                 path = "api/materials/ResourceWebRTC";
 
-            var route = _routes.Match(request.Method, path, out var routeValues);
+            var route = _routes.Match(method, path, out var routeValues);
             if (route == null && ApiNativeOnly.IsNativeOnlyPath(path))
                 return (501, Json(new { error = NativeOnlyMessage }));
             if (route == null)
             {
-                _logger.LogWarning("Not available in this host yet: {Method} {Path} from {Player}", request.Method, request.Path, player.Name);
+                _logger.LogWarning("Not available in this host yet: {Method} {Path} from {Player}", method, requestPath, callerName);
                 return (501, Json(new { error = NotAvailableMessage }));
             }
             if (route.NativeOnly)
@@ -78,19 +101,12 @@ namespace NordvikManager.Api
                 using var scope = _scopes.CreateScope();
                 var services = scope.ServiceProvider;
 
-                // The session's game id is the authoritative one for this channel.
-                var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var (key, value) in request.Query ?? new Dictionary<string, string>())
-                    query[key] = value;
-                query["gameId"] = gameId.ToString();
                 // A route value binds before the query, as in ASP.NET Core.
                 foreach (var (key, value) in routeValues)
                     query[key] = value;
 
-                var user = await CallerAsync(player, services);
-                // A tunnelled request carries no cookies, and takes none back (as the native tunnel).
-                var context = new ApiContext(user, gameId);
-                if (!TryBind(route.Handler, query, request.Body, user, context, services, out var arguments, out var bindingError))
+                var context = await makeContext(services);
+                if (!TryBind(route.Handler, query, requestBody, context.User, context, services, out var arguments, out var bindingError))
                     return (400, Json(new { error = bindingError }));
 
                 // An endpoint logging as its controller did takes a plain ILogger (the controller
@@ -111,7 +127,7 @@ namespace NordvikManager.Api
                 if (result.Kind == ApiResultKind.Content)
                     return (result.StatusCode, result.Body is string raw && raw.Length > 0 ? JToken.Parse(raw) : null);
                 if (result.StatusCode >= 400)
-                    _logger.LogInformation("{Method} {Path} from {Player} → {Status}", request.Method, route.Path, player.Name, result.StatusCode);
+                    _logger.LogInformation("{Method} {Path} from {Player} → {Status}", method, route.Path, callerName, result.StatusCode);
                 return (result.StatusCode, result.HasBody ? Json(result.Body) : null);
             }
             catch (Exception thrown)
@@ -119,7 +135,7 @@ namespace NordvikManager.Api
                 var exception = thrown is TargetInvocationException { InnerException: { } inner } ? inner : thrown;
                 var (status, level) = ApiExceptions.Map(exception);
                 _logger.Log(level, exception, "{ExceptionType} on {Method} {Path} — returning {StatusCode}",
-                    exception.GetType().Name, request.Method, route.Path, status);
+                    exception.GetType().Name, method, route.Path, status);
                 return (status, Json(new { error = exception.Message }));
             }
         }

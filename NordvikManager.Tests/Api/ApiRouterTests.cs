@@ -238,6 +238,32 @@ namespace NordvikManager.Tests.Api
             Assert.Equal(500, (int)(await Send("GET", "api/sample/bytes"))["status"]!);
         }
 
+        // The host GM's own calls (never a data channel's): the context is the host's, cookies
+        // and all; changes stay on it for the host to keep; errors map as for the tunnel.
+        [Fact]
+        public async Task InvokeAsync_UsesTheHostsContext_AndKeepsItsCookieChanges()
+        {
+            var gm = new User { Id = "central-gm", UserName = "gm" };
+            var context = new ApiContext(gm, null, name => name == "CentralToken" ? "held-token" : null);
+
+            var (status, body) = await _router.InvokeAsync(context, "GET", "api/sample/hostcookie");
+
+            Assert.Equal(200, status);
+            Assert.Equal("held-token", (string?)body!["token"]);
+            Assert.Null(body["tunnelGame"]); // not a tunnelled request (nulls are left out)
+            Assert.Equal(new ApiCookieChange("CentralToken", "renewed"), Assert.Single(context.CookieChanges));
+        }
+
+        [Fact]
+        public async Task InvokeAsync_MapsExceptions_AsTheTunnelDoes()
+        {
+            var (status, body) = await _router.InvokeAsync(new ApiContext(null, null), "GET", "api/sample/throw",
+                query: new Dictionary<string, string> { ["kind"] = "permission" });
+
+            Assert.Equal(403, status);
+            Assert.Equal(Recorded.Thrown!.Message, (string?)body!["error"]);
+        }
+
         [Fact]
         public async Task AnUnknownRoute_Is501()
         {
@@ -299,6 +325,13 @@ namespace NordvikManager.Tests.Api
 
             [ApiRoute("POST", "api/Sample/{gameId}/start")]
             public ApiResult Start(Guid gameId, string mode) => ApiResult.Ok(new { gameId, mode });
+
+            [ApiRoute("GET", "api/Sample/HostCookie")]
+            public ApiResult HostCookie(ApiContext context)
+            {
+                context.SetCookie("CentralToken", "renewed");
+                return ApiResult.Ok(new { token = context.ReadCookie("CentralToken"), tunnelGame = context.TunnelGameId });
+            }
 
             [ApiRoute("GET", "api/Sample/Context")]
             public ApiResult Context(ApiContext context)

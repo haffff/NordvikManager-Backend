@@ -25,6 +25,8 @@ namespace NordvikManager.Services.Interfaces
 
         public void Set(CentralTokens tokens) => _tokens = tokens;
 
+        public void Clear() => _tokens = null;
+
         // A refresh without a new refresh token keeps the one held.
         public void Refreshed(CentralTokens tokens) => _tokens = tokens with { RefreshToken = tokens.RefreshToken ?? _tokens?.RefreshToken };
     }
