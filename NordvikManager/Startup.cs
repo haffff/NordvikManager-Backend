@@ -79,6 +79,7 @@ namespace NordvikManager
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
             services.AddSingleton<SecurityHeadersMiddleWare>();
+            services.AddSingleton<ICentralTokenStore, HttpContextCentralTokenStore>();
             services.AddSingleton<ICentralServerService, CentralServerService>();
             services.AddSingleton<RequestDelegateHolder>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();

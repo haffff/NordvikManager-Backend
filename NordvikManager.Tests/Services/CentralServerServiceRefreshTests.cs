@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using NordvikManager.Services.Implementations;
@@ -41,7 +40,7 @@ namespace NordvikManager.Tests.Services
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["CentralServerUrl"] = "http://central.test" })
                 .Build();
-            return (new CentralServerService(factory.Object, new Mock<IHttpContextAccessor>().Object, config), central);
+            return (new CentralServerService(factory.Object, new Mock<NordvikManager.Services.Interfaces.ICentralTokenStore>().Object, config), central);
         }
 
         [Fact]

@@ -1,6 +1,5 @@
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Services.Interfaces;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -19,16 +18,16 @@ namespace NordvikManager.Services.Implementations
     public class CentralServerService : ICentralServerService
     {
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ICentralTokenStore _tokens;
         private readonly string _centralServerUrl;
 
         public CentralServerService(
             IHttpClientFactory httpClientFactory,
-            IHttpContextAccessor httpContextAccessor,
+            ICentralTokenStore tokens,
             IConfiguration configuration)
         {
             _httpClientFactory = httpClientFactory;
-            _httpContextAccessor = httpContextAccessor;
+            _tokens = tokens;
             _centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
         }
 
@@ -36,9 +35,9 @@ namespace NordvikManager.Services.Implementations
         /// Sends an authenticated request against the Central Server. The CentralToken JWT is
         /// short-lived (15 min) and nothing proactively refreshes it, so long-running GM sessions
         /// eventually start getting 401s on every Central-proxied call. On a 401 here, this
-        /// transparently refreshes via the CentralRefreshToken cookie (same flow as the
-        /// RefreshCentralToken endpoint), persists the new CentralToken cookie for subsequent
-        /// requests, and retries once.
+        /// transparently refreshes with the host's refresh token (<see cref="ICentralTokenStore"/>:
+        /// the native server's CentralRefreshToken cookie, same flow as the RefreshCentralToken
+        /// endpoint), hands the new tokens back to the host for subsequent requests, and retries once.
         /// </summary>
         private async Task<HttpResponseMessage> SendAuthenticatedAsync(
             string accessToken,
@@ -48,8 +47,7 @@ namespace NordvikManager.Services.Implementations
             if (response.StatusCode != HttpStatusCode.Unauthorized)
                 return response;
 
-            var httpContext = _httpContextAccessor.HttpContext;
-            var refreshToken = httpContext?.Request.Cookies["CentralRefreshToken"];
+            var refreshToken = _tokens.RefreshToken;
             if (string.IsNullOrEmpty(refreshToken))
                 return response;
 
@@ -57,8 +55,7 @@ namespace NordvikManager.Services.Implementations
             if (tokens == null)
                 return response;
 
-            if (httpContext != null)
-                CentralAuthCookies.WriteRefreshed(httpContext.Response, tokens);
+            _tokens.Refreshed(tokens);
 
             return await send(CreateAuthenticatedClient(tokens.AccessToken));
         }
@@ -291,11 +288,13 @@ namespace NordvikManager.Services.Implementations
 
             if (!response.IsSuccessStatusCode) return null;
 
-            string? centralToken = ExtractCookieValue(response, "Authorization");
-            if (centralToken == null) return null;
-
             var json = await response.Content.ReadAsStringAsync();
             var body2 = JObject.Parse(json);
+
+            // The body has it (a browser-wasm host can't read Set-Cookie); the cookie is the
+            // fallback for a Central that only set it there.
+            string? centralToken = body2["accessToken"]?.Value<string>() ?? ExtractCookieValue(response, "Authorization");
+            if (string.IsNullOrEmpty(centralToken)) return null;
 
             // Decode (not validate) the Central Server JWT to extract user identity.
             // We trust the claims because we just received this token directly from the Central Server
@@ -468,8 +467,10 @@ namespace NordvikManager.Services.Implementations
 
         private HttpClient CreateAuthenticatedClient(string accessToken)
         {
+            // Bearer rather than a Cookie header, which a browser-wasm host can't set; Central
+            // takes either (Bearer since 2026-09-06).
             var client = _httpClientFactory.CreateClient();
-            client.DefaultRequestHeaders.Add("Cookie", $"Authorization={accessToken}");
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             return client;
         }
 
