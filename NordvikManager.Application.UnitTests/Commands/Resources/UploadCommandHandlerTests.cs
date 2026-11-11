@@ -216,5 +216,59 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.Equal(CommandResponse.WrongArguments, (await handler.Handle(Cmd(c => c.Name = " "), CancellationToken.None)).Item1);
             await Assert.ThrowsAsync<PermissionException>(() => handler.Handle(Cmd(c => { c.Player = Other; c.StorageKind = ResourceStorageKind.ManagedFile; }), CancellationToken.None));
         }
+
+        // ── An export to import: kept until the GM accepts it, never a resource ──
+
+        private Task<(CommandResponse, Guid?)> StartImport(PlayerDTO player, long size = 4, UploadQuota? quota = null) =>
+            new StartUploadCommandHandler(Db, Mapper, _store, quota).Handle(new StartUploadCommand
+            {
+                GameId = _game.Id, Player = player, Name = "hero.card.json", MimeType = "application/json", Size = size, ForImport = true,
+            }, CancellationToken.None);
+
+        [Fact]
+        public async Task StartImport_NeedsEditOnTheGame()
+        {
+            var (response, id) = await StartImport(Me);
+            Assert.Equal(CommandResponse.Ok, response);
+            Assert.True(_store.Get(id!.Value)!.ForImport);
+
+            await Assert.ThrowsAsync<PermissionException>(() => StartImport(Other));
+        }
+
+        [Fact]
+        public async Task StartImport_TakesAtMost512Mb()
+        {
+            Assert.Equal(CommandResponse.Ok, (await StartImport(Me, size: Uploads.MaxImportSize)).Item1);
+            Assert.Equal(CommandResponse.WrongArguments, (await StartImport(Me, size: Uploads.MaxImportSize + 1)).Item1);
+        }
+
+        [Fact]
+        public async Task StartImport_IgnoresTheUploadLimits_AndDoesNotCountTowardsThem()
+        {
+            var settings = new Mock<NordvikManager.Infrastructure.Interfaces.IServerSettingsStore>();
+            var saved = new NordvikManager.Infrastructure.Services.Settings.ServerSettings();
+            saved.Uploads.GmGameLimitMb = 1;
+            settings.Setup(s => s.Load()).Returns(saved);
+            var quota = new UploadQuota(settings.Object, Storage, _store);
+
+            Assert.Equal(CommandResponse.Ok, (await StartImport(Me, size: 2 * 1024 * 1024, quota: quota)).Item1);
+            // a Materials upload next to it still has the GMs' whole MB
+            var (response, _) = await new StartUploadCommandHandler(Db, Mapper, _store, quota).Handle(new StartUploadCommand
+            {
+                GameId = _game.Id, Player = Me, Name = "map.png", Size = 900 * 1024,
+            }, CancellationToken.None);
+            Assert.Equal(CommandResponse.Ok, response);
+        }
+
+        [Fact]
+        public async Task FinishImport_IsRefused_AndTheUploadKept()
+        {
+            var (_, id) = await StartImport(Me, size: 2);
+            await Part(id!.Value, 0, new byte[] { 1, 2 });
+
+            Assert.Equal(CommandResponse.WrongArguments, (await Finish(id.Value)).Response);
+            Assert.NotNull(_store.Get(id.Value));
+            _mediator.VerifyNoOtherCalls();
+        }
     }
 }

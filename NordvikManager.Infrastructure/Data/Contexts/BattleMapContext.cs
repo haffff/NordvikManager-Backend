@@ -231,6 +231,7 @@ namespace NordvikManager.Data.Contexts
         public DbSet<PlaylistModel>? Playlists { get; set; }
         public DbSet<TurnOrderModel>? TurnOrders { get; set; }
         public DbSet<TurnOrderEntryModel>? TurnOrderEntries { get; set; }
+        public DbSet<ServerSecretModel> ServerSecrets { get; set; }
 
         private sealed class BlobRow
         {

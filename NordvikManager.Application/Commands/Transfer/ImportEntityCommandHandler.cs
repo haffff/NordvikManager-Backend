@@ -43,14 +43,7 @@ namespace NordvikManager.Application.Commands.Transfer
             game.ThrowIfNoPermission(playerId, Permission.Edit);
 
             var export = request.Export;
-            if (export == null || export.Format != EntityExportDto.FormatName || export.Data == null)
-                throw WrongArgumentsException.Because("This isn't an exported map, card or playlist.");
-            if (export.Version < 1 || export.Version > EntityExportDto.CurrentVersion)
-                throw WrongArgumentsException.Because("This file was exported by a newer version of NordvikManager.");
-            if (!EntityTransferKinds.IsKnown(export.Kind))
-                throw WrongArgumentsException.Because($"Can't import a \"{export.Kind}\".");
-            if (request.ExpectedKind != null && request.ExpectedKind != export.Kind)
-                throw WrongArgumentsException.Because($"This file holds a {export.Kind}, not a {request.ExpectedKind}.");
+            EntityExports.Check(export, request.ExpectedKind);
 
             var entryType = EntityTransferKinds.TreeEntryType(export.Kind);
             var treeParentId = request.TreeParentId;

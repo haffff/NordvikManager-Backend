@@ -1,10 +1,12 @@
 using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.ServerSecrets;
 using NordvikManager.Application.Commands.Transfer;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.DataTransferObjects.Transfer;
 using NordvikManager.Application.Exceptions;
 using NordvikManager.Domain.Enums;
 using NordvikManager.Controllers;
+using NordvikManager.Controllers.Requests;
 using NordvikManager.Domain.Entities.Auth;
 using NordvikManager.Services;
 using MediatR;
@@ -23,6 +25,11 @@ namespace NordvikManager.Tests.Controllers
         private readonly PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "GM" };
         private readonly Guid _gameId = Guid.NewGuid();
         private readonly Guid _cardId = Guid.NewGuid();
+
+        public TransferControllerTests()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetServerSecretCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(new byte[32]);
+        }
 
         private TransferController Controller()
         {
@@ -84,70 +91,110 @@ namespace NordvikManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task Import_ReadsTheFileAndAnswersTheNewIdWithWhatIsMissing()
+        public async Task Export_IsSignedByThisServer()
+        {
+            IsPlayer();
+            var secret = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+            _mediator.Setup(m => m.Send(It.IsAny<ExportEntityCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(Card());
+            _mediator.Setup(m => m.Send(It.Is<GetServerSecretCommand>(c => c.Name == ExportSignature.SecretName), It.IsAny<CancellationToken>())).ReturnsAsync(secret);
+
+            var result = Assert.IsType<ContentResult>(await Controller().Export(_gameId, "card", _cardId));
+
+            Assert.True(ExportSignature.IsSignedWith(ExportSignature.Read(result.Content!), secret));
+        }
+
+        private readonly Guid _uploadId = Guid.NewGuid();
+
+        private static ImportInspectionDto Inspection(bool needsConfirmation = false) => new()
+        {
+            Kind = "card", Name = "Hero", NeedsConfirmation = needsConfirmation,
+            Code = needsConfirmation ? new() { new ImportedCodeDto { Card = "Hero", Files = new() { "sheet.html" } } } : new(),
+        };
+
+        [Fact]
+        public async Task Import_TakesTheUploadAndAnswersTheNewIdWithWhatIsMissing()
         {
             IsPlayer();
             var folder = Guid.NewGuid();
             var after = Guid.NewGuid();
             var newId = Guid.NewGuid();
-            ImportEntityCommand? sent = null;
-            _mediator.Setup(m => m.Send(It.IsAny<ImportEntityCommand>(), It.IsAny<CancellationToken>()))
-                     .Callback<IRequest<ImportEntityResult>, CancellationToken>((c, _) => sent = (ImportEntityCommand)c)
-                     .ReturnsAsync(new ImportEntityResult(newId, "card", null, new List<string> { "portrait.png" }, new()));
+            ImportUploadCommand? sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ImportUploadResult>, CancellationToken>((c, _) => sent = (ImportUploadCommand)c)
+                     .ReturnsAsync(new ImportUploadResult(new ImportEntityResult(newId, "card", null, new List<string> { "portrait.png" }, new()), Inspection()));
 
-            var body = JsonDocument.Parse($$"""
-                { "kind": "card", "name": "Hero (copy)", "treeParentId": "{{folder}}", "afterTreeEntryId": "{{after}}",
-                  "export": { "format": "nordvik-entity", "version": 1, "kind": "card", "data": { "name": "Hero" } } }
-                """).RootElement;
-
-            var ok = Assert.IsType<OkObjectResult>(await Controller().Import(_gameId, body));
+            var ok = Assert.IsType<OkObjectResult>(await Controller().Import(_gameId, new ImportRequest
+            {
+                UploadId = _uploadId, Kind = "card", Name = "Hero (copy)", TreeParentId = folder, AfterTreeEntryId = after, AcceptCode = true,
+            }));
 
             Assert.NotNull(sent);
             Assert.Equal(_gameId, sent!.GameId);
             Assert.Same(_player, sent.Player);
+            Assert.Equal(_uploadId, sent.UploadId);
             Assert.Equal("card", sent.ExpectedKind);
             Assert.Equal("Hero (copy)", sent.Name);
             Assert.Equal(folder, sent.TreeParentId);
             Assert.Equal(after, sent.AfterTreeEntryId);
-            Assert.Equal("Hero", (string?)sent.Export.Data["name"]);
+            Assert.True(sent.AcceptCode);
             var answer = JObject.FromObject(ok.Value!);
             Assert.Equal(newId, (Guid)answer["id"]!);
             Assert.Equal("portrait.png", (string?)answer["missing"]![0]);
         }
 
         [Fact]
+        public async Task Import_OfCodeFromElsewhere_IsAConflictSayingWhatItBrings()
+        {
+            IsPlayer();
+            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ImportUploadResult(null, Inspection(needsConfirmation: true)));
+
+            var conflict = Assert.IsType<ConflictObjectResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId }));
+
+            var answer = JObject.FromObject(conflict.Value!);
+            Assert.False(string.IsNullOrEmpty((string?)answer["error"]));
+            var inspection = Assert.IsType<ImportInspectionDto>(answer["inspection"]!.ToObject<ImportInspectionDto>());
+            Assert.Equal("sheet.html", inspection.Code.Single().Files.Single());
+        }
+
+        [Fact]
         public async Task Import_OfABadFile_IsABadRequestThatSaysWhy()
         {
             IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ImportEntityCommand>(), It.IsAny<CancellationToken>()))
+            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(WrongArgumentsException.Because("This file holds a map, not a card."));
 
-            var body = JsonDocument.Parse("""{ "kind": "card", "export": { "format": "nordvik-entity", "kind": "map", "data": {} } }""").RootElement;
-
-            var bad = Assert.IsType<BadRequestObjectResult>(await Controller().Import(_gameId, body));
+            var bad = Assert.IsType<BadRequestObjectResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId, Kind = "card" }));
             Assert.Contains("not a card", JObject.FromObject(bad.Value!)["error"]!.ToString());
         }
 
         [Fact]
-        public async Task Import_OfSomethingThatIsNotJsonForIt_IsABadRequest()
+        public async Task Import_OfAnUploadThatIsGone_IsNotFound()
         {
             IsPlayer();
+            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()))
+                     .ThrowsAsync(new ResourceNotFoundException("Import upload", _uploadId));
 
-            var body = JsonDocument.Parse("""{ "export": "nope" }""").RootElement;
-
-            Assert.IsType<BadRequestObjectResult>(await Controller().Import(_gameId, body));
-            _mediator.Verify(m => m.Send(It.IsAny<ImportEntityCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.IsType<NotFoundObjectResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId }));
         }
 
         [Fact]
         public async Task Import_WithoutEditOnTheGame_IsForbidden()
         {
             IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ImportEntityCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(new PermissionException(Permission.Edit));
+            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(new PermissionException(Permission.Edit));
 
-            var body = JsonDocument.Parse("""{ "export": { "format": "nordvik-entity", "kind": "card", "data": {} } }""").RootElement;
+            Assert.IsType<ForbidResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId }));
+        }
 
-            Assert.IsType<ForbidResult>(await Controller().Import(_gameId, body));
+        [Fact]
+        public async Task CancelImport_DropsTheUpload_OrIsNotFound()
+        {
+            IsPlayer();
+            _mediator.Setup(m => m.Send(It.Is<CancelImportUploadCommand>(c => c.UploadId == _uploadId), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+            Assert.IsType<NoContentResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = _uploadId }));
+            Assert.IsType<NotFoundResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = Guid.NewGuid() }));
         }
     }
 }

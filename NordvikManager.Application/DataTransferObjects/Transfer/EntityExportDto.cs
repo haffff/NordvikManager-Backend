@@ -53,3 +53,26 @@ namespace NordvikManager.Application.DataTransferObjects.Transfer
         public Permission Permission { get; set; }
     }
 }
+
+namespace NordvikManager.Application.DataTransferObjects.Transfer
+{
+    /// <summary>What an import would bring (Transfer/Inspect), and whether the GM must accept it first.</summary>
+    public class ImportInspectionDto
+    {
+        public string Kind { get; set; } = "";
+        public string? Name { get; set; }
+        /// <summary>Exported by this server and unchanged since.</summary>
+        public bool FromThisServer { get; set; }
+        /// <summary>The cards that would bring code this game doesn't have.</summary>
+        public List<ImportedCodeDto> Code { get; set; } = new();
+        /// <summary>From elsewhere and bringing code: imported only once the GM accepts it.</summary>
+        public bool NeedsConfirmation { get; set; }
+    }
+
+    public class ImportedCodeDto
+    {
+        public string Card { get; set; } = "";
+        /// <summary>Its page and other files, by name.</summary>
+        public List<string> Files { get; set; } = new();
+    }
+}

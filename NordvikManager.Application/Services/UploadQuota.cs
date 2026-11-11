@@ -69,7 +69,7 @@ namespace NordvikManager.Application.Services
             }
 
             var used = stored.Where(r => r.Id != replacing && Counts(r.PlayerId)).Sum(SizeOf)
-                + uploads.Unfinished(gameId, ActiveUpload).Where(u => u.ResourceId == null && u.Id != exceptUpload && Counts(u.PlayerId)).Sum(u => u.Size);
+                + uploads.Unfinished(gameId, ActiveUpload).Where(u => u.ResourceId == null && !u.ForImport && u.Id != exceptUpload && Counts(u.PlayerId)).Sum(u => u.Size);
             if (used + adding > limit)
             {
                 var whose = asGm ? "The game's GMs have" : "You have";
