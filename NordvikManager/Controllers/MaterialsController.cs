@@ -499,12 +499,13 @@ namespace NordvikManager.Controllers
             {
                 GameId = gameId, Player = playerResult.Player, Name = request.Name, MimeType = request.MimeType, Key = request.Key,
                 ParentFolder = request.ParentFolder, StorageKind = request.StorageKind, Size = request.Size,
+                ForImport = request.ForImport,
             });
             return response switch
             {
                 CommandResponse.Ok => Ok(new { uploadId }),
                 CommandResponse.AlreadyExists => Conflict(new { error = $"Resource with key '{request.Key}' already exists." }),
-                _ => BadRequest(new { error = "A name and a size up to 1 GB are needed." }),
+                _ => BadRequest(new { error = request.ForImport ? "A name and a size up to 512 MB are needed." : "A name and a size up to 1 GB are needed." }),
             };
         }
 

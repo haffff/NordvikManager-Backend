@@ -675,6 +675,21 @@ namespace NordvikManager.Infrastructure.Migrations
                     b.ToTable("Permissions");
                 });
 
+            modelBuilder.Entity("NordvikManager.Domain.Entities.ServerSecretModel", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("ServerSecrets");
+                });
+
             modelBuilder.Entity("NordvikManager.Domain.Entities.TreeEntryModel", b =>
                 {
                     b.Property<Guid>("Id")

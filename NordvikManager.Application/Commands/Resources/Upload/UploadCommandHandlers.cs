@@ -20,6 +20,8 @@ namespace NordvikManager.Application.Commands.Resources.Upload
         /// </summary>
         public const long MaxBlobSize = 32L * 1024 * 1024;
         public static readonly TimeSpan Abandoned = TimeSpan.FromDays(1);
+        /// <summary>The largest export one import takes (512 MB): it's read into memory whole.</summary>
+        public const long MaxImportSize = 512L * 1024 * 1024;
 
         /// <summary>The player's own upload, or null.</summary>
         public static UploadInfo? Own(IUploadStore store, Guid uploadId, Guid? playerId)
@@ -44,6 +46,8 @@ namespace NordvikManager.Application.Commands.Resources.Upload
             await base.Handle(request, cancellationToken);
             if (string.IsNullOrWhiteSpace(request.Name) || request.Size < 0 || request.Size > Uploads.MaxSize)
                 return (CommandResponse.WrongArguments, null);
+            if (request.ForImport)
+                return await StartImport(request);
 
             // The checks the finishing command makes, made now: refused before the file travels.
             if (!string.IsNullOrWhiteSpace(request.Key) &&
@@ -69,6 +73,23 @@ namespace NordvikManager.Application.Commands.Resources.Upload
                 GameId = request.GameId, PlayerId = request.Player.Id ?? Guid.Empty, Name = request.Name.Trim(), MimeType = request.MimeType,
                 Key = string.IsNullOrWhiteSpace(request.Key) ? null : request.Key, ParentFolder = request.ParentFolder,
                 StorageKind = storageKind, AskedForFileStorage = asked, Size = request.Size,
+            });
+            return (CommandResponse.Ok, info.Id);
+        }
+
+        private async Task<(CommandResponse, Guid?)> StartImport(StartUploadCommand request)
+        {
+            if (request.Size > Uploads.MaxImportSize)
+                return (CommandResponse.WrongArguments, null);
+            var game = await dbContext.Games.FirstOrDefaultAsync(g => g.Id == request.GameId);
+            if (game == null || !game.HasPermission(request.Player.Id ?? Guid.Empty, Permission.Edit))
+                throw new PermissionException(Permission.Edit);
+
+            store.DeleteOlderThan(Uploads.Abandoned);
+            var info = store.Start(new UploadInfo
+            {
+                GameId = request.GameId, PlayerId = request.Player.Id ?? Guid.Empty, Name = request.Name.Trim(), MimeType = request.MimeType,
+                Size = request.Size, ForImport = true,
             });
             return (CommandResponse.Ok, info.Id);
         }
@@ -135,7 +156,8 @@ namespace NordvikManager.Application.Commands.Resources.Upload
             var byKey = info.Key != null;
             if (info.ResourceId != null)
                 return new UploadFinishResult(CommandResponse.Ok, info.ResourceId, byKey, info.Name, info.MimeType, info.GameId);
-            if (info.Received != info.Size)
+            // an export: imported (or dropped) through Transfer, never a resource
+            if (info.ForImport || info.Received != info.Size)
                 return new UploadFinishResult(CommandResponse.WrongArguments, null, byKey, info.Name, info.MimeType, info.GameId);
 
             CommandResponse response = CommandResponse.WrongArguments;

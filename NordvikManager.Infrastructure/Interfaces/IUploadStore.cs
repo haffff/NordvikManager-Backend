@@ -18,6 +18,8 @@ namespace NordvikManager.Infrastructure.Interfaces
         public DateTime CreatedUtc { get; set; }
         /// <summary>The player asked for file storage (rather than the server choosing it for a big file).</summary>
         public bool AskedForFileStorage { get; set; }
+        /// <summary>An export to import (Transfer/Import), kept until the GM accepts or drops it; never finished into a resource.</summary>
+        public bool ForImport { get; set; }
         /// <summary>Set once finished: what it became (a retried finish gets the same answer).</summary>
         public Guid? ResourceId { get; set; }
         /// <summary>How much has arrived (the parts file's length); not stored.</summary>

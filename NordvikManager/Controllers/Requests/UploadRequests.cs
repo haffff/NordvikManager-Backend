@@ -13,6 +13,8 @@ namespace NordvikManager.Controllers.Requests
         public Guid? ParentFolder { get; set; }
         public ResourceStorageKind StorageKind { get; set; } = ResourceStorageKind.Blob;
         public long Size { get; set; }
+        /// <summary>An export for Transfer/Import (needs Edit on the game; never becomes a resource).</summary>
+        public bool ForImport { get; set; }
     }
 
     public class UploadPartRequest
@@ -26,5 +28,28 @@ namespace NordvikManager.Controllers.Requests
     public class UploadFinishRequest
     {
         public Guid UploadId { get; set; }
+    }
+}
+
+namespace NordvikManager.Controllers.Requests
+{
+    /// <summary>Transfer/CancelImport: the import upload.</summary>
+    public class ImportUploadRequest
+    {
+        public Guid UploadId { get; set; }
+    }
+
+    /// <summary>Transfer/Import.</summary>
+    public class ImportRequest
+    {
+        public Guid UploadId { get; set; }
+        /// <summary>Refuse anything but this kind (the panel it's imported into); null takes any.</summary>
+        public string? Kind { get; set; }
+        /// <summary>A name instead of the exported one (a duplicate's "… (copy)").</summary>
+        public string? Name { get; set; }
+        public Guid? TreeParentId { get; set; }
+        public Guid? AfterTreeEntryId { get; set; }
+        /// <summary>The GM accepted the card code it brings from another server.</summary>
+        public bool AcceptCode { get; set; }
     }
 }
