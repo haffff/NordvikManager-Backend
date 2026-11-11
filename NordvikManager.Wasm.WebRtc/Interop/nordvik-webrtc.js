@@ -1,12 +1,18 @@
 // The browser half of NordvikManager.Wasm.WebRtc (JsBrowserRtc.cs): the GM host's peer
 // connections are the browser's own RTCPeerConnection. Everything is keyed by string id,
 // since JS interop can't hand object references to C#. Peer ids come from C#; data channel
-// ids are made here. Events go back through JsBrowserRtc's [JSExport] callbacks.
+// ids are made here. Events go back through JsBrowserRtc's [JSExport] callbacks: in this page
+// (init), or, when .NET runs in a worker, through whatever useCallbacks was given (the browser
+// host's page bridge, which also wants each channel's bufferedAmount reported: the worker can't
+// read it synchronously).
 
 const peers = new Map();    // peerId -> RTCPeerConnection
 const channels = new Map(); // channelId -> { channel, peerId }
 let nextChannel = 0;
 let callbacks = null;
+let reportBuffered = false;
+// Below this the channel says so (bufferedamountlow), for a worker waiting to send more.
+const BUFFERED_LOW = 256 * 1024;
 
 // C# callbacks run synchronously inside browser events; one throwing must not break the page.
 function call(name, ...args) {
@@ -23,6 +29,24 @@ export async function init(assemblyName) {
         throw new Error("nordvik-webrtc: the .NET runtime is not started");
     const exports = await runtime.getAssemblyExports(assemblyName);
     callbacks = exports.NordvikManager.Wasm.WebRtc.JsBrowserRtc;
+}
+
+// Callbacks somewhere else (a worker's .NET, through a bridge). With reportBuffered, each
+// channel's bufferedAmount goes to callbacks.$buffered(channelId, amount, sendSeq) after every
+// send (sendSeq: the send's) and when it falls below BUFFERED_LOW (sendSeq null).
+export function useCallbacks(target, options) {
+    callbacks = target;
+    reportBuffered = !!(options && options.reportBuffered);
+}
+
+function buffered(channelId, channel, seq) {
+    if (!reportBuffered)
+        return;
+    try {
+        callbacks.$buffered(channelId, channel.bufferedAmount, seq);
+    } catch (err) {
+        console.error("[nordvik-webrtc] $buffered failed:", err);
+    }
 }
 
 function peer(peerId) {
@@ -55,6 +79,10 @@ export function createPeer(peerId, iceServersJson) {
             channels.delete(channelId);
             call("OnChannelClose", channelId);
         };
+        if (reportBuffered) {
+            channel.bufferedAmountLowThreshold = BUFFERED_LOW;
+            channel.onbufferedamountlow = () => buffered(channelId, channel, null);
+        }
         channel.onmessage = (ev) => {
             const text = typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data);
             call("OnChannelMessage", channelId, text);
@@ -101,11 +129,16 @@ export function closePeer(peerId) {
 }
 
 // Throws (InvalidStateError) when the channel is not open; C# treats that as not sent.
-export function send(channelId, message) {
+// seq: the worker's number for this send, echoed with the bufferedAmount after it.
+export function send(channelId, message, seq) {
     const entry = channels.get(channelId);
     if (!entry)
         throw new Error(`nordvik-webrtc: no channel ${channelId}`);
-    entry.channel.send(message);
+    try {
+        entry.channel.send(message);
+    } finally {
+        buffered(channelId, entry.channel, seq === undefined ? null : seq);
+    }
 }
 
 export function bufferedAmount(channelId) {

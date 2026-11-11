@@ -10,7 +10,7 @@ using NordvikManager.Infrastructure.Interfaces;
 
 namespace NordvikManager.Application.Commands.Resources.Upload
 {
-    internal static class Uploads
+    public static class Uploads
     {
         /// <summary>The largest file one upload takes (1 GB).</summary>
         public const long MaxSize = 1024L * 1024 * 1024;

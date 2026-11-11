@@ -1,16 +1,49 @@
 # NordvikManager.Wasm.Host
 
-The browser-wasm GM host: the GM backend running in a browser tab instead of the native server. It starts `WasmHost` (`NordvikManager.Wasm.Hosting`), which builds the same layers as the native server (`InfrastructureLayerModule`, `ApplicationLayerModule`, `RealTimeLayerModule`) with the browser's own WebRTC (`NordvikManager.Wasm.WebRtc`), WebSocket-only signaling, and its games in a SQLite file kept in the browser.
+The browser-wasm GM host: the GM backend running in a browser tab instead of the native server. It starts `WasmHost` (`NordvikManager.Wasm.Hosting`), which builds the same layers as the native server (`InfrastructureLayerModule`, `ApplicationLayerModule`, `RealTimeLayerModule`) with the browser's own WebRTC (`NordvikManager.Wasm.WebRtc`), WebSocket-only signaling, and its games in a SQLite file on the browser's OPFS.
 
 Not in the solution: browser-wasm needs the `wasm-tools` workload. The composition is in the solution and tested on the desktop (`WasmHostTests`).
 
+## Page and worker
+
+.NET runs in a dedicated worker, not on the page's thread:
+
+```mermaid
+flowchart LR
+    subgraph Page["page (main.js)"]
+        UI["gm-page.js<br/>the GM's UI"]
+        RTC["nordvik-webrtc.js<br/>RTCPeerConnection"]
+        PB["page-bridge.js"]
+    end
+    subgraph Worker["worker (host-worker.js)"]
+        NET[".NET: HostPage, WasmHost<br/>JsBrowserRtc → nordvik-webrtc-worker.js"]
+        WB["worker-bridge.js"]
+        FS["opfs-fs.js<br/>/opfs/data.db"]
+    end
+    UI -- "host.Login / host.Call" --> PB
+    PB <-- "postMessage" --> WB
+    WB --> NET
+    NET -- "createPeer, send, ..." --> WB
+    PB --> RTC
+    RTC -- "events, bufferedAmount" --> PB
+    NET --> FS
+    FS --> OPFS[("OPFS<br/>sync access handles")]
+```
+
+- **Storage.** `opfs-fs.js` mounts an emscripten filesystem at `/opfs` over OPFS sync access handles, which only exist in dedicated workers. SQLite reads and writes `/opfs/data.db` in place: the database isn't held in memory, and every commit is flushed to OPFS (fsync → `handle.flush()`). Opening a handle is async, so the files (the database and its rollback journal) are opened before .NET starts; only they can exist there. Deleting a file empties it, and an empty file counts as missing (the rollback journal after each commit, a hot journal after a crash). A new database is made with a rollback journal before EF migrates it: EF would turn on WAL, which needs files this filesystem doesn't have (`WasmHost.MigrateSqlite`).
+- **One tab.** Holding the handles locks the files, so a second tab of the site says the games are open in another tab. A reload's new worker retries for 3 s while the old one lets go; the page also tells its worker to close the handles on `pagehide`.
+- **Games from before OPFS** (a copy of `data.db` in IndexedDB, `nordvik-host`/`files`) are moved into an empty `data.db` once, and the IndexedDB copy is deleted after the host has opened them.
+- **WebRTC.** A worker has no `RTCPeerConnection`, so the page owns them: `nordvik-webrtc-worker.js` has `nordvik-webrtc.js`'s exports (`JsBrowserRtc`'s `[JSImport]`s, unchanged) and forwards each call; events come back to `JsBrowserRtc`'s `[JSExport]`s. `bufferedAmount` (the send pump polls it) is mirrored: the amount the page last reported, after every send and on `bufferedamountlow`, plus what was sent since.
+- **The bridge.** `worker-bridge.js` / `page-bridge.js`: calls (with an answer), notifications, callbacks into .NET, and the page calling `HostPage`'s `[JSExport]`s. Order is kept both ways.
+- The page asks for persistent storage (`navigator.storage.persist()`), so the browser doesn't clear the games when the disk is nearly full.
+
+`HostSelfCheck` and `storage-e2e.cjs` use their own files (`selfcheck.db`, `crash.db`), never the GM's `data.db`.
+
 ## The GM's page
 
-`index.html` is the GM's page: log in to Central, see your games, create one, start or stop its session. The host runs in the tab (`HostPage`, `HostGm`): the GM's Central tokens are held by the host (a browser can't keep Central's cookies), and the GM's actions run the same shared endpoints as everyone, with those tokens. The logged-in GM is the host's local admin. Central is the page's own origin (serve the host from Central's domain and no CORS is needed), or `?central=https://...`; otherwise Central's `CORS_ORIGIN` must list the page's origin. Keep the tab open while playing.
+`index.html` is the GM's page: log in to Central, see your games, create one (built-in addons ticked), start or stop its session. The GM's Central tokens are held by the host (a browser can't keep Central's cookies), and the GM's actions run the same shared endpoints as everyone, with those tokens. The logged-in GM is the host's local admin. Central is the page's own origin (serve the host from Central's domain and no CORS is needed), or `?central=https://...`; otherwise Central's `CORS_ORIGIN` must list the page's origin. Keep the tab open while playing. After a reload the GM logs in again and starts the game on its same Central session.
 
-Games are kept in this browser: the host's database is a SQLite file (the same migrations as the native server; SQLite is linked into the runtime, `WasmBuildNative`) in the runtime's in-memory filesystem, restored from IndexedDB before the host starts and saved back when SQLite's file change counter moves (every 2 s, and when the page is hidden; `DatabaseFilePersistence`, `JsBrowserFileStore`, `nordvik-storage.js`). The database uses a rollback journal, so a commit is in the file itself. After a reload the GM logs in again and starts the game on its same Central session. The whole file is copied on each save: fine for a game's database, slow if it grows into hundreds of MB of images.
-
-`gm-e2e.cjs` drives it against a real Central in headless Chrome (log in, create a game, start, stop):
+`gm-e2e.cjs` drives it against a real Central in headless Chrome: a second tab is refused, log in, Basics offered, create a game, start, stop, reload (the games open again and the game is there), and games kept in IndexedDB by an older host are moved to OPFS:
 
 ```bash
 # a Central of your own: CORS_ORIGIN=http://localhost:<port>, an account (npm run seed with ADMIN_USERNAME/ADMIN_PASSWORD)
@@ -24,26 +57,31 @@ node NordvikManager.Wasm.Host/gm-e2e.cjs <AppBundle> [path/to/playwright] <port>
 node NordvikManager.Wasm.Host/player-e2e.cjs <host AppBundle> <player build> <playwright> <centralUrl> <hostPort> <playerPort>
 ```
 
+`storage-e2e.cjs` cuts the host off mid-commit, twice (the worker terminated outright, then the whole browser closed, on a persistent profile), and checks the database each time (`PRAGMA integrity_check`, every row whole: `SelfCheck/StorageCrashCheck.cs`):
+
+```bash
+node NordvikManager.Wasm.Host/storage-e2e.cjs <AppBundle> <playwright> <profile folder, deleted after>
+```
+
 ## The self-check
 
-`index.html?selfcheck`. It runs the host in the tab as it would host a game, with Central left out: the real `WebRTCSessionService` and `GameLobby` serve an in-page player (`SelfCheck/selfcheck-player.js`, speaking the player client's data channel protocol) connected through in-page signaling. Each step prints a `CHECK` line:
+`index.html?selfcheck`. It runs the host in its worker as it would host a game, with Central left out: the real `WebRTCSessionService` and `GameLobby` serve a player in the page (`SelfCheck/selfcheck-player.js`, speaking the player client's data channel protocol, reached through `selfcheck-player-worker.js`) connected through in-page signaling. Each step prints a `CHECK` line:
 
-- the host builds (every registration validated);
-- games kept in the browser: SQLite in wasm with the real migrations, saved to IndexedDB, restored into a new file and listed;
-- MediatR + EF Core create and list a game;
-- the lobby opens; the player connects over the browser's WebRTC;
+- the host builds (every registration validated); it runs in a worker;
+- games kept in OPFS: a fresh database migrates on `/opfs/selfcheck.db`, its commits are flushed, and a new host on the same file lists the game;
+- MediatR + EF Core create and list a game; `api/Host/Info` says browser; Basics is installed in a new game;
+- the lobby opens; the player connects over the browser's WebRTC (through the page);
 - the heartbeat is answered;
 - tunnelled REST through `ApiRouter` and the shared endpoints: `GetPlayer`, `GetFullGame`, `session/whoami` (the channel's game), `user/userinfo` (the caller); a server-only route (`api/meta`) answers 501 saying so;
 - a file uploaded in parts (`materials/UploadStart`, `UploadPart`, `UploadFinish`: upload store, fixed quota, database) and read back through `materials/resource`; addon step definitions;
 - a chat message goes through `GameLobby` (player resolution, `ChatHandler`, MediatR) and comes back;
-- a 31 504-char chat (emoji included) goes both ways chunked: chunk reassembly and the send pump.
+- a 31 504-char chat (emoji included) goes both ways chunked: chunk reassembly and the send pump (with the mirrored `bufferedAmount`).
 
 ## Not yet
 
-- Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered.
-- Built-in addons (Basics): the native server zips them from its BuiltInAddons folder, which a browser host doesn't have, so new games get none.
+- Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered. `GET api/Host/Info` lists them, with the host's limitations.
+- Uploads over 32 MB, and files a card saves as files, go to the server's file storage: here, the runtime's memory, so they're lost on reload (next: file storage on OPFS). Upload parts are in memory while an upload runs.
 - Where the host page is served from (from Central's domain, it needs no CORS).
-- Several host tabs on one origin share one saved database (the last to save wins).
 
 ## Run the self-check
 

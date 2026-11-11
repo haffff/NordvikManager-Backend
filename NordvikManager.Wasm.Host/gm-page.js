@@ -1,6 +1,6 @@
 // The GM's page for the browser host: log in to Central, pick or create a game, start its
-// session. The host itself runs in this tab (HostPage.cs); everything here goes through its
-// [JSExport]s. Kept small on purpose: the full GM interface is the player client, which the
+// session. The host itself runs in this tab's worker (HostPage.cs); everything here goes through
+// its [JSExport]s, called over the page bridge (each returns a promise). Kept small on purpose: the full GM interface is the player client, which the
 // game's owner opens to join their own game as GM.
 
 let host;
@@ -38,7 +38,7 @@ function renderLogin() {
         e.preventDefault();
         status("Logging in…");
         if (await host.Login($("#username").value, $("#password").value)) {
-            status(`Logged in as ${host.UserName()}.`, "ok");
+            status(`Logged in as ${await host.UserName()}.`, "ok");
             await renderGames();
         } else {
             status("Wrong user name or password, or Central can't be reached.", "error");
@@ -94,13 +94,10 @@ async function stopGame(game) {
     status(result.status === 200 ? `"${game.name}" stopped.` : `Could not stop "${game.name}": ${result.status}`, result.status === 200 ? "ok" : "error");
 }
 
-export function start(centralUrl) {
-    globalThis.getDotnetRuntime(0).getAssemblyExports("NordvikManager.Wasm.Host").then((exports) => {
-        host = exports.NordvikManager.Wasm.Host.HostPage;
-        // Hidden or closing: save what changed since the last periodic save.
-        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") host.SaveNow(); });
-        $("#central").textContent = centralUrl;
-        renderLogin();
-        status("Ready.");
-    });
+/** hostPage: HostPage's [JSExport]s in the worker (page-bridge.js), as async functions. */
+export function start(centralUrl, hostPage) {
+    host = hostPage;
+    $("#central").textContent = centralUrl;
+    renderLogin();
+    status("Ready.");
 }

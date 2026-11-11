@@ -45,17 +45,17 @@
     {
       "id": "browser-storage",
       "title": "Games are kept in this browser",
-      "detail": "They are stored in this browser profile only: they don't follow you to another browser or computer, clearing this site's data deletes them, and there is no backup."
+      "detail": "They are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, clearing this site's data deletes them, and there is no backup. Unless the browser grants this site persistent storage, it may also clear them when the disk is nearly full."
     },
     {
       "id": "one-tab",
-      "title": "Host from one tab at a time",
-      "detail": "Every tab of this site shares one saved copy of your games, so hosting from two tabs at once makes them overwrite each other's changes."
+      "title": "One tab hosts at a time",
+      "detail": "Your games are opened by one tab of this site at a time: while a tab hosts, another one says so instead of opening them."
     },
     {
-      "id": "memory",
-      "title": "Games are held in memory",
-      "detail": "The whole database, uploaded files included, is held in this tab's memory and copied to the browser's storage as it changes. Games with many large maps or music files can make the tab slow, or run out of memory."
+      "id": "large-files",
+      "title": "Large files are lost when the tab closes",
+      "detail": "Uploads over 32 MB, and files a card saves as files, are kept in this tab's memory, not with your games: they are gone after a reload. Smaller uploads are kept with the games."
     },
     {
       "id": "no-thumbnails",
