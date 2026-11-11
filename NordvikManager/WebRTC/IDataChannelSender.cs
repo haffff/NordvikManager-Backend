@@ -1,5 +1,3 @@
-using SIPSorcery.Net;
-
 namespace NordvikManager.WebRTC
 {
     /// <summary>
@@ -14,18 +12,5 @@ namespace NordvikManager.WebRTC
         ulong BufferedAmount { get; }
 
         void Send(string message);
-    }
-
-    internal sealed class SipsorceryDataChannelSender : IDataChannelSender
-    {
-        private readonly RTCDataChannel _dataChannel;
-
-        public SipsorceryDataChannelSender(RTCDataChannel dataChannel) => _dataChannel = dataChannel;
-
-        public bool IsOpen => _dataChannel.readyState == RTCDataChannelState.open;
-
-        public ulong BufferedAmount => _dataChannel.bufferedAmount;
-
-        public void Send(string message) => _dataChannel.send(message);
     }
 }

@@ -1,4 +1,3 @@
-using SIPSorcery.Net;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,16 +28,16 @@ namespace NordvikManager.WebRTC
             _delay = delay ?? Task.Delay;
         }
 
-        public void OnStateChanged(RTCPeerConnectionState state)
+        public void OnStateChanged(PeerState state)
         {
             switch (state)
             {
-                case RTCPeerConnectionState.failed:
-                case RTCPeerConnectionState.closed:
+                case PeerState.Failed:
+                case PeerState.Closed:
                     CancelPending();
                     Die();
                     break;
-                case RTCPeerConnectionState.disconnected:
+                case PeerState.Disconnected:
                     StartGrace();
                     break;
                 default:
@@ -52,8 +51,8 @@ namespace NordvikManager.WebRTC
         /// data channel runs peer to peer, so a socket reconnecting says nothing about it; only
         /// a negotiation still waiting on signaling (offer, answer, candidates) is lost.
         /// </summary>
-        public static bool ShouldCloseOnSignalingLeave(RTCPeerConnectionState state)
-            => state is RTCPeerConnectionState.@new or RTCPeerConnectionState.connecting;
+        public static bool ShouldCloseOnSignalingLeave(PeerState state)
+            => state is PeerState.New or PeerState.Connecting;
 
         private void StartGrace()
         {

@@ -85,6 +85,7 @@ namespace NordvikManager
             services.AddSingleton<RequestDelegateHolder>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
             services.AddHttpContextAccessor();
+            services.AddSingleton<IPeerConnectionFactory, SipsorceryPeerConnectionFactory>();
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
             services.AddHostedService<ScheduledBackupService>();

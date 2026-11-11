@@ -81,6 +81,7 @@ namespace NordvikManager.Tests.WebRTC
                 new Mock<ICentralServerService>().Object,
                 scopes.Object,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build(),
+                new SipsorceryPeerConnectionFactory(),
                 NullLogger<WebRTCSessionService>.Instance);
         }
 
