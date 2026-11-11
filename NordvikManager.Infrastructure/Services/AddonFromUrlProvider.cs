@@ -13,7 +13,7 @@ namespace NordvikManager.Infrastructure.Services
     {
         private static readonly HttpClient sharedHttpClient = new HttpClient();
         private readonly HttpClient httpClient;
-        private readonly string _mainRepository;
+        private readonly AddonRegistryOptions _registry;
 
         /// <summary>The largest readme served (bytes).</summary>
         public const int MaxReadmeBytes = 512 * 1024;
@@ -30,14 +30,19 @@ namespace NordvikManager.Infrastructure.Services
         internal AddonRepositoryService(AddonRegistryOptions registry, HttpClient httpClient)
         {
             this.httpClient = httpClient;
-            _mainRepository = registry.MainRepository
-                ?? throw new InvalidOperationException("No addon registry is set: AddonsConfiguration:MainRepository in appsettings, or Application Settings.");
+            _registry = registry;
         }
+
+        // Checked when the registry is needed, not on construction: every addon install takes this
+        // service, and installing a built-in addon (e.g. Basics) needs no registry. Read each time,
+        // so a registry changed in the server settings applies at once.
+        private string MainRepository => _registry.MainRepository
+            ?? throw new InvalidOperationException("No addon registry is set: AddonsConfiguration:MainRepository in appsettings, or Application Settings.");
 
         /// <inheritdoc/>
         public async Task<string> GetRepository()
         {
-            return await httpClient.GetStringAsync(_mainRepository);
+            return await httpClient.GetStringAsync(MainRepository);
         }
 
         /// <inheritdoc/>
