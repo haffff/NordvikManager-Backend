@@ -23,8 +23,8 @@ namespace NordvikManager.Api
                 {
                     foreach (var attribute in method.GetCustomAttributes<ApiRouteAttribute>())
                     {
-                        if (method.ReturnType != typeof(Task<ApiResult>))
-                            throw new InvalidOperationException($"{type.Name}.{method.Name} must return Task<ApiResult>.");
+                        if (method.ReturnType != typeof(Task<ApiResult>) && method.ReturnType != typeof(ApiResult))
+                            throw new InvalidOperationException($"{type.Name}.{method.Name} must return ApiResult or Task<ApiResult>.");
                         var route = new ApiRoute(attribute.Method, attribute.Path, type, method);
                         if (!routes.TryAdd(Key(route.Method, route.Path), route))
                             throw new InvalidOperationException($"Two endpoints answer {route.Method} {route.Path}.");

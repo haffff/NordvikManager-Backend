@@ -155,6 +155,16 @@ namespace NordvikManager.Tests.Api
             Assert.Equal(new[] { "name", "hp" }, body.Properties().Select(p => p.Name));
         }
 
+        // As [FromServices]: the parameter comes from the request's services, not the body.
+        [Fact]
+        public async Task AnApiServiceParameter_ComesFromTheServices()
+        {
+            var response = await Send("GET", "api/sample/service");
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.True((bool)response["body"]!["same"]!);
+        }
+
         [Fact]
         public async Task AnUnknownRoute_Is501()
         {
@@ -203,6 +213,10 @@ namespace NordvikManager.Tests.Api
                 "uploadlimit" => new UploadLimitException("too big"),
                 _ => new InvalidOperationException("boom"),
             });
+
+            [ApiRoute("GET", "api/Sample/Service")]
+            public Task<ApiResult> Service([ApiService] Recorder recorder)
+                => Task.FromResult(ApiResult.Ok(new { same = ReferenceEquals(recorder, _recorder) }));
 
             [ApiRoute("GET", "api/Sample/Nothing")]
             public Task<ApiResult> Nothing() => Task.FromResult(ApiResult.Ok(null));

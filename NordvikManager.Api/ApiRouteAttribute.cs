@@ -1,7 +1,7 @@
 namespace NordvikManager.Api
 {
     /// <summary>
-    /// The route an endpoint method answers, as its controller action's (e.g. GET
+    /// The route an endpoint method (returning ApiResult or Task&lt;ApiResult&gt;) answers, as its controller action's (e.g. GET
     /// api/BattleMap/GetPlayer). ApiRouteCoverageTests checks every controller action has one.
     /// </summary>
     /// <remarks>

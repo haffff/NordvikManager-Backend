@@ -20,7 +20,7 @@ namespace NordvikManager.Api
     /// <list type="bullet">
     /// <item>the caller is the channel's player, as GetUserIntoItemsMiddleWare makes it;</item>
     /// <item>the session's game id replaces any the client sent;</item>
-    /// <item>parameters are bound as model binding does (query, JSON body, data annotations);</item>
+    /// <item>parameters are bound as model binding does (query, JSON body, data annotations, [ApiService] as [FromServices]);</item>
     /// <item>exceptions answer as HandleExceptionMiddleWare does (<see cref="ApiExceptions"/>);</item>
     /// <item>the body is written with the controllers' JSON (<see cref="ApiJson"/>), Ok(null) as 204.</item>
     /// </list>
@@ -74,11 +74,12 @@ namespace NordvikManager.Api
                 query["gameId"] = gameId.ToString();
 
                 var user = await CallerAsync(player, services);
-                if (!TryBind(route.Handler, query, request.Body, user, out var arguments, out var bindingError))
+                if (!TryBind(route.Handler, query, request.Body, user, services, out var arguments, out var bindingError))
                     return (400, Json(new { error = bindingError }));
 
                 var endpoint = ActivatorUtilities.CreateInstance(services, route.EndpointType);
-                var result = await (Task<ApiResult>)route.Handler.Invoke(endpoint, arguments)!;
+                var returned = route.Handler.Invoke(endpoint, arguments);
+                var result = returned is Task<ApiResult> pending ? await pending : (ApiResult)returned!;
 
                 // ASP.NET Core answers an Ok with a null body as 204.
                 if (result.HasBody && result.Body == null && result.StatusCode == 200)
@@ -116,7 +117,7 @@ namespace NordvikManager.Api
         }
 
         private static bool TryBind(MethodInfo method, IReadOnlyDictionary<string, string> query, JToken? body, User? user,
-            out object?[] arguments, out string? error)
+            IServiceProvider services, out object?[] arguments, out string? error)
         {
             var parameters = method.GetParameters();
             arguments = new object?[parameters.Length];
@@ -127,6 +128,8 @@ namespace NordvikManager.Api
                 var type = parameter.ParameterType;
                 if (type == typeof(User))
                     arguments[i] = user;
+                else if (parameter.GetCustomAttribute<ApiServiceAttribute>() != null)
+                    arguments[i] = services.GetRequiredService(type);
                 else if (type == typeof(CancellationToken))
                     arguments[i] = CancellationToken.None;
                 else if (IsSimple(type))
