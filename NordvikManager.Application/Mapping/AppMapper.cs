@@ -170,6 +170,7 @@ namespace NordvikManager.Application.Mapping
         // Addon
         [MapperIgnoreTarget(nameof(AddonDto.Permission))]
         [MapperIgnoreTarget(nameof(AddonDto.Installed))]
+        [MapperIgnoreTarget(nameof(AddonDto.RequiredBy))]
         private partial AddonDto ToDto(AddonModel source);
 
         [MapperIgnoreTarget(nameof(AddonModel.InstallHookFired))]

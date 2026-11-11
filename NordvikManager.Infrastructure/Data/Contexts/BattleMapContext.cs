@@ -101,6 +101,24 @@ namespace NordvikManager.Data.Contexts
                 .WithOne()
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // One copy of an addon per game: two installs at once can't both add it.
+            modelBuilder.Entity<AddonModel>()
+                .HasIndex("GameModelId", nameof(AddonModel.Key))
+                .IsUnique();
+
+            // The addons an addon needs, as JSON in one column (MySQL has no primitive collections).
+            modelBuilder.Entity<AddonModel>()
+                .Property(a => a.Dependencies)
+                .HasConversion(
+                    list => list == null || list.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(list, (System.Text.Json.JsonSerializerOptions?)null),
+                    text => string.IsNullOrEmpty(text)
+                        ? new List<AddonDependency>()
+                        : System.Text.Json.JsonSerializer.Deserialize<List<AddonDependency>>(text, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<AddonDependency>(),
+                    new ValueComparer<List<AddonDependency>?>(
+                        (a, b) => (a ?? new()).Select(d => d.Key + "@" + d.Version).SequenceEqual((b ?? new()).Select(d => d.Key + "@" + d.Version)),
+                        list => (list ?? new()).Aggregate(0, (hash, d) => HashCode.Combine(hash, d.Key, d.Version)),
+                        list => list == null ? null : list.Select(d => new AddonDependency { Key = d.Key, Version = d.Version }).ToList()));
+
             modelBuilder.Entity<MapModel>()
                 .HasMany(m => m.Elements)
                 .WithOne(e => e.Map)

@@ -117,5 +117,37 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
 
             Assert.Null(result);
         }
+
+        // The uninstall endpoint refuses on this before the addon's Uninstall hook runs.
+        [Fact]
+        public async Task Handle_NamesTheGamesAddonsThatNeedIt()
+        {
+            var game = BuildGame();
+            var otherGame = OtherGame();
+            var core = SeedAddon(game, "core");
+            var dependent = SeedAddon(game, "dnd5e");
+            dependent.Name = "Fifth Edition";
+            dependent.Dependencies = new List<AddonDependency> { new() { Key = "core", Version = "1.0" } };
+            var elsewhere = SeedAddon(otherGame, "poll");
+            elsewhere.Dependencies = new List<AddonDependency> { new() { Key = "core" } };
+            Db.SaveChanges();
+            var cmd = new GetAddonCommand { GameID = game.Id, Player = Player(), Id = core.Id };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { "Fifth Edition" }, result!.RequiredBy);
+        }
+
+        [Fact]
+        public async Task Handle_NothingNeedsIt_RequiredByIsEmpty()
+        {
+            var game = BuildGame();
+            var core = SeedAddon(game, "core");
+            var cmd = new GetAddonCommand { GameID = game.Id, Player = Player(), Id = core.Id };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Empty(result!.RequiredBy!);
+        }
     }
 }

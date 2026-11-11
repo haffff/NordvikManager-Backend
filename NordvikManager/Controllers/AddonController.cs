@@ -366,6 +366,13 @@ namespace NordvikManager.Controllers
                 return BadRequest(new { error = "Addon not found." });
             }
 
+            // Refused here, before the addon's Uninstall hook would run in the background.
+            if (existingAddon.RequiredBy is { Count: > 0 })
+            {
+                log.LogInformation("[uninstall] addon {Key} is needed by {RequiredBy} → 409", existingAddon.Key, string.Join(", ", existingAddon.RequiredBy));
+                return Conflict(new { error = NordvikManager.Application.Commands.Addons.AddonDependents.RefusalMessage(existingAddon.Name ?? existingAddon.Key, existingAddon.RequiredBy) });
+            }
+
             var operationId = Guid.NewGuid();
             log.LogInformation("[uninstall] op={OperationId} addon={AddonName} id={Id} key={Key} → starting in background",
                 operationId, existingAddon.Name, existingAddon.Id, existingAddon.Key);
@@ -587,24 +594,20 @@ namespace NordvikManager.Controllers
                         // the addon's install action a second time for no reason.
                         if (lobby != null && !alreadyInstalled)
                         {
-                            log.LogInformation("[install] op={OperationId} Install hook → start", operationId);
-                            await lobby.ActionProcessingService.CallHookAsync(NordvikManager.Enums.Hook.Install, new AddonHookArgs
+                            log.LogInformation("[install] op={OperationId} Install hook → start ({Count} dependencies first)", operationId, addonInfo.InstalledDependencies.Count);
+                            // Each marked fired so RunPendingAddonInstallHooksAsync (run on the next
+                            // player join) doesn't fire Install a second time.
+                            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
+                            await AddonInstallHooks.FireAsync(lobby.ActionProcessingService, gameId, player.Id ?? default, addonInfo, async addonId =>
                             {
-                                GameId = gameId,
-                                PlayerId = player.Id ?? default,
-                                AddonKey = addonInfo.AddonKey,
+                                var installedAddon = await dbContext.Addons.FindAsync(addonId);
+                                if (installedAddon != null)
+                                {
+                                    installedAddon.InstallHookFired = true;
+                                    await dbContext.SaveChangesAsync();
+                                }
                             });
                             log.LogInformation("[install] op={OperationId} Install hook → done ({Ms} ms)", operationId, watch.ElapsedMilliseconds);
-
-                            // Mark it fired so RunPendingAddonInstallHooksAsync (run on the next
-                            // player join) doesn't fire Install a second time for this addon.
-                            var dbContext = scope.ServiceProvider.GetRequiredService<IDbContext>();
-                            var installedAddon = await dbContext.Addons.FindAsync(addonInfo.AddonId);
-                            if (installedAddon != null)
-                            {
-                                installedAddon.InstallHookFired = true;
-                                await dbContext.SaveChangesAsync();
-                            }
                         }
                         log.LogInformation("[install] op={OperationId} finished, total {Ms} ms", operationId, watch.ElapsedMilliseconds);
                     }

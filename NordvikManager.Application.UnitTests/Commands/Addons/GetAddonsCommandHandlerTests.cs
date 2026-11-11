@@ -69,5 +69,22 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Equal("dnd5e", result[0].Key);
             Assert.Equal("1.0", result[0].Version);
         }
+
+        // The Installed tab shows them.
+        [Fact]
+        public async Task Handle_FlatTrue_IncludesDependencies()
+        {
+            var game = BuildGame();
+            var addon = SeedAddon(game, "dnd5e");
+            addon.Dependencies = new List<AddonDependency> { new() { Key = "core", Version = "2.0" } };
+            Db.SaveChanges();
+            var cmd = new GetAddonsCommand { GameId = game.Id, Player = Player(), Flat = true };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            var dependency = Assert.Single(result[0].Dependencies!);
+            Assert.Equal("core", dependency.Key);
+            Assert.Equal("2.0", dependency.Version);
+        }
     }
 }

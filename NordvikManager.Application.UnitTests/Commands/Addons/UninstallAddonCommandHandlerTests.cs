@@ -255,5 +255,59 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
 
             Assert.True(Db.TreeEntries.Any(x => x.Id == addonFolder.Id), "Addon folder with unrelated GM content should not be deleted.");
         }
+
+        // ---- Dependencies ----
+
+        private AddonModel SeedDependent(Guid gameId, string key, string name, string dependsOn)
+        {
+            var addon = SeedAddon(gameId, key);
+            addon.Name = name;
+            addon.Dependencies = new List<AddonDependency> { new() { Key = dependsOn } };
+            Db.SaveChanges();
+            return addon;
+        }
+
+        [Fact]
+        public async Task Handle_AnotherAddonDependsOnIt_IsRefusedAndStays()
+        {
+            var game = BuildGame();
+            var core = SeedAddon(game.Id, "core");
+            SeedDependent(game.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core" };
+
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Handler().Handle(cmd, CancellationToken.None));
+
+            Assert.Contains("Fifth Edition", e.Message);
+            Assert.True(SeedContext().Addons.Any(a => a.Id == core.Id));
+        }
+
+        // An update removes the old version itself; the addons that need it still get one.
+        [Fact]
+        public async Task Handle_ForReinstall_IgnoresDependents()
+        {
+            var game = BuildGame();
+            var core = SeedAddon(game.Id, "core");
+            SeedDependent(game.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core", ForReinstall = true };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(SeedContext().Addons.Any(a => a.Id == core.Id));
+        }
+
+        // Only this game's addons count.
+        [Fact]
+        public async Task Handle_DependentInAnotherGame_DoesNotBlock()
+        {
+            var game = BuildGame();
+            var otherGame = OtherGame();
+            var core = SeedAddon(game.Id, "core");
+            SeedDependent(otherGame.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
+            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core" };
+
+            await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(SeedContext().Addons.Any(a => a.Id == core.Id));
+        }
     }
 }
