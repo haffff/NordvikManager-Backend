@@ -576,7 +576,7 @@ namespace NordvikManager.Api.Endpoints
         /// Registers a reference to a file already on the local disk of whoever runs this
         /// backend — zero bytes copied. Local admin only (enforced in the handler).
         /// </summary>
-        [ApiRoute("POST", "api/Materials/LinkResource", NativeOnly = true)] // files on the server's own disk
+        [ApiRoute("POST", "api/Materials/LinkResource", NativeOnly = true, Reason = "Links a file on the GM server's own disk; a browser has no disk to link it from.")]
         public async Task<ApiResult> LinkResource(User? user, Guid gameId, LinkResourceRequest request)
         {
             var playerResult = await GetPlayerIfExists(gameId, user);
@@ -623,7 +623,7 @@ namespace NordvikManager.Api.Endpoints
         /// the lobby's WS/WebRTC channel (operation_progress/complete/failed, keyed by the
         /// returned operationId) instead of being returned in this response.
         /// </summary>
-        [ApiRoute("POST", "api/Materials/LinkDirectory", NativeOnly = true)] // files on the server's own disk
+        [ApiRoute("POST", "api/Materials/LinkDirectory", NativeOnly = true, Reason = "Links a folder on the GM server's own disk; a browser has no disk to link it from.")]
         public async Task<ApiResult> LinkDirectory(User? user, Guid gameId, LinkDirectoryRequest request)
         {
             var playerResult = await GetPlayerIfExists(gameId, user);
@@ -675,7 +675,7 @@ namespace NordvikManager.Api.Endpoints
         /// <summary>
         /// Lists a local directory's contents (local admin only) — omit path to list drive roots.
         /// </summary>
-        [ApiRoute("GET", "api/Materials/BrowseLocalDirectory", NativeOnly = true)] // files on the server's own disk
+        [ApiRoute("GET", "api/Materials/BrowseLocalDirectory", NativeOnly = true, Reason = "Browses the GM server's own disk, to pick files to link.")]
         public async Task<ApiResult> BrowseLocalDirectory(User? user, Guid gameId, string? path)
         {
             var playerResult = await GetPlayerIfExists(gameId, user);
@@ -696,7 +696,7 @@ namespace NordvikManager.Api.Endpoints
         /// <summary>
         /// Moves an existing resource's bytes between storage modes (needs Edit on the game).
         /// </summary>
-        [ApiRoute("POST", "api/Materials/TransferResourceStorage", NativeOnly = true)] // files on the server's own disk
+        [ApiRoute("POST", "api/Materials/TransferResourceStorage", NativeOnly = true, Reason = "Moves a resource between the database and files on the GM server's own disk.")]
         public async Task<ApiResult> TransferResourceStorage(User? user, Guid gameId, TransferResourceStorageRequest request)
         {
             var playerResult = await GetPlayerIfExists(gameId, user);

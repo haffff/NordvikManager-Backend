@@ -174,6 +174,36 @@ namespace NordvikManager.Tests.WasmHost
             }
         }
 
+        // What the browser host tells its GM it doesn't provide, pinned: changing it is a decision
+        // (it's shown to GMs, and in the docs). UPDATE_HOST_INFO_SNAPSHOT=1 rewrites the file.
+        [Fact]
+        public async Task HostInfo_IsTheBrowserHosts_AsPinnedInItsSnapshot()
+        {
+            Assert.IsType<BrowserHostDescription>(_provider.GetRequiredService<NordvikManager.Api.IHostDescription>());
+            var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+
+            var (status, body) = await _provider.GetRequiredService<NordvikManager.Api.ApiRouter>()
+                .InvokeAsync(new NordvikManager.Api.ApiContext(gm, null), "GET", "api/Host/Info");
+
+            Assert.Equal(200, status);
+            Assert.Equal("browser", (string?)body!["kind"]);
+            body["version"] = "<version>"; // the build's
+            var actual = Lf(body.ToString(Newtonsoft.Json.Formatting.Indented)) + "\n";
+            var file = System.IO.Path.Combine(SnapshotDir(), "host-info.browser.json");
+            if (Environment.GetEnvironmentVariable("UPDATE_HOST_INFO_SNAPSHOT") == "1")
+            {
+                System.IO.Directory.CreateDirectory(SnapshotDir());
+                System.IO.File.WriteAllText(file, actual);
+            }
+            Assert.True(System.IO.File.Exists(file), $"No snapshot {file}; run with UPDATE_HOST_INFO_SNAPSHOT=1 to create it.");
+            Assert.Equal(Lf(System.IO.File.ReadAllText(file)), actual);
+        }
+
+        private static string Lf(string text) => text.Replace("\r\n", "\n");
+
+        private static string SnapshotDir([System.Runtime.CompilerServices.CallerFilePath] string here = "")
+            => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(here)!, "Snapshots");
+
         private sealed class NoBrowserRtc : IBrowserRtc
         {
             public void CreatePeer(string peerId, string iceServersJson) { }

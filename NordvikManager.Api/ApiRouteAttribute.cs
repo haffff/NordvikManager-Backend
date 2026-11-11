@@ -26,5 +26,11 @@ namespace NordvikManager.Api
         /// one answers 501 saying so.
         /// </summary>
         public bool NativeOnly { get; set; }
+
+        /// <summary>
+        /// Why a <see cref="NativeOnly"/> route is server-only, in words for a GM: GET api/Host/Info
+        /// lists it for a browser host (ApiRouteCoverageTests requires it).
+        /// </summary>
+        public string? Reason { get; set; }
     }
 }

@@ -70,6 +70,8 @@ namespace NordvikManager.Wasm.Hosting
             services.AddSingleton(ApiRoutes.Shared);
             services.AddSingleton<ApiRouter>();
             services.AddSingleton<IWebRTCApiDispatcher>(sp => sp.GetRequiredService<ApiRouter>());
+            // GET api/Host/Info: a browser host, and what it doesn't provide.
+            services.AddSingleton<IHostDescription, BrowserHostDescription>();
 
             // The GM using this host in its own tab, and so its local admin.
             services.AddSingleton<HostGm>();

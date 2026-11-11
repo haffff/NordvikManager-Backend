@@ -119,6 +119,20 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                 });
                 _gameId = gameId.ToString();
 
+                await Check("api/Host/Info says browser, with what it doesn't provide", async () =>
+                {
+                    var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
+                    var (status, body) = await provider.GetRequiredService<NordvikManager.Api.ApiRouter>()
+                        .InvokeAsync(new NordvikManager.Api.ApiContext(gm, null), "GET", "api/Host/Info");
+                    if (status != 200 || (string?)body?["kind"] != "browser")
+                        throw new Exception($"{status} {body}");
+                    var unavailable = body["unavailable"]?.Count() ?? 0;
+                    var limitations = body["limitations"]?.Count() ?? 0;
+                    if (unavailable == 0 || limitations == 0)
+                        throw new Exception($"empty lists: {body}");
+                    return $"version {body["version"]}, {unavailable} unavailable, {limitations} limitations";
+                });
+
                 await Check("lobby opened", async () =>
                 {
                     // As SessionController.StartSession does, before any peer connects.

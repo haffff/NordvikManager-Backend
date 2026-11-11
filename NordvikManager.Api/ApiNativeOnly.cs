@@ -10,10 +10,11 @@ namespace NordvikManager.Api
     {
         public static IReadOnlyDictionary<string, string> Controllers { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Backup"] = "backs up and restores the server's own database and files",
-            ["Meta"] = "proxies Central's /api/meta for the GM's page; a browser host can ask Central itself",
-            ["ServerSettings"] = "the server's settings file; a browser host has fixed settings (FixedServerSettingsStore)",
-            ["Update"] = "updates the server's executable; a browser host is updated by redeploying its page",
+            // In words for a GM: GET api/Host/Info lists them for a browser host.
+            ["Backup"] = "Backs up and restores the whole GM server (its database and files). A browser host keeps its games in the browser's storage instead.",
+            ["Meta"] = "Central's details, fetched through the GM server. A browser host asks Central itself.",
+            ["ServerSettings"] = "The GM server's settings file. A browser host has fixed settings, including its upload limits.",
+            ["Update"] = "Updates the GM server's program. A browser host is updated when its page is.",
         };
 
         /// <summary>Whether a request path ("api/Backup/...") is one of these controllers'.</summary>

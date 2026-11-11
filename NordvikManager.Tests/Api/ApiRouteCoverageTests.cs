@@ -74,6 +74,18 @@ namespace NordvikManager.Tests.Api
             Assert.True(orphans.Count == 0, "No controller action answers: " + string.Join(", ", orphans));
         }
 
+        // GET api/Host/Info lists these for a browser host's GM, so each says why it's server-only.
+        [Fact]
+        public void EveryServerOnlyRoute_SaysWhy()
+        {
+            var silent = ApiRoutes.Shared.All
+                .Where(r => r.NativeOnly && string.IsNullOrWhiteSpace(r.Reason))
+                .Select(r => $"{r.Method} {r.Path}")
+                .ToList();
+
+            Assert.True(silent.Count == 0, "Server-only without a Reason: " + string.Join(", ", silent));
+        }
+
         [Fact]
         public void TheNativeOnlyList_NamesRealControllers_ThatHaveNoEndpoint()
         {
