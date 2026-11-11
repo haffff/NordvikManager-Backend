@@ -179,6 +179,10 @@ namespace NordvikManager.Api.Endpoints
                 })
                 .ToList();
 
+            // No registry set (the browser host has none, or a GM cleared it): just the built-ins.
+            if (addonRegistry.MainRepository == null)
+                return ApiResult.Ok(addons);
+
             var featuredAddonsConfig = addonRegistry.FeaturedAddons;
 
             try

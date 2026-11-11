@@ -56,13 +56,20 @@ async function renderGames() {
             el("button", { class: "start", onclick: () => startGame(game) }, "Start session"),
             el("button", { class: "stop", onclick: () => stopGame(game) }, "Stop")));
     }
+    // The addons shipped with the host (Basics), offered ticked as in the GM frontend.
+    const featured = await call("GET", "api/GameList/GetFeaturedAddons");
+    const addons = (featured.body ?? []).filter((addon) => addon.builtIn);
     const create = el("form", { id: "create", class: "card" },
         el("h2", {}, "New game"),
         el("label", {}, "Name", el("input", { id: "game-name", name: "game-name", required: "" })),
+        ...addons.map((addon) => el("label", { class: "addon" },
+            el("span", {}, el("input", { type: "checkbox", name: "addon", value: addon.key, checked: "" }), ` ${addon.name ?? addon.key}`),
+            el("span", { class: "muted" }, addon.description ?? ""))),
         el("button", { id: "create-submit", type: "submit" }, "Create game"));
     create.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const result = await call("POST", "api/GameList/AddGame", { name: $("#game-name").value, passwordRequired: false });
+        const addonsSelected = [...create.querySelectorAll('input[name="addon"]:checked')].map((box) => box.value);
+        const result = await call("POST", "api/GameList/AddGame", { name: $("#game-name").value, passwordRequired: false, addonsSelected });
         if (result.status === 200) status(`Created "${$("#game-name").value}".`, "ok");
         else status(`Could not create the game: ${result.body?.error ?? result.status}`, "error");
         await renderGames();

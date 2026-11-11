@@ -38,6 +38,8 @@ server.listen(Number(port), async () => {
     step('login', login.startsWith('Logged in'), login);
 
     await page.waitForSelector('#create-submit', { timeout: 30000 });
+    const basics = await page.$eval('#create input[name="addon"][value="basics"]', (box) => box.checked).catch(() => null);
+    step('Basics offered, ticked, for the new game', basics === true, String(basics));
     await page.fill('#game-name', 'E2E tab game');
     await page.click('#create-submit');
     await page.waitForSelector('li[data-game] .start', { timeout: 30000 });
