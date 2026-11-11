@@ -10,6 +10,7 @@ namespace NordvikManager.Api
         NotFound,
         Conflict,
         NoContent,
+        Content,
         Status,
     }
 
@@ -48,6 +49,11 @@ namespace NordvikManager.Api
         public static ApiResult NotFound(object? body) => new(ApiResultKind.NotFound, 404, true, body);
         public static ApiResult Conflict(object? body) => new(ApiResultKind.Conflict, 409, true, body);
         public static ApiResult NoContent() => new(ApiResultKind.NoContent, 204, false, null);
+
+        /// <summary>Text written as is (Content(text, contentType)); the router reads it as JSON.</summary>
+        public static ApiResult Content(string text, string contentType) => new(ApiResultKind.Content, 200, true, text) { ContentType = contentType };
+
+        public string? ContentType { get; private init; }
         public static ApiResult Status(int statusCode, object? body = null) => new(ApiResultKind.Status, statusCode, body != null, body);
     }
 }

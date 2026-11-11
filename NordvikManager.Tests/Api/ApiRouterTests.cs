@@ -165,6 +165,35 @@ namespace NordvikManager.Tests.Api
             Assert.True((bool)response["body"]!["same"]!);
         }
 
+        // [FromBody] Guid on the action: a simple type taken from the body, not the query.
+        [Fact]
+        public async Task AnApiBodyParameter_ComesFromTheBody()
+        {
+            var id = Guid.NewGuid();
+
+            var response = await Send("DELETE", "api/sample/remove", body: new JValue(id.ToString()));
+
+            Assert.Equal(id, (Guid)response["body"]!["id"]!);
+        }
+
+        // [Required] on a query parameter: [ApiController] answers 400 without it.
+        [Fact]
+        public async Task ARequiredQueryParameter_Missing_Is400()
+        {
+            Assert.Equal(400, (int)(await Send("GET", "api/sample/required"))["status"]!);
+            Assert.Equal(200, (int)(await Send("GET", "api/sample/required", new() { ["parentIds"] = "a" }))["status"]!);
+        }
+
+        // Content(json, "application/json") on the action: the JSON as written.
+        [Fact]
+        public async Task RawJsonContent_IsTheBody()
+        {
+            var response = await Send("GET", "api/sample/raw");
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.Equal("As Written", (string?)response["body"]!["Kept"]);
+        }
+
         [Fact]
         public async Task AnUnknownRoute_Is501()
         {
@@ -217,6 +246,15 @@ namespace NordvikManager.Tests.Api
             [ApiRoute("GET", "api/Sample/Service")]
             public Task<ApiResult> Service([ApiService] Recorder recorder)
                 => Task.FromResult(ApiResult.Ok(new { same = ReferenceEquals(recorder, _recorder) }));
+
+            [ApiRoute("DELETE", "api/Sample/Remove")]
+            public ApiResult Remove([ApiBody] Guid playlistId) => ApiResult.Ok(new { id = playlistId });
+
+            [ApiRoute("GET", "api/Sample/Required")]
+            public ApiResult Required([Required] string parentIds) => ApiResult.Ok(new { parentIds });
+
+            [ApiRoute("GET", "api/Sample/Raw")]
+            public ApiResult Raw() => ApiResult.Content("{\"Kept\":\"As Written\"}", "application/json");
 
             [ApiRoute("GET", "api/Sample/Nothing")]
             public Task<ApiResult> Nothing() => Task.FromResult(ApiResult.Ok(null));

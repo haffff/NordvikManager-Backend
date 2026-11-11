@@ -84,6 +84,9 @@ namespace NordvikManager.Api
                 // ASP.NET Core answers an Ok with a null body as 204.
                 if (result.HasBody && result.Body == null && result.StatusCode == 200)
                     return (204, null);
+                // Content(json, "application/json"): the JSON as written.
+                if (result.Kind == ApiResultKind.Content)
+                    return (result.StatusCode, result.Body is string raw && raw.Length > 0 ? JToken.Parse(raw) : null);
                 if (result.StatusCode >= 400)
                     _logger.LogInformation("{Method} {Path} from {Player} → {Status}", request.Method, route.Path, player.Name, result.StatusCode);
                 return (result.StatusCode, result.HasBody ? Json(result.Body) : null);
@@ -132,10 +135,17 @@ namespace NordvikManager.Api
                     arguments[i] = services.GetRequiredService(type);
                 else if (type == typeof(CancellationToken))
                     arguments[i] = CancellationToken.None;
-                else if (IsSimple(type))
+                else if (IsSimple(type) && parameter.GetCustomAttribute<ApiBodyAttribute>() == null)
                 {
                     if (!query.TryGetValue(parameter.Name!, out var text))
+                    {
+                        if (parameter.GetCustomAttribute<RequiredAttribute>() != null)
+                        {
+                            error = $"The {parameter.Name} field is required.";
+                            return false;
+                        }
                         arguments[i] = parameter.HasDefaultValue ? parameter.DefaultValue : Default(type);
+                    }
                     else if (!TryConvert(text, type, out arguments[i]))
                     {
                         error = $"The value '{text}' is not valid for {parameter.Name}.";
