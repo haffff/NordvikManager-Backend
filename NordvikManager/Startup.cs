@@ -57,12 +57,8 @@ namespace NordvikManager
             }
 
             services.AddLogging(options => options.AddConsole());
-            services.AddControllers().AddJsonOptions(options =>
-            {
-                options.JsonSerializerOptions.IgnoreNullValues = true;
-                options.JsonSerializerOptions.AllowTrailingCommas = true;
-                options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-            });
+            // The same JSON as the shared API router writes (ApiJson).
+            services.AddControllers().AddJsonOptions(options => NordvikManager.Api.ApiJson.Configure(options.JsonSerializerOptions));
 
             services.AddDistributedMemoryCache();
             services.AddSession(options =>

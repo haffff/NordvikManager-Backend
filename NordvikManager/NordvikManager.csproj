@@ -89,6 +89,7 @@
     <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
     <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
+    <ProjectReference Include="..\NordvikManager.Api\NordvikManager.Api.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure.Imaging\NordvikManager.Infrastructure.Imaging.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure.MySql\NordvikManager.Infrastructure.MySql.csproj" />
   </ItemGroup>
