@@ -1,7 +1,6 @@
 using NordvikManager.Services.Interfaces;
 using NordvikManager.WebRTC;
 using Newtonsoft.Json;
-using SIPSorcery.Net;
 using System.Collections.Generic;
 using System.Linq;
 using Xunit;
@@ -10,7 +9,7 @@ namespace NordvikManager.Tests.WebRTC
 {
     public class IceServerMapperTests
     {
-        private static readonly List<RTCIceServer> Fallback = new() { new RTCIceServer { urls = "stun:fallback:19302" } };
+        private static readonly List<IceServer> Fallback = new() { new IceServer("stun:fallback:19302") };
 
         private static IceServersResult Result(params IceServerDto[] servers) => new() { IceServers = servers.ToList(), Ttl = 86400 };
 
@@ -19,10 +18,10 @@ namespace NordvikManager.Tests.WebRTC
         {
             var result = Result(new IceServerDto { Urls = new() { "stun:a:1", "stun:b:2" } });
 
-            var servers = IceServerMapper.ToRtcIceServers(result, Fallback);
+            var servers = IceServerMapper.ToIceServers(result, Fallback);
 
-            Assert.Equal(new[] { "stun:a:1", "stun:b:2" }, servers.Select(s => s.urls));
-            Assert.All(servers, s => Assert.Null(s.username));
+            Assert.Equal(new[] { "stun:a:1", "stun:b:2" }, servers.Select(s => s.Url));
+            Assert.All(servers, s => Assert.Null(s.Username));
         }
 
         [Fact]
@@ -32,11 +31,10 @@ namespace NordvikManager.Tests.WebRTC
                 new IceServerDto { Urls = new() { "stun:a:1" } },
                 new IceServerDto { Urls = new() { "turn:t:3478?transport=udp" }, Username = "123:user", Credential = "secret=" });
 
-            var turn = IceServerMapper.ToRtcIceServers(result, Fallback).Single(s => s.urls.StartsWith("turn:"));
+            var turn = IceServerMapper.ToIceServers(result, Fallback).Single(s => s.Url.StartsWith("turn:"));
 
-            Assert.Equal("123:user", turn.username);
-            Assert.Equal("secret=", turn.credential);
-            Assert.Equal(RTCIceCredentialType.password, turn.credentialType);
+            Assert.Equal("123:user", turn.Username);
+            Assert.Equal("secret=", turn.Credential);
         }
 
         [Theory]
@@ -47,9 +45,9 @@ namespace NordvikManager.Tests.WebRTC
         {
             var result = Result(new IceServerDto { Urls = new() { "turn:t:3478?transport=udp", url }, Username = "u", Credential = "c" });
 
-            var servers = IceServerMapper.ToRtcIceServers(result, Fallback);
+            var servers = IceServerMapper.ToIceServers(result, Fallback);
 
-            Assert.Equal(new[] { "turn:t:3478?transport=udp" }, servers.Select(s => s.urls));
+            Assert.Equal(new[] { "turn:t:3478?transport=udp" }, servers.Select(s => s.Url));
         }
 
         [Fact]
@@ -60,17 +58,17 @@ namespace NordvikManager.Tests.WebRTC
                 new IceServerDto { Urls = new() { "stun:a:1" } },
                 new IceServerDto { Urls = new() { "turn:t:3478?transport=tcp", "turn:t:3478?transport=udp", "turn:t:3479" }, Username = "u", Credential = "c" });
 
-            var servers = IceServerMapper.ToRtcIceServers(result, Fallback);
+            var servers = IceServerMapper.ToIceServers(result, Fallback);
 
-            Assert.Equal(new[] { "turn:t:3478?transport=udp", "turn:t:3479", "turn:t:3478?transport=tcp", "stun:a:1" }, servers.Select(s => s.urls));
+            Assert.Equal(new[] { "turn:t:3478?transport=udp", "turn:t:3479", "turn:t:3478?transport=tcp", "stun:a:1" }, servers.Select(s => s.Url));
         }
 
         [Fact]
         public void ToRtcIceServers_UsesFallback_WhenNothingUsable()
         {
-            Assert.Same(Fallback, IceServerMapper.ToRtcIceServers(null, Fallback));
-            Assert.Same(Fallback, IceServerMapper.ToRtcIceServers(Result(), Fallback));
-            Assert.Same(Fallback, IceServerMapper.ToRtcIceServers(Result(new IceServerDto { Urls = new() { "turns:t:5349" } }), Fallback));
+            Assert.Same(Fallback, IceServerMapper.ToIceServers(null, Fallback));
+            Assert.Same(Fallback, IceServerMapper.ToIceServers(Result(), Fallback));
+            Assert.Same(Fallback, IceServerMapper.ToIceServers(Result(new IceServerDto { Urls = new() { "turns:t:5349" } }), Fallback));
         }
 
         [Theory]
@@ -85,7 +83,7 @@ namespace NordvikManager.Tests.WebRTC
         }
 
         [Fact]
-        public void MappedServers_AreAcceptedByRTCPeerConnection()
+        public void MappedServers_AreAcceptedBySipsorcery()
         {
             var result = Result(
                 new IceServerDto { Urls = new() { "stun:stun.l.google.com:19302" } },
@@ -96,9 +94,8 @@ namespace NordvikManager.Tests.WebRTC
                     Credential = "secret=",
                 });
 
-            var config = new RTCConfiguration { iceServers = IceServerMapper.ToRtcIceServers(result, Fallback) };
-            using var pc = new RTCPeerConnection(config);
-            pc.Close("test");
+            var pc = new SipsorceryPeerConnectionFactory().Create(IceServerMapper.ToIceServers(result, Fallback));
+            pc.Close();
         }
     }
 }

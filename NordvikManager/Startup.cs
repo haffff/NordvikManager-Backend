@@ -85,6 +85,7 @@ namespace NordvikManager
             services.AddSingleton<RequestDelegateHolder>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
             services.AddHttpContextAccessor();
+            services.AddSingleton<IPeerConnectionFactory, SipsorceryPeerConnectionFactory>();
             services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
             services.AddHostedService<ScheduledBackupService>();
@@ -99,14 +100,15 @@ namespace NordvikManager
                 () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
             services.AddHostedService<UpdateCheckService>();
 
-            var handlers = Assembly.GetExecutingAssembly().GetTypes();
+            // Both live in NordvikManager.RealTime, shared with the browser-wasm host.
+            var handlers = typeof(IWebSocketHandler).Assembly.GetTypes();
             foreach (var handler in handlers)
             {
                 if (handler.GetInterface("IWebSocketHandler") != null)
                     services.AddScoped(typeof(IWebSocketHandler), handler);
             }
 
-            var definitions = Assembly.GetExecutingAssembly().GetTypes();
+            var definitions = typeof(IActionStepDefinition).Assembly.GetTypes();
             foreach (var definition in definitions)
             {
                 if (definition.GetInterface("IActionStepDefinition") != null)

@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using SIPSorcery.Net;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -8,7 +7,7 @@ using System.Threading.Tasks;
 namespace NordvikManager.WebRTC
 {
     /// <summary>
-    /// Wraps a SIPSorcery RTCDataChannel as an IPlayerConnection so it can be used
+    /// Wraps a WebRTC data channel as an IPlayerConnection so it can be used
     /// interchangeably with WebSocketManager in GameLobby.
     /// </summary>
     public class WebRTCPlayerConnection : IPlayerConnection
@@ -33,11 +32,6 @@ namespace NordvikManager.WebRTC
 
         /// <summary>Whether the data channel can still carry messages (for diagnostics).</summary>
         public bool IsOpen => _channel.IsOpen;
-
-        public WebRTCPlayerConnection(RTCDataChannel dataChannel, ILogger? logger = null)
-            : this(new SipsorceryDataChannelSender(dataChannel), logger: logger)
-        {
-        }
 
         public WebRTCPlayerConnection(IDataChannelSender channel, TimeSpan? pollInterval = null, ILogger? logger = null)
         {

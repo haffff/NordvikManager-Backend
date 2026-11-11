@@ -89,6 +89,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
     <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,4 @@
 using NordvikManager.Services.Interfaces;
-using SIPSorcery.Net;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,28 +6,22 @@ using System.Linq;
 namespace NordvikManager.WebRTC
 {
     /// <summary>
-    /// Maps the Central Server's ICE configuration to SIPSorcery <see cref="RTCIceServer"/>s.
+    /// Maps the Central Server's ICE configuration to <see cref="IceServer"/>s.
     /// </summary>
     public static class IceServerMapper
     {
         /// <summary>
-        /// One <see cref="RTCIceServer"/> per URL, with TURN credentials carried over.
+        /// One <see cref="IceServer"/> per URL, with TURN credentials carried over.
         /// Only <c>stun:</c>/<c>turn:</c> URLs are kept: TLS (<c>stuns:</c>/<c>turns:</c>) is left to browsers.
         /// SIPSorcery ends up using a single ICE server and prefers TURN, so UDP TURN goes first, then TCP TURN, then STUN.
         /// Returns <paramref name="fallback"/> when nothing usable remains.
         /// </summary>
-        public static List<RTCIceServer> ToRtcIceServers(IceServersResult? result, List<RTCIceServer> fallback)
+        public static List<IceServer> ToIceServers(IceServersResult? result, List<IceServer> fallback)
         {
             var servers = (result?.IceServers ?? new())
-                .SelectMany(server => server.Urls.Select(url => new RTCIceServer
-                {
-                    urls = url,
-                    username = server.Username,
-                    credential = server.Credential,
-                    credentialType = RTCIceCredentialType.password,
-                }))
-                .Where(s => IsSupported(s.urls))
-                .OrderBy(s => Priority(s.urls))
+                .SelectMany(server => server.Urls.Select(url => new IceServer(url, server.Username, server.Credential)))
+                .Where(s => IsSupported(s.Url))
+                .OrderBy(s => Priority(s.Url))
                 .ToList();
 
             return servers.Count > 0 ? servers : fallback;
