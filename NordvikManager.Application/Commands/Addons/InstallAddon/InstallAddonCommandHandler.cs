@@ -10,6 +10,7 @@ using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.Extension;
 using NordvikManager.Application.Guards;
 using NordvikManager.Application.Interfaces;
+using NordvikManager.Application.Services;
 using NordvikManager.Domain.Entities;
 using NordvikManager.Domain.Entities.BattleMap;
 using NordvikManager.Domain.Entities.Resources;
@@ -29,14 +30,16 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
         private readonly IAddonRepositoryService addonFromUriProvider;
         private readonly IMediator mediator;
         private readonly IGameEventLogger gameEventLogger;
+        private readonly IBuiltInAddons builtInAddons;
 
-        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator, IGameEventLogger gameEventLogger) : base(dbContext, mapper)
+        public InstallAddonCommandHandler(IDbContext dbContext, IMapper mapper, IAddonRepositoryService addonFromUriProvider, IMediator mediator, IGameEventLogger gameEventLogger, IBuiltInAddons builtInAddons) : base(dbContext, mapper)
         {
             this.dbContext = dbContext;
             this.mapper = mapper;
             this.addonFromUriProvider = addonFromUriProvider;
             this.mediator = mediator;
             this.gameEventLogger = gameEventLogger;
+            this.builtInAddons = builtInAddons;
         }
 
         public override async Task<(CommandResponse, InstallAddonCommandResponse)> Handle(InstallAddonCommand request, CancellationToken cancellationToken)
@@ -71,16 +74,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
             }
 
             using var archive = new ZipArchive(new MemoryStream(request.AddonFile));
-
-            // Bug fix: GetEntry can return null — was crashing in ReadToBytes
-            var infoEntry = archive.Entries.FirstOrDefault(x => x.Name.ToLower().Trim() == "info.json")
-                ?? throw new InvalidOperationException("Addon archive is missing 'info.json'. Is this a valid addon file?");
-
-            var addon = JsonSerializer.Deserialize<AddonModel>(ReadToBytes(infoEntry), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                ?? throw new InvalidOperationException("Cannot deserialize 'info.json'. Are you sure this is a valid addon file?");
-
-            if (addon.Key == null)
-                throw new InvalidOperationException("Addon 'info.json' is missing the required 'key' field.");
+            var addon = ReadInfo(archive);
 
             // Without this, installing an addon that's already present for this game (e.g. it
             // was pulled in as another addon's dependency, then also selected directly — see
@@ -106,12 +100,31 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                     });
                 }
 
+            }
+
+            // Everything this addon needs, found and checked before the game is touched: a
+            // dependency that can't be fetched, is too old or depends back on the addon fails
+            // here, while an update still has the old version installed.
+            var dependencySteps = await PlanDependencies(request, game, addon);
+
+            // The old version's files by key, so cards pointing at them can follow the new ones.
+            Dictionary<Guid, string>? replacedFiles = null;
+            if (existingAddon != null)
+            {
+                replacedFiles = dbContext.Addons
+                    .Where(a => a.Id == existingAddon.Id)
+                    .SelectMany(a => a.Resources!)
+                    .Where(r => r.Key != null)
+                    .Select(r => new { r.Id, r.Key })
+                    .ToDictionary(r => r.Id, r => r.Key!);
+
                 gameEventLogger.Info("AddonInstall", $"Addon '{addon.Key}' is already installed for game '{game.Name}' — removing the existing install before reinstalling.");
                 await mediator.Send(new UninstallAddonCommand
                 {
                     Player = request.Player,
                     GameID = request.GameID,
                     AddonId = existingAddon.Id,
+                    ForReinstall = true,
                 });
                 game.Addons.Remove(existingAddon);
             }
@@ -126,7 +139,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
             // Upfront total for progress reporting — a rough estimate, not byte-exact: entries
             // skipped later by CheckIfAlreadyExists() won't call ReportProgress, so Current may
             // not always reach Total. Good enough for a UX progress bar.
-            var total = (addon.Dependencies?.Count ?? 0)
+            var total = dependencySteps.Count
                 + GetByFolder(archive, "scripts/").Count()
                 + GetByFolder(archive, "resources/").Count()
                 + GetByFolder(archive, "actions/").Count()
@@ -139,12 +152,24 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                 request.OnProgress?.Invoke(new InstallAddonProgress { Phase = phase, Current = current, Total = total, Message = message });
             }
 
-            gameEventLogger.Info("AddonInstall", $"[trace] dependencies: {addon.Dependencies?.Count ?? 0}, items to add ≈ {total}");
-            await FindAndInstallDependencies(request, game, addon, ReportProgress);
+            gameEventLogger.Info("AddonInstall", $"[trace] dependencies to install: {dependencySteps.Count}, items to add ≈ {total}");
+            var installedDependencies = new List<InstallAddonCommandResponse>();
+            foreach (var step in dependencySteps)
+            {
+                gameEventLogger.Info("AddonInstall", $"{(step.Replaces ? "Updating" : "Installing")} dependency '{step.Key}' (v{step.Version}) for addon '{addon.Name}'.");
+                var (_, installedDependency) = await mediator.Send(new InstallAddonCommand
+                {
+                    AddonFile = step.File,
+                    AutoInstallDeps = true,
+                    Reinstall = step.Replaces,
+                    GameID = request.GameID,
+                    Player = request.Player,
+                });
+                if (installedDependency != null)
+                    installedDependencies.Add(installedDependency);
+                ReportProgress("dependencies", $"{(step.Replaces ? "Updated" : "Installed")} dependency '{step.Key}'");
+            }
             gameEventLogger.Info("AddonInstall", $"[trace] dependencies done ({watch.ElapsedMilliseconds} ms)");
-
-            // Clear deps — dependencies are installed separately, not stored on the addon entity
-            addon.Dependencies = null;
 
             var addonsFolderId = await CreateFolder(request, game, "Addons");
             var addonFolderId = await CreateFolder(request, game, addon.Name, addonsFolderId);
@@ -160,6 +185,9 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
 
             // Bug fix: was using synchronous SaveChanges in an async handler
             await dbContext.SaveChangesAsync();
+
+            if (replacedFiles is { Count: > 0 })
+                await RepointCards(game, replacedFiles, addon.Resources!);
             gameEventLogger.Info("AddonInstall", $"[trace] saved, handler done ({watch.ElapsedMilliseconds} ms)");
 
             addon.SetGlobalPermission();
@@ -170,8 +198,66 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                 AddonId = addon.Id,
                 AddonKey = addon.Key,
                 AddonName = addon.Name,
-                AddonVersion = addon.Version
+                AddonVersion = addon.Version,
+                InstalledDependencies = installedDependencies,
             });
+        }
+
+        /// <summary>
+        /// After an update: the game's cards that pointed at the old version's files (another
+        /// addon's cards, cards made from its templates) point at the new ones with the same key.
+        /// A file the new version no longer has is left as it was.
+        /// </summary>
+        private async Task RepointCards(GameModel game, Dictionary<Guid, string> replacedFiles, IEnumerable<ResourceModel> newFiles)
+        {
+            var newIdByKey = newFiles.Where(r => r.Key != null).GroupBy(r => r.Key!).ToDictionary(g => g.Key, g => g.First().Id);
+            var moves = replacedFiles
+                .Where(old => newIdByKey.ContainsKey(old.Value))
+                .ToDictionary(old => old.Key, old => newIdByKey[old.Value]);
+            if (moves.Count == 0)
+                return;
+
+            var oldIds = moves.Keys.ToList();
+            var cards = dbContext.Cards
+                .Where(c => c.GameId == game.Id
+                    && ((c.MainResource != null && oldIds.Contains(c.MainResource.Value))
+                        || (c.AdditionalResources != null && c.AdditionalResources != "" && c.AdditionalResources != "[]")))
+                .ToList();
+
+            var changed = 0;
+            foreach (var card in cards)
+            {
+                var touched = false;
+                if (card.MainResource is Guid main && moves.TryGetValue(main, out var newMain))
+                {
+                    card.MainResource = newMain;
+                    touched = true;
+                }
+
+                var additional = ParseIds(card.AdditionalResources);
+                if (additional != null && additional.Any(moves.ContainsKey))
+                {
+                    card.AdditionalResources = JsonSerializer.Serialize(additional.Select(id => moves.TryGetValue(id, out var moved) ? moved : id));
+                    touched = true;
+                }
+
+                if (touched)
+                    changed++;
+            }
+
+            if (changed > 0)
+            {
+                await dbContext.SaveChangesAsync();
+                gameEventLogger.Info("AddonInstall", $"Pointed {changed} card(s) at the new version's files.");
+            }
+
+            static List<Guid>? ParseIds(string? json)
+            {
+                if (string.IsNullOrWhiteSpace(json))
+                    return null;
+                try { return JsonSerializer.Deserialize<List<Guid>>(json); }
+                catch (JsonException) { return null; }
+            }
         }
 
         private async Task AddViews(InstallAddonCommand request, ZipArchive archive, AddonModel addon, GameModel game, Action<string, string?> reportProgress)
@@ -436,51 +522,89 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
             return result.Item2.FirstOrDefault(x => x.Name == name)?.Id;
         }
 
-        private async Task FindAndInstallDependencies(InstallAddonCommand request, GameModel game, AddonModel addon, Action<string, string?> reportProgress)
+        /// <summary>A dependency to install (or, when an older version is installed, to update), with its package.</summary>
+        private sealed record DependencyStep(string Key, string? Version, byte[] File, bool Replaces);
+
+        /// <summary>
+        /// Walks the addon's dependencies, theirs, and so on: each one missing or older than
+        /// required is downloaded and its info.json checked. Returns them deepest first, each
+        /// once. Throws, before anything is installed, on a circle (naming it), a dependency
+        /// the registry can't give, or one whose newest release is still too old.
+        /// </summary>
+        private async Task<List<DependencyStep>> PlanDependencies(InstallAddonCommand request, GameModel game, AddonModel addon)
         {
-            if (addon.Dependencies == null || addon.Dependencies.Count == 0)
-                return;
+            var plan = new List<DependencyStep>();
+            await Walk(addon, new List<string> { addon.Key });
+            return plan;
 
-            foreach (var dependency in addon.Dependencies)
+            async Task Walk(AddonModel current, List<string> chain)
             {
-                gameEventLogger.Info("AddonInstall", $"Checking dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
-
-                // Bug fix: was matching by name which can differ — now matches by key
-                var alreadyInstalled = game.Addons.Any(x => x.Key == dependency.Key && CompareVersions(x, dependency));
-                if (alreadyInstalled)
+                foreach (var dependency in current.Dependencies ?? new List<AddonDependency>())
                 {
-                    gameEventLogger.Info("AddonInstall", $"Dependency '{dependency.Key}' (v{dependency.Version}) is already installed for game '{game.Name}'.");
-                    reportProgress("dependencies", $"Dependency '{dependency.Key}' already installed");
-                    continue;
+                    if (string.IsNullOrWhiteSpace(dependency.Key))
+                        throw new InvalidOperationException($"'{current.Key}' lists a dependency without a key.");
+
+                    if (chain.Contains(dependency.Key))
+                        throw new InvalidOperationException($"These addons depend on each other in a circle: {string.Join(" → ", chain.Append(dependency.Key))}.");
+
+                    var planned = plan.FirstOrDefault(p => p.Key == dependency.Key);
+                    if (planned != null)
+                    {
+                        if (!AddonVersion.Satisfies(planned.Version, dependency.Version))
+                            throw TooOld(current, dependency, planned.Version);
+                        continue;
+                    }
+
+                    var installed = game.Addons.FirstOrDefault(x => x.Key == dependency.Key);
+                    if (installed != null && AddonVersion.Satisfies(installed.Version, dependency.Version))
+                    {
+                        gameEventLogger.Info("AddonInstall", $"Dependency '{dependency.Key}' (v{installed.Version}) of '{current.Key}' is already installed.");
+                        continue;
+                    }
+
+                    if (request.AutoInstallDeps == false)
+                        throw new InvalidOperationException($"Dependency '{dependency.Key}' (v{dependency.Version}) is not installed and auto-install is disabled.");
+
+                    // The server's own copy of a built-in addon (Basics isn't in the registry),
+                    // when it's new enough; otherwise the registry's.
+                    var builtIn = builtInAddons.GetAll().FirstOrDefault(b => b.Key == dependency.Key && AddonVersion.Satisfies(b.Version, dependency.Version));
+                    var file = builtIn?.Data
+                        ?? await addonFromUriProvider.GetAddonByKey(dependency.Key)
+                        ?? throw new InvalidOperationException($"Failed to fetch addon file for dependency '{dependency.Key}'.");
+
+                    AddonModel info;
+                    using (var archive = new ZipArchive(new MemoryStream(file)))
+                        info = ReadInfo(archive);
+
+                    if (info.Key != dependency.Key)
+                        throw new InvalidOperationException($"The registry's package for '{dependency.Key}' holds the addon '{info.Key}'.");
+                    if (!AddonVersion.Satisfies(info.Version, dependency.Version))
+                        throw TooOld(current, dependency, info.Version);
+
+                    // Its own dependencies go first.
+                    await Walk(info, chain.Append(dependency.Key).ToList());
+                    plan.Add(new DependencyStep(dependency.Key, info.Version, file, Replaces: installed != null));
                 }
-
-                if (request.AutoInstallDeps == false)
-                    throw new InvalidOperationException($"Dependency '{dependency.Key}' (v{dependency.Version}) is not installed and auto-install is disabled.");
-
-                gameEventLogger.Info("AddonInstall", $"Auto-installing dependency '{dependency.Key}' (v{dependency.Version}) for addon '{addon.Name}'.");
-
-                // Bug fix: was passing version arg that no longer exists on the interface
-                var depFile = await addonFromUriProvider.GetAddonByKey(dependency.Key);
-                if (depFile == null)
-                    throw new InvalidOperationException($"Failed to fetch addon file for dependency '{dependency.Key}'.");
-
-                gameEventLogger.Info("AddonInstall", $"Fetched addon file for dependency '{dependency.Key}'.");
-
-                await mediator.Send(new InstallAddonCommand
-                {
-                    AddonFile = depFile,
-                    AutoInstallDeps = true,
-                    GameID = request.GameID,
-                    Player = request.Player
-                });
-
-                reportProgress("dependencies", $"Installed dependency '{dependency.Key}'");
             }
+
+            static InvalidOperationException TooOld(AddonModel addon, AddonDependency dependency, string? available)
+                => new($"'{addon.Name ?? addon.Key}' needs '{dependency.Key}' {dependency.Version} or newer, but the registry has {available ?? "no version"}.");
         }
 
-        // Bug fix: null version on requirement now means "any version is acceptable"
-        private static bool CompareVersions(AddonModel installed, AddonModel required)
-            => required.Version == null || installed.Version == required.Version;
+        /// <summary>The addon described by an archive's info.json.</summary>
+        private static AddonModel ReadInfo(ZipArchive archive)
+        {
+            var infoEntry = archive.Entries.FirstOrDefault(x => x.Name.ToLower().Trim() == "info.json")
+                ?? throw new InvalidOperationException("Addon archive is missing 'info.json'. Is this a valid addon file?");
+
+            var addon = JsonSerializer.Deserialize<AddonModel>(ReadToBytes(infoEntry), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidOperationException("Cannot deserialize 'info.json'. Are you sure this is a valid addon file?");
+
+            if (addon.Key == null)
+                throw new InvalidOperationException("Addon 'info.json' is missing the required 'key' field.");
+
+            return addon;
+        }
 
         /// <summary>
         /// Deserializes an action JSON file, accepting <c>content</c> as either a

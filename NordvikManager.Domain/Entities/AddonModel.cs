@@ -28,7 +28,7 @@ namespace NordvikManager.Domain.Entities
         // GameLobby/ActionProcessingService yet to fire the hook through). See
         // ActionProcessingService.RunPendingAddonInstallHooksAsync.
         public bool InstallHookFired { get; set; }
-        public List<AddonModel>? Dependencies { get; set; }
+        public List<AddonDependency>? Dependencies { get; set; }
         public List<CardModel>? Views { get; set; }
         public List<CardModel>? Templates { get; set; }
         public List<ActionModel>? Actions { get; set; }

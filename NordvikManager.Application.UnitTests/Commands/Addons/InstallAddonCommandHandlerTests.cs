@@ -30,9 +30,12 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         protected readonly Mock<IMediator> Mediator = new();
         protected readonly Mock<IAddonRepositoryService> RepositoryService = new();
         protected readonly Mock<IGameEventLogger> Logger = new();
+        protected readonly Mock<IBuiltInAddons> BuiltIns = new();
 
         public InstallAddonCommandHandlerTests()
         {
+            BuiltIns.Setup(b => b.GetAll()).Returns(Array.Empty<BuiltInAddon>());
+
             Mediator.Setup(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((AddTreeEntryCommand cmd, CancellationToken _) =>
                     (CommandResponse.Ok, new List<TreeEntryDto> { new TreeEntryDto { Id = Guid.NewGuid(), Name = cmd.TreeEntryDto.Name } }));
@@ -66,7 +69,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
                 });
         }
 
-        private protected InstallAddonCommandHandler Handler() => new(Db, Mapper, RepositoryService.Object, Mediator.Object, Logger.Object);
+        private protected InstallAddonCommandHandler Handler() => new(Db, Mapper, RepositoryService.Object, Mediator.Object, Logger.Object, BuiltIns.Object);
 
         protected static byte[] BuildAddonZip(string infoJson, params (string Path, string Content)[] entries)
         {
@@ -205,6 +208,50 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.NotEqual(firstResult.AddonId, result.AddonId);
             Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
             Assert.Single(Db.Actions.Where(a => a.Prefix == "dnd5e"));
+        }
+
+        // An update gives the addon's files new ids. Cards elsewhere in the game that point at
+        // them (another addon's cards, cards made from its templates) used to keep the old,
+        // deleted ids.
+        [Fact]
+        public async Task Handle_Reinstall_PointsTheGamesCardsAtTheNewFiles()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("resources/sheet.css", "body{}"), ("resources/logo.png", "png"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var oldSheet = Db.Resources.Single(r => r.Key == "dnd5e_sheet.css").Id;
+            var oldLogo = Db.Resources.Single(r => r.Key == "dnd5e_logo.png").Id;
+            var unrelated = Guid.NewGuid();
+            var card = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Other addon's sheet", GameId = game.Id, Properties = new List<PropertyModel>(),
+                MainResource = oldSheet,
+                AdditionalResources = System.Text.Json.JsonSerializer.Serialize(new[] { oldLogo, unrelated }),
+            };
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            // The real uninstall removes the addon and its files.
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Resources).First(a => a.Id == cmd.AddonId);
+                    Db.Resources.RemoveRange(addon.Resources!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var reinstall = ValidCommand(game, Player(), archive);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            var newSheet = Db.Resources.Single(r => r.Key == "dnd5e_sheet.css").Id;
+            var newLogo = Db.Resources.Single(r => r.Key == "dnd5e_logo.png").Id;
+            Assert.NotEqual(oldSheet, newSheet);
+            var stored = SeedContext().Cards.Single(c => c.Id == card.Id);
+            Assert.Equal(newSheet, stored.MainResource);
+            Assert.Equal(new[] { newLogo, unrelated }, System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(stored.AdditionalResources!));
         }
 
         // ---- Archive / info.json parsing ----

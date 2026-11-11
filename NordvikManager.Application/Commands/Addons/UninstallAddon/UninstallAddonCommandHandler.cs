@@ -54,6 +54,22 @@ namespace NordvikManager.Application.Commands.Addons.UninstallAddon
                 .FirstOrDefault(x => x.Id == request.AddonId || x.Key == request.AddonKey);
 
             Guard.NotFound(addon, "Addon", (object?)request.AddonId ?? request.AddonKey);
+
+            // Removing it would break the addons that need it. An update puts the new version
+            // straight back, so it may.
+            if (!request.ForReinstall)
+            {
+                var gameAddons = dbContext.Games
+                    .Where(x => x.Id == request.GameID)
+                    .SelectMany(x => x.Addons, (g, a) => a)
+                    .Where(a => a.Id != addon.Id)
+                    .AsNoTracking()
+                    .ToList();
+                var requiredBy = AddonDependents.Of(gameAddons, addon.Key, addon.Id);
+                if (requiredBy.Count > 0)
+                    throw new InvalidOperationException(AddonDependents.RefusalMessage(addon.Name, requiredBy));
+            }
+
             gameEventLogger.Info("AddonUninstall", $"[trace] addon loaded in {watch.ElapsedMilliseconds} ms: '{addon.Name}' key={addon.Key} — {addon.Resources.Count} resources, {addon.Views.Count} views, {addon.Templates.Count} templates, {addon.Actions.Count} actions");
 
             gameEventLogger.Info("AddonUninstall", $"Uninstalling addon '{addon.Name}' (ID: {addon.Id}) for game '{game.Name}' (ID: {game.Id}) by player '{request.Player.Name}' (ID: {request.Player.Id}).");

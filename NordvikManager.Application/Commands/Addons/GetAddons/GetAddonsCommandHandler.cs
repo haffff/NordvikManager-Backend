@@ -40,6 +40,7 @@ namespace NordvikManager.Application.Commands.Addons.GetAddons
                     Version = x.Version,
                     Id = x.Id,
                     IsEnabled = x.IsEnabled,
+                    Dependencies = x.Dependencies?.Select(d => new AddonDependencyDto { Key = d.Key, Version = d.Version }).ToList() ?? new(),
                 }).ToList();
             }
 

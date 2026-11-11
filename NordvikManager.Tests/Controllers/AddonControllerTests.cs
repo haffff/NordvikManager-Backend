@@ -464,6 +464,22 @@ namespace NordvikManager.Tests.Controllers
             Assert.IsType<OkObjectResult>(result);
         }
 
+        // Refused on the request, before the addon's Uninstall hook can run.
+        [Fact]
+        public async Task UninstallAddon_ReturnsConflict_WhenOtherAddonsNeedIt()
+        {
+            var lobbyMock = new Mock<ILobbyService>();
+            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new AddonDto { Key = "core", Name = "Core", RequiredBy = new List<string> { "Fifth Edition" } });
+
+            var result = await controller.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = "core" });
+
+            var conflict = Assert.IsType<ConflictObjectResult>(result);
+            Assert.Contains("Fifth Edition", System.Text.Json.JsonSerializer.Serialize(conflict.Value));
+            _mediator.Verify(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         [Fact]
         public async Task UninstallAddon_ReturnsBadRequest_WhenAddonIdMissing()
         {

@@ -27,5 +27,22 @@ namespace NordvikManager.Application.Commands.Addons.GetAddon
         public GetAddonCommandHandler(IDbContext dbContext, IMapper mapper) : base(dbContext, mapper)
         {
         }
+
+        public override async Task<AddonDto> Handle(GetAddonCommand request, CancellationToken cancellationToken)
+        {
+            var dto = await base.Handle(request, cancellationToken);
+            if (dto == null)
+                return dto;
+
+            // The game's addons that need this one: the uninstall endpoint refuses on them
+            // before the addon's Uninstall hook runs.
+            var gameAddons = dbContext.Games
+                .Where(x => x.Id == request.GameID)
+                .SelectMany(x => x.Addons, (g, a) => a)
+                .AsNoTracking()
+                .ToList();
+            dto.RequiredBy = AddonDependents.Of(gameAddons, dto.Key, dto.Id);
+            return dto;
+        }
     }
 }
