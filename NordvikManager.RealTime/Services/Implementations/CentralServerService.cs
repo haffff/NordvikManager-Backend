@@ -47,6 +47,12 @@ namespace NordvikManager.Services.Implementations
             if (response.StatusCode != HttpStatusCode.Unauthorized)
                 return response;
 
+            // A caller with no access token (a tunnelled request carries no cookies) has no session
+            // of its own to refresh: the store's token is someone else's (in the browser host, the
+            // GM's login), and the retry would act as them.
+            if (string.IsNullOrEmpty(accessToken))
+                return response;
+
             var refreshToken = _tokens.RefreshToken;
             if (string.IsNullOrEmpty(refreshToken))
                 return response;
