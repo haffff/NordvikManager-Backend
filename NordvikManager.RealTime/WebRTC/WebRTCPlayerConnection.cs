@@ -120,7 +120,8 @@ namespace NordvikManager.WebRTC
         private async Task<bool> SendChunksAsync(string json)
         {
             var chunkId = Guid.NewGuid().ToString();
-            var total = (int)Math.Ceiling((double)json.Length / ChunkSize);
+            var bounds = ChunkBounds(json);
+            var total = bounds.Count;
 
             for (var i = 0; i < total; i++)
             {
@@ -129,8 +130,8 @@ namespace NordvikManager.WebRTC
                 if (!_channel.IsOpen)
                     return false;
 
-                var offset = i * ChunkSize;
-                var slice = json.Substring(offset, Math.Min(ChunkSize, json.Length - offset));
+                var (offset, length) = bounds[i];
+                var slice = json.Substring(offset, length);
                 try
                 {
                     _channel.Send(JsonConvert.SerializeObject(new
@@ -149,6 +150,22 @@ namespace NordvikManager.WebRTC
             }
 
             return true;
+        }
+
+        // Up to ChunkSize chars each, never ending between a surrogate pair: a lone surrogate
+        // can't be UTF-8 encoded, so the channel would send U+FFFD in its place.
+        private static List<(int Offset, int Length)> ChunkBounds(string json)
+        {
+            var bounds = new List<(int, int)>();
+            for (var offset = 0; offset < json.Length;)
+            {
+                var end = Math.Min(offset + ChunkSize, json.Length);
+                if (end < json.Length && char.IsHighSurrogate(json[end - 1]))
+                    end--;
+                bounds.Add((offset, end - offset));
+                offset = end;
+            }
+            return bounds;
         }
 
         private void FailQueued()

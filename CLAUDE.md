@@ -26,14 +26,18 @@ Frontend (separate repo) can be placed as a build in `wwwroot/` or run via `npm 
 Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 
 ```
-NordvikManager (API/Presentation: ASP.NET Core host, controllers, SIPSorcery)
+NordvikManager (API/Presentation: ASP.NET Core host, controllers, SIPSorcery; picks the adapters below)
+    → NordvikManager.Infrastructure.Imaging  (adapter: SkiaSharp thumbnails — native host only)
+    → NordvikManager.Infrastructure.MySql  (adapter: MySQL provider — native host only)
     → NordvikManager.RealTime  (lobby, WebSocket-command handlers, action engine, WebRTC session + signaling)
     → NordvikManager.Application  (commands, handlers, DTOs, services)
     → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
     → NordvikManager.Domain  (entities, interfaces, enums — no external deps)
 ```
 
-`NordvikManager.RealTime` is a plain `Microsoft.NET.Sdk` library with no ASP.NET Core and no SIPSorcery, so a browser-wasm GM host can reference it too. Keep it that way: anything needing ASP.NET Core (`HttpContext`, `IFormFile`, middleware, controllers) or a native WebRTC stack goes in `NordvikManager`. It keeps the `NordvikManager.*` namespaces it had before it was split out. WebRTC is reached through `IPeerConnectionFactory` (`WebRTC/IPeerConnection.cs`); the native server registers `SipsorceryPeerConnectionFactory`. `Startup` finds `IWebSocketHandler`s and `IActionStepDefinition`s by scanning the RealTime assembly (`StartupDiscoveryTests` guards it).
+`NordvikManager.RealTime` is a plain `Microsoft.NET.Sdk` library with no ASP.NET Core and no SIPSorcery, so a browser-wasm GM host can reference it too. Keep it that way: anything needing ASP.NET Core (`HttpContext`, `IFormFile`, middleware, controllers) or a native WebRTC stack goes in `NordvikManager`. It keeps the `NordvikManager.*` namespaces it had before it was split out. WebRTC is reached through `IPeerConnectionFactory` (`WebRTC/IPeerConnection.cs`); the native server registers `SipsorceryPeerConnectionFactory`, a browser-wasm host `BrowserPeerConnectionFactory` (`NordvikManager.Wasm.WebRtc`: the browser's own RTCPeerConnection through `JsBrowserRtc` + `Interop/nordvik-webrtc.js`; unit-tested with a fake `IBrowserRtc`, checked in a real browser by `NordvikManager.Wasm.WebRtc.BrowserCheck`, which is outside the solution). The browser-wasm GM host is `NordvikManager.Wasm.Hosting` (`WasmHost`: the composition, in the solution, `WasmHostTests`) started by `NordvikManager.Wasm.Host` (browser-wasm, outside the solution; for now only its `?selfcheck`, see its README). In browser-wasm, reflection-based `System.Text.Json` is off by default: the shared layers use it, so a wasm host sets `<JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>` (the browser check does); code meant only for wasm uses source-generated contexts. `RealTimeLayerModule.Register` (called by `Startup` and the wasm host) registers the shared real-time services and finds `IWebSocketHandler`s and `IActionStepDefinition`s by scanning the RealTime assembly (`StartupDiscoveryTests` guards it); each host adds its own WebRTC stack, REST dispatcher and Central token refresh.
+
+RealTime, Application, Infrastructure and Domain are what a browser-wasm host reaches, so none of them may reference ASP.NET Core, SIPSorcery, MySQL or SkiaSharp (`SharedAssemblyReferencesTests` guards it). The host brings those: `InfrastructureLayerModule.Register` takes the database used when `UseSqlite` is off (the native server passes `MySqlDatabase.Use` from `NordvikManager.Infrastructure.MySql`), and thumbnails go through `IThumbnailGenerator` (the native server registers `SkiaThumbnailGenerator` before `ApplicationLayerModule.Register`, which otherwise adds a no-thumbnails default that serves images at full size).
 
 Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikManager.Application.UnitTests` (handler unit tests).
 
@@ -118,7 +122,7 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 ## Database
 
-Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
+Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative (its provider is the `NordvikManager.Infrastructure.MySql` adapter, which `Startup` passes to `InfrastructureLayerModule.Register`). There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
 
 **SQLite uses real EF Core Migrations** (`NordvikManager.Infrastructure/Migrations/`), applied automatically via `Database.Migrate()` once at startup (`Startup.Configure`). **Any change to an entity in `NordvikManager.Domain` needs a new migration before it reaches anyone's database** — schema changes no longer get picked up by just editing the model:
 

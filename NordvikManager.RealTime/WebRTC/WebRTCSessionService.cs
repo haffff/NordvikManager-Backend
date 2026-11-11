@@ -435,7 +435,7 @@ namespace NordvikManager.WebRTC
                     var text = Encoding.UTF8.GetString(data);
 
                     // Reassemble chunked messages before any other processing.
-                    if (TryParseChunk(text, out var chunk))
+                    if (ChunkEnvelope.TryParse(data, out var chunk))
                     {
                         var outcome = chunks.Add(chunk!.ChunkId, chunk.Index, chunk.Total, chunk.Data, out var assembled);
                         if (outcome == ChunkAssembler.Outcome.Rejected)
@@ -444,7 +444,15 @@ namespace NordvikManager.WebRTC
                                 args.SocketId, chunk.Index, chunk.Total);
                         if (outcome != ChunkAssembler.Outcome.Complete)
                             return;
-                        text = assembled!;
+                        try
+                        {
+                            text = ChunkEnvelope.Decode(assembled!);
+                        }
+                        catch (System.Text.Json.JsonException ex)
+                        {
+                            _logger.LogWarning("Dropped a chunked message from socket {SocketId}: {Reason}", args.SocketId, ex.Message);
+                            return;
+                        }
                     }
 
                     // Check if this is a tunneled REST request
@@ -771,32 +779,5 @@ namespace NordvikManager.WebRTC
                 return false;
             }
         }
-
-        private static bool TryParseChunk(string text, out ChunkEnvelope? chunk)
-        {
-            chunk = null;
-            if (string.IsNullOrWhiteSpace(text) || text[0] != '{')
-                return false;
-            try
-            {
-                var obj = JObject.Parse(text);
-                if (obj["type"]?.Value<string>() != "chunk")
-                    return false;
-                var chunkId = obj["chunkId"]?.Value<string>();
-                var index = obj["index"]?.Value<int>();
-                var total = obj["total"]?.Value<int>();
-                var data = obj["data"]?.Value<string>();
-                if (string.IsNullOrEmpty(chunkId) || index == null || total is null or <= 0 || data == null)
-                    return false;
-                chunk = new ChunkEnvelope(chunkId, index.Value, total.Value, data);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private record ChunkEnvelope(string ChunkId, int Index, int Total, string Data);
     }
 }

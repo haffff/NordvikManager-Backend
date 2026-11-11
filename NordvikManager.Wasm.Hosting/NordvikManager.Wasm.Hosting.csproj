@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The browser-wasm GM host's composition root (WasmHost): the shared layers plus the
+       browser's WebRTC, an in-memory database for now, and what a browser can do. A plain
+       net10.0 library so the solution builds and tests it (WasmHostTests); the browser-wasm
+       executable, NordvikManager.Wasm.Host, only starts it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Until browser storage: the game lives as long as the tab. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
+    <ProjectReference Include="..\NordvikManager.Wasm.WebRtc\NordvikManager.Wasm.WebRtc.csproj" />
+  </ItemGroup>
+
+</Project>

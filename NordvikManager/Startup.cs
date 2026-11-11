@@ -1,4 +1,7 @@
 using NordvikManager.Application;
+using NordvikManager.Application.Helpers;
+using NordvikManager.Infrastructure.Imaging;
+using NordvikManager.Infrastructure.MySql;
 using NordvikManager.Infrastructure;
 using NordvikManager.Data.Contexts;
 using NordvikManager.Engine.Middlewares;
@@ -69,24 +72,19 @@ namespace NordvikManager
                 options.Cookie.IsEssential = true;
             });
 
-            services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
-            services.AddScoped<NordvikManager.Application.Interfaces.IGameEventLogger,
-                               NordvikManager.Services.Implementations.LobbyGameEventLogger>();
+            // Lobby, handlers, action steps, WebRTC session and signaling: shared with the wasm host.
+            RealTimeLayerModule.Register(services);
+
             services.AddSingleton<IMaterialsService, MaterialsService>();
-            services.AddScoped<ILobbyService, LobbyService>();
-            services.AddSingleton<IPlaybackService, PlaybackService>();
-            services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
             services.AddSingleton<SecurityHeadersMiddleWare>();
+            services.AddSingleton<ICentralTokenStore, HttpContextCentralTokenStore>();
             services.AddSingleton<ICentralServerService, CentralServerService>();
-            services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
-            services.AddSingleton<ISignalingService, SignalingService>();
             services.AddSingleton<RequestDelegateHolder>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
             services.AddHttpContextAccessor();
             services.AddSingleton<IPeerConnectionFactory, SipsorceryPeerConnectionFactory>();
-            services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
             services.AddHostedService<ScheduledBackupService>();
 
@@ -99,21 +97,6 @@ namespace NordvikManager
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(UpdateService)),
                 () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
             services.AddHostedService<UpdateCheckService>();
-
-            // Both live in NordvikManager.RealTime, shared with the browser-wasm host.
-            var handlers = typeof(IWebSocketHandler).Assembly.GetTypes();
-            foreach (var handler in handlers)
-            {
-                if (handler.GetInterface("IWebSocketHandler") != null)
-                    services.AddScoped(typeof(IWebSocketHandler), handler);
-            }
-
-            var definitions = typeof(IActionStepDefinition).Assembly.GetTypes();
-            foreach (var definition in definitions)
-            {
-                if (definition.GetInterface("IActionStepDefinition") != null)
-                    services.AddSingleton(typeof(IActionStepDefinition), definition);
-            }
 
             services.AddEndpointsApiExplorer();
 
@@ -135,7 +118,10 @@ namespace NordvikManager
             });
             services.AddSingleton(new CrossSiteRequestGuardMiddleWare(ClientOrigins()));
 
-            InfrastructureLayerModule.Register(services, Configuration);
+            // NordvikManager.Infrastructure carries only SQLite; this host also offers MySQL (UseSqlite off).
+            InfrastructureLayerModule.Register(services, Configuration, MySqlDatabase.Use);
+            // Before ApplicationLayerModule.Register, which otherwise adds its no-thumbnails default.
+            services.AddSingleton<IThumbnailGenerator, SkiaThumbnailGenerator>();
             ApplicationLayerModule.Register(services, Configuration);
 
             services.AddAuthorization(options =>

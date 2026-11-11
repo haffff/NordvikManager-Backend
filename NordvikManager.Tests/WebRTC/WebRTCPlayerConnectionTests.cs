@@ -85,6 +85,26 @@ namespace NordvikManager.Tests.WebRTC
             return string.Concat(chunks.Select(c => c["data"]!.Value<string>()));
         }
 
+        // Chunks used to be cut every 15 000 UTF-16 chars, which could split an emoji's surrogate
+        // pair: a lone surrogate can't be UTF-8 encoded, so the channel sent U+FFFD instead and
+        // the player got a different message (found by the wasm host's browser self-check).
+        [Fact]
+        public async Task SendMessageToPlayer_NeverSplitsASurrogatePair_SoEveryChunkSurvivesUtf8()
+        {
+            var channel = new FakeChannel();
+            var prefix = Newtonsoft.Json.JsonConvert.SerializeObject(new { command = "chat_push", data = "" })[..^2]; // up to the data's opening quote
+            var data = new string('x', 15_000 - prefix.Length - 1) + "🎲" + new string('y', 100);
+            var message = new { command = "chat_push", data };
+            var json = Newtonsoft.Json.JsonConvert.SerializeObject(message);
+            Assert.True(char.IsHighSurrogate(json[14_999]), "the emoji should straddle the first chunk boundary");
+
+            Assert.True(await DrainUntil(channel, Connection(channel).SendMessageToPlayer(message)));
+
+            var sent = channel.Snapshot();
+            Assert.All(sent, s => Assert.Equal(s, Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(s))));
+            Assert.Equal(json, Reassemble(sent.Select(s => Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(s)))));
+        }
+
         [Fact]
         public async Task SendMessageToPlayer_SmallMessage_SentAtOnce()
         {

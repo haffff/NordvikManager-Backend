@@ -45,10 +45,29 @@ namespace NordvikManager.WebRTC
         public event Func<WebRTCSignalArgs, Task>? OfferReceived;
         public event Func<IceCandidateArgs, Task>? IceCandidateReceived;
 
+        private readonly IConfiguration _configuration;
+
         public SignalingService(IConfiguration configuration, ILogger<SignalingService> logger)
         {
             _centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
+            _configuration = configuration;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Socket.IO's options. <c>Signaling:Transport</c> = <c>WebSocket</c> connects over
+        /// WebSocket only, for the browser-wasm host: the long-polling handshake can't go
+        /// through fetch(). Otherwise Socket.IO's default (long-polling, then upgrade).
+        /// </summary>
+        public static SioOptions BuildOptions(IConfiguration configuration)
+        {
+            var options = new SioOptions();
+            if (string.Equals(configuration["Signaling:Transport"], "WebSocket", StringComparison.OrdinalIgnoreCase))
+            {
+                options.Transport = SocketIOClient.Common.TransportProtocol.WebSocket;
+                options.AutoUpgrade = false;
+            }
+            return options;
         }
 
         /// <summary>
@@ -108,7 +127,7 @@ namespace NordvikManager.WebRTC
             // This lets StartSession wait until the GM is actually registered before responding to the client.
             var authTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var client = new SioClient(new System.Uri(_centralServerUrl), new SioOptions());
+            var client = new SioClient(new System.Uri(_centralServerUrl), BuildOptions(_configuration));
             // Set when Central refused this connection (an auth-error): it must not reconnect,
             // e.g. after the owner opened the game as GM from another connection.
             var refused = false;
