@@ -26,16 +26,19 @@ Frontend (separate repo) can be placed as a build in `wwwroot/` or run via `npm 
 Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 
 ```
-NordvikManager (API/Presentation)
+NordvikManager (API/Presentation: ASP.NET Core host, controllers, SIPSorcery)
+    → NordvikManager.RealTime  (lobby, WebSocket-command handlers, action engine, WebRTC session + signaling)
     → NordvikManager.Application  (commands, handlers, DTOs, services)
     → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
     → NordvikManager.Domain  (entities, interfaces, enums — no external deps)
 ```
 
+`NordvikManager.RealTime` is a plain `Microsoft.NET.Sdk` library with no ASP.NET Core and no SIPSorcery, so a browser-wasm GM host can reference it too. Keep it that way: anything needing ASP.NET Core (`HttpContext`, `IFormFile`, middleware, controllers) or a native WebRTC stack goes in `NordvikManager`. It keeps the `NordvikManager.*` namespaces it had before it was split out. WebRTC is reached through `IPeerConnectionFactory` (`WebRTC/IPeerConnection.cs`); the native server registers `SipsorceryPeerConnectionFactory`. `Startup` finds `IWebSocketHandler`s and `IActionStepDefinition`s by scanning the RealTime assembly (`StartupDiscoveryTests` guards it).
+
 Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikManager.Application.UnitTests` (handler unit tests).
 
 **Layer rules — strictly enforced:**
-- `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` (controllers, WebRTC dispatchers, WebSocket handlers, services).
+- `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` or `NordvikManager.RealTime` (controllers, WebRTC dispatchers, WebSocket handlers, services).
 - The UI/Presentation layer (`NordvikManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
 - When you need a new DB operation in a dispatcher or controller, create a Command + Handler pair in `Application/Commands/` and call `mediator.Send()`.
 

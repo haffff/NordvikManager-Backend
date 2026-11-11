@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The GM host's real-time layer: lobby, WebSocket-command handlers, action engine, WebRTC
+       session and signaling. A plain library with no ASP.NET Core and no SIPSorcery, so the
+       native server (NordvikManager) and a browser-wasm host can both run it. Anything that
+       needs ASP.NET Core or a native WebRTC stack stays in NordvikManager. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- Moved out of NordvikManager as is; RootNamespace keeps its namespaces. -->
+    <RootNamespace>NordvikManager</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jint" Version="4.16.4" />
+    <!-- MediatR 13+ is commercial (a license key per installation); 11 is Apache-2.0. Do not upgrade. -->
+    <PackageReference Include="MediatR" Version="[11.0.0]" />
+    <PackageReference Include="MediatR.Extensions.Microsoft.DependencyInjection" Version="11.1.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="SocketIOClient" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NordvikManager" />
+    <InternalsVisibleTo Include="NordvikManager.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.Application\NordvikManager.Application.csproj" />
+    <ProjectReference Include="..\NordvikManager.Infrastructure\NordvikManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
