@@ -59,7 +59,11 @@ namespace NordvikManager.Tests.WasmHost
             return B64("{\"alg\":\"none\",\"typ\":\"JWT\"}") + "." + B64($"{{\"sub\":\"{sub}\",\"username\":\"{name}\",\"exp\":{exp}}}") + ".";
         }
 
-        private string AccessToken(int n) => Jwt(_gmId, "gm", DateTime.UtcNow.AddMinutes(n == 0 ? -5 : 15)) + n;
+        // Fixed per test: a token made again for an assertion must be the one Central gave out,
+        // even when the clock has moved on to the next second in between.
+        private readonly DateTime _now = DateTime.UtcNow;
+
+        private string AccessToken(int n) => Jwt(_gmId, "gm", _now.AddMinutes(n == 0 ? -5 : 15)) + n;
 
         private static HttpResponseMessage Json(object body, HttpStatusCode status = HttpStatusCode.OK)
             => new(status) { Content = new StringContent(Newtonsoft.Json.JsonConvert.SerializeObject(body), Encoding.UTF8, "application/json") };
