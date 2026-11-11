@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using NordvikManager.Api;
 using NordvikManager.Application;
@@ -50,6 +51,8 @@ namespace NordvikManager.Wasm.Hosting
             // An in-memory database (named by ConnectionStrings:DBData) until browser storage.
             InfrastructureLayerModule.Register(services, configuration,
                 (options, name) => options.UseInMemoryDatabase(name ?? "nordvik-wasm-host"));
+            // No settings file in a browser: fixed settings, constant upload limits.
+            services.Replace(ServiceDescriptor.Singleton<NordvikManager.Infrastructure.Interfaces.IServerSettingsStore, FixedServerSettingsStore>());
             ApplicationLayerModule.Register(services, configuration);
             RealTimeLayerModule.Register(services);
 

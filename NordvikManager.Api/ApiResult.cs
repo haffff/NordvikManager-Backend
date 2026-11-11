@@ -11,6 +11,7 @@ namespace NordvikManager.Api
         Conflict,
         NoContent,
         Content,
+        File,
         Status,
     }
 
@@ -54,6 +55,9 @@ namespace NordvikManager.Api
         public static ApiResult Content(string text, string? contentType, int statusCode = 200) => new(ApiResultKind.Content, statusCode, true, text) { ContentType = contentType };
 
         public string? ContentType { get; private init; }
+
+        /// <summary>Raw bytes (File(bytes, contentType)): native only, a data channel can't carry them.</summary>
+        public static ApiResult File(byte[] contents, string contentType) => new(ApiResultKind.File, 200, true, contents) { ContentType = contentType };
         public static ApiResult Status(int statusCode, object? body = null) => new(ApiResultKind.Status, statusCode, body != null, body);
     }
 }

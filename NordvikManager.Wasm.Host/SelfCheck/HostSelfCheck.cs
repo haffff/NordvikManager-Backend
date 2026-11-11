@@ -34,7 +34,9 @@ namespace NordvikManager.Wasm.Host.SelfCheck
         [JSImport("setAnswer", "selfcheck-player")] private static partial Task PlayerSetAnswer(string sdp);
         [JSImport("addCandidate", "selfcheck-player")] private static partial void PlayerAddCandidate(string candidate, string? sdpMid, int index);
         [JSImport("waitOpen", "selfcheck-player")] private static partial Task PlayerWaitOpen();
-        [JSImport("request", "selfcheck-player")] private static partial Task<string> PlayerRequest(string method, string path);
+        [JSImport("request", "selfcheck-player")] private static partial Task<string> PlayerRequest(string method, string path, string? bodyJson, string? queryJson);
+
+        private static Task<string> PlayerRequest(string method, string path) => PlayerRequest(method, path, null, null);
         [JSImport("sendCommand", "selfcheck-player")] private static partial void PlayerSendCommand(string json);
         [JSImport("waitForCommand", "selfcheck-player")] private static partial Task<string> PlayerWaitForCommand(string command, string data);
 
@@ -153,11 +155,43 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return "200 " + response["body"]?.ToString(Newtonsoft.Json.Formatting.None);
                 });
 
-                await Check("a route not moved to the shared endpoints yet answers 501", async () =>
+                await Check("a server-only route answers 501 (api/meta)", async () =>
                 {
                     var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/meta"), "the api-response"));
                     Expect((int?)response["status"] == 501, "status " + response["status"]);
                     return (string?)response["body"]?["error"] ?? "";
+                });
+
+                await Check("a file uploaded in parts and read back (Materials, upload store, quota)", async () =>
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("map tile ", 3000)));
+                    var start = JObject.Parse(await Within(PlayerRequest("POST", "/api/materials/UploadStart",
+                        JsonConvert.SerializeObject(new { name = "map.png", mimeType = "image/png", size = bytes.Length }), null), "UploadStart"));
+                    Expect((int?)start["status"] == 200, "UploadStart " + start["status"] + " " + start["body"]);
+                    var uploadId = (string?)start["body"]?["uploadId"];
+                    var half = bytes.Length / 2;
+                    foreach (var (offset, length) in new[] { (0, half), (half, bytes.Length - half) })
+                    {
+                        var part = JObject.Parse(await Within(PlayerRequest("POST", "/api/materials/UploadPart",
+                            JsonConvert.SerializeObject(new { uploadId, offset, data = Convert.ToBase64String(bytes, offset, length) }), null), "UploadPart"));
+                        Expect((int?)part["status"] == 200, "UploadPart " + part["status"] + " " + part["body"]);
+                    }
+                    var finish = JObject.Parse(await Within(PlayerRequest("POST", "/api/materials/UploadFinish",
+                        JsonConvert.SerializeObject(new { uploadId }), null), "UploadFinish"));
+                    Expect((int?)finish["status"] == 200, "UploadFinish " + finish["status"] + " " + finish["body"]);
+                    var id = (string?)finish["body"]?["id"];
+                    var read = JObject.Parse(await Within(PlayerRequest("GET", "/api/materials/resource", null,
+                        JsonConvert.SerializeObject(new { id })), "the resource"));
+                    Expect((int?)read["status"] == 200, "resource " + read["status"]);
+                    Expect((string?)read["body"]?["data"] == Convert.ToBase64String(bytes), "the bytes read back differ");
+                    return $"{bytes.Length} bytes in 2 parts, read back equal";
+                });
+
+                await Check("addon step definitions (Addon)", async () =>
+                {
+                    var response = JObject.Parse(await Within(PlayerRequest("GET", "/api/addon/StepDefinitions"), "the api-response"));
+                    Expect((int?)response["status"] == 200, "status " + response["status"] + " " + response["body"]);
+                    return "200";
                 });
 
                 await Check("chat through GameLobby (resolves the player, ChatHandler, MediatR) comes back", async () =>

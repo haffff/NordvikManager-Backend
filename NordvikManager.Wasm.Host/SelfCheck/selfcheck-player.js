@@ -79,11 +79,13 @@ function send(json) {
         channel.send(JSON.stringify({ type: "chunk", chunkId, index: i, total, data: json.slice(i * CHUNK, (i + 1) * CHUNK) }));
 }
 
-// An api-request; resolves with the api-response as JSON.
-export function request(method, path) {
+// An api-request (body and query as JSON text, or empty); resolves with the api-response as JSON.
+export function request(method, path, bodyJson, queryJson) {
     const id = crypto.randomUUID();
     const answered = new Promise((resolve) => pendingRequests.set(id, resolve));
-    send(JSON.stringify({ type: "api-request", id, method, path, query: {}, body: null }));
+    const body = bodyJson ? JSON.parse(bodyJson) : null;
+    const query = queryJson ? JSON.parse(queryJson) : {};
+    send(JSON.stringify({ type: "api-request", id, method, path, query, body }));
     return answered;
 }
 
