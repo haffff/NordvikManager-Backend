@@ -1,4 +1,5 @@
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
+using NordvikManager.Application.Helpers;
 using NordvikManager.Application.Services;
 using NordvikManager.Domain.Entities.Resources;
 using NordvikManager.Domain.Enums;
@@ -28,7 +29,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             seed.SaveChanges();
         }
 
-        private GetResourceContentCommandHandler Handler() => new(Mapper, Db, storage.Object);
+        private GetResourceContentCommandHandler Handler() => new(Mapper, Db, storage.Object, new NordvikManager.Imaging.SkiaThumbnailGenerator());
 
         private Task<ResourceContent?> Get(Guid id, string? ifVersion = null, bool thumbnail = false) =>
             Handler().Handle(new GetResourceContentCommand { GameID = gameId, ID = id, IfVersion = ifVersion, Thumbnail = thumbnail }, CancellationToken.None);
@@ -157,6 +158,20 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
         public async Task UnknownResource_NotFound()
         {
             Assert.Null(await Get(Guid.NewGuid()));
+        }
+
+        [Fact]
+        public async Task Thumbnail_OnAHostWithoutThumbnails_IsTheOriginal_AndNothingIsStored()
+        {
+            var png = Png(800);
+            var id = Seed(r => { r.MimeType = MimeType.PNG; r.Data = png; r.ContentHash = ResourceVersions.HashOf(png); });
+
+            var content = await new GetResourceContentCommandHandler(Mapper, Db, storage.Object, new NoThumbnailGenerator())
+                .Handle(new GetResourceContentCommand { GameID = gameId, ID = id, Thumbnail = true }, CancellationToken.None);
+
+            Assert.Equal(png, content!.Data);
+            Assert.Equal(MimeType.PNG, content.MimeType);
+            Assert.Null(Stored(id).ThumbnailData);
         }
 
         [Fact]

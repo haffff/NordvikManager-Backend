@@ -9,10 +9,12 @@ namespace NordvikManager.Application.Commands.Resources
     public class GetResourceThumbnailCommandHandler : HandlerBase<GetResourceThumbnailCommand, (byte[], MimeType)>
     {
         private readonly IFileStorageProvider storage;
+        private readonly IThumbnailGenerator thumbnails;
 
-        public GetResourceThumbnailCommandHandler(IMapper mapper, IDbContext ctx, IFileStorageProvider storage) : base(ctx, mapper)
+        public GetResourceThumbnailCommandHandler(IMapper mapper, IDbContext ctx, IFileStorageProvider storage, IThumbnailGenerator thumbnails) : base(ctx, mapper)
         {
             this.storage = storage;
+            this.thumbnails = thumbnails;
         }
 
         public async override Task<(byte[], MimeType)> Handle(GetResourceThumbnailCommand request, CancellationToken cancellationToken)
@@ -46,7 +48,9 @@ namespace NordvikManager.Application.Commands.Resources
 
             try
             {
-                var thumbnail = ThumbnailHelper.Generate(data, request.MaxDimension);
+                var thumbnail = thumbnails.Generate(data, request.MaxDimension);
+                if (thumbnail == null)
+                    return (data, image.MimeType); // this host makes no thumbnails
                 image.ThumbnailData = thumbnail;
                 dbContext.SaveChanges();
                 return (thumbnail, MimeType.PNG);
