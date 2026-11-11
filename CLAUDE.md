@@ -56,6 +56,7 @@ A browser-wasm GM host has no ASP.NET Core, so the REST requests players tunnel 
 - `ApiResult.File` (raw bytes) is native only: the data channel can't carry it, so clients read `api/materials/resource` through its base64 variant (`ResourceWebRTC`; both tunnels rewrite to it).
 - The browser host has fixed server settings (`FixedServerSettingsStore`: constant upload limits, nothing to change).
 - `GET api/Host/Info` (`HostEndpoints`) says what kind of host this is (`IHostDescription`: `ServerHostDescription` natively, `BrowserHostDescription` in the browser host) and, for a host without the server features, lists every server-only controller and route with its reason (`ApiNativeOnly`, `[ApiRoute(..., NativeOnly = true, Reason = "...")]`; `ApiRouteCoverageTests` requires the reason) plus the host's own limitations. The reasons and limitations are shown to GMs, so they're written for them. The browser host's answer is pinned in `NordvikManager.Tests/WasmHost/Snapshots/host-info.browser.json` (`UPDATE_HOST_INFO_SNAPSHOT=1` rewrites it): when the browser host changes how it works, update `BrowserHostDescription` in the same change.
+- The browser host ships the built-in addons (`NordvikManager/BuiltInAddons/`) in the runtime's filesystem (`WasmFilesToIncludeInFileSystem` → `/BuiltInAddons/`; `AppContext.BaseDirectory` is `/` there), so `BuiltInAddons` finds them unchanged. It has no addon registry: `AddonRepositoryService` only fails when the registry is actually used, so installs that don't need it (built-ins) work without one.
 
 ## CQRS with MediatR
 

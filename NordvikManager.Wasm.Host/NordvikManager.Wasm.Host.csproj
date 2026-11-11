@@ -29,6 +29,13 @@
     <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
   </ItemGroup>
 
+  <!-- The native server's built-in addons (Basics), in the runtime's filesystem at
+       /BuiltInAddons/: AppContext.BaseDirectory is "/" in a browser, so BuiltInAddons finds them
+       where it does natively, next to the program. -->
+  <ItemGroup>
+    <WasmFilesToIncludeInFileSystem Include="..\NordvikManager\BuiltInAddons\**\*" TargetPath="BuiltInAddons\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager.Wasm.Hosting\NordvikManager.Wasm.Hosting.csproj" />
   </ItemGroup>
