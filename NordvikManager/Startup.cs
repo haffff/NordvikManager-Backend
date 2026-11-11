@@ -1,4 +1,7 @@
 using NordvikManager.Application;
+using NordvikManager.Application.Helpers;
+using NordvikManager.Infrastructure.Imaging;
+using NordvikManager.Infrastructure.MySql;
 using NordvikManager.Infrastructure;
 using NordvikManager.Data.Contexts;
 using NordvikManager.Engine.Middlewares;
@@ -135,7 +138,10 @@ namespace NordvikManager
             });
             services.AddSingleton(new CrossSiteRequestGuardMiddleWare(ClientOrigins()));
 
-            InfrastructureLayerModule.Register(services, Configuration);
+            // NordvikManager.Infrastructure carries only SQLite; this host also offers MySQL (UseSqlite off).
+            InfrastructureLayerModule.Register(services, Configuration, MySqlDatabase.Use);
+            // Before ApplicationLayerModule.Register, which otherwise adds its no-thumbnails default.
+            services.AddSingleton<IThumbnailGenerator, SkiaThumbnailGenerator>();
             ApplicationLayerModule.Register(services, Configuration);
 
             services.AddAuthorization(options =>

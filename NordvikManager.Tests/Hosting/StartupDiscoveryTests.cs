@@ -52,5 +52,13 @@ namespace NordvikManager.Tests.Hosting
             Assert.NotEmpty(expected);
             Assert.Subset(Registered<IActionStepDefinition>(ConfiguredServices()), expected.ToHashSet());
         }
+
+        // Thumbnails come from the host: SkiaSharp natively, so Application doesn't carry it.
+        [Fact]
+        public void ConfigureServices_RegistersTheSkiaThumbnailGenerator()
+        {
+            Assert.Equal(new[] { typeof(NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator) },
+                ConfiguredServices().Where(d => d.ServiceType == typeof(NordvikManager.Application.Helpers.IThumbnailGenerator)).Select(d => d.ImplementationType));
+        }
     }
 }
