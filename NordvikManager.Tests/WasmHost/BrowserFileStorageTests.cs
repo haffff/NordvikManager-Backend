@@ -127,6 +127,22 @@ namespace NordvikManager.Tests.WasmHost
         }
 
         [Fact]
+        public async Task OpenAsync_DeletesASaveCutShort()
+        {
+            var first = await Open();
+            var path = await first.SaveAsync(Game, Resource, Bytes(10), null);
+            await _files.OpenAsync(path + ".tmp", create: true); // the tab closed before the move
+            _files.WriteAt(path + ".tmp", Bytes(5), 0);
+            _files.Reload();
+
+            var reopened = await Open();
+
+            Assert.Equal(new[] { path }, _files.Paths());
+            Assert.False(reopened.Exists(path + ".tmp"));
+            Assert.Equal(10, reopened.GetStamp(path)!.Length);
+        }
+
+        [Fact]
         public async Task DeleteAsync_RemovesTheFile()
         {
             var storage = await Open();

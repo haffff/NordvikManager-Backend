@@ -18,6 +18,14 @@ const server = http.createServer((req, res) => {
 });
 
 const BIG = 33 * 1024 * 1024 + 5; // over Uploads.MaxBlobSize (32 MB)
+// In the page: 64 KB of a resource through the GM's API, checked against the upload's pattern.
+const readRange = async ({ gameId, id, start }) => {
+  const r = JSON.parse(await globalThis.nordvikHost.Call('GET', `api/Materials/ResourceRange?gameId=${gameId}&id=${id}&start=${start}&length=65536`, null));
+  if (r.status !== 200) return { error: JSON.stringify(r).slice(0, 300) };
+  const bytes = Uint8Array.from(atob(r.body.data), (c) => c.charCodeAt(0));
+  const bad = bytes.findIndex((b, i) => b !== (((start + i) * 31 + 7) & 255));
+  return { total: r.body.total, length: bytes.length, bad, version: r.body.version };
+};
 const step = (name, ok, detail) => { console.log(`STEP ${name}: ${ok ? 'PASS' : 'FAIL'} ${detail ?? ''}`); if (!ok) throw new Error(name); };
 
 server.listen(Number(port), async () => {
@@ -77,6 +85,10 @@ server.listen(Number(port), async () => {
       return { id: finish.body.id, files };
     }, { gameId, size: BIG });
     step('a 33 MB upload is kept as a file on OPFS (storage/games/<game>/)', !upload.error && upload.files.length === 1 && upload.files[0].endsWith(' ' + BIG), upload.error ?? upload.files.join(', '));
+    // Read once before the reload: its version must be the same after (players' caches stay good),
+    // and the read leaves the file's handle open when the worker goes away.
+    const before = await page.evaluate(readRange, { gameId, id: upload.id, start: BIG - 65536 });
+    step('the 33 MB file reads back before the reload', !before.error && before.bad === -1, JSON.stringify(before));
 
     await page.click('li[data-game] .start');
     await page.waitForFunction(() => /is running|Could not start/.test(document.querySelector('#status').textContent), null, { timeout: 60000 });
@@ -98,14 +110,9 @@ server.listen(Number(port), async () => {
     await page.waitForSelector('li[data-game] .name', { timeout: 30000 });
     const names = await page.$$eval('li[data-game] .name', (n) => n.map((x) => x.textContent));
     step('the game is kept across the reload (OPFS)', names.includes('E2E tab game'), names.join(', '));
-    const range = await page.evaluate(async ({ gameId, id, start }) => {
-      const r = JSON.parse(await globalThis.nordvikHost.Call('GET', `api/Materials/ResourceRange?gameId=${gameId}&id=${id}&start=${start}&length=65536`, null));
-      if (r.status !== 200) return { error: JSON.stringify(r).slice(0, 300) };
-      const bytes = Uint8Array.from(atob(r.body.data), (c) => c.charCodeAt(0));
-      const bad = bytes.findIndex((b, i) => b !== (((start + i) * 31 + 7) & 255));
-      return { total: r.body.total, length: bytes.length, bad };
-    }, { gameId, id: upload.id, start: BIG - 65536 });
+    const range = await page.evaluate(readRange, { gameId, id: upload.id, start: BIG - 65536 });
     step('the 33 MB file is there after the reload, its bytes right', !range.error && range.total === BIG && range.length === 65536 && range.bad === -1, JSON.stringify(range));
+    step('its version is the same after the reload', range.version === before.version, `${before.version} -> ${range.version}`);
 
     // Games from before OPFS: a copy of data.db in IndexedDB ("nordvik-host", store "files").
     // A browser with only that copy gets it moved to OPFS, and the copy deleted once it opened.

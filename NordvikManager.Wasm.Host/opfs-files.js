@@ -72,10 +72,15 @@ export async function open(path, create) {
   if (!handles.has(path)) {
     const opening = fileHandle(path, create).then((f) => f.createSyncAccessHandle());
     handles.set(path, opening);
-    opening.then((h) => ready.set(path, h), () => handles.delete(path));
+    // Moved or deleted while it opened: that handle mustn't stay, locking the file.
+    opening.then((h) => {
+      if (handles.get(path) === opening) ready.set(path, h);
+      else try { h.close(); } catch { /* closed */ }
+    }, () => { if (handles.get(path) === opening) handles.delete(path); });
   }
-  const h = await handles.get(path);
-  ready.set(path, h);
+  const opening = handles.get(path);
+  const h = await opening;
+  if (handles.get(path) !== opening) throw new Error(`${path} was moved or deleted while it opened`);
 }
 
 export function readAt(path, view, at) {
