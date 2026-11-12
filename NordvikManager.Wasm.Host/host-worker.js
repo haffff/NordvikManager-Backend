@@ -6,6 +6,7 @@
 // What a worker lacks (RTCPeerConnection) the page does, through worker-bridge.js.
 import { dotnet } from './_framework/dotnet.js';
 import { mountOpfs } from './opfs-fs.js';
+import { loadRuntimePack, servePack } from './runtime-pack.js';
 import { on, post } from './worker-bridge.js';
 
 const FILES = {
@@ -68,7 +69,11 @@ on('close', () => mounted?.close());
 
 on('start', async ({ args }) => {
   try {
-    const runtime = await dotnet.withApplicationArguments(...args).create();
+    // The runtime's files in one download (runtime-pack.js), or one by one if that fails.
+    const pack = await loadRuntimePack();
+    let builder = dotnet.withApplicationArguments(...args);
+    if (pack) builder = builder.withResourceLoader(servePack(pack));
+    const runtime = await builder.create();
     const files = args[0] === 'gm' ? FILES.gm : args[1]?.startsWith('crash') ? FILES.crash : FILES.selfcheck;
     try {
       mounted = await mountOpfs(runtime.Module.FS, '/opfs', files, { seed: args[0] === 'gm' ? seedFromIndexedDb : undefined });
