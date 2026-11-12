@@ -36,6 +36,41 @@ namespace NordvikManager.Tests.WasmHost
             .Where(t => typeof(T).IsAssignableFrom(t) && t.IsClass && !t.IsAbstract)
             .ToArray();
 
+        // The host build is served by Central itself: a cookie Central set on the host's requests
+        // would be every tab's on that origin (a player client tab would be the GM, and its refresh
+        // would rotate the token the host holds). The host's requests carry none and keep none.
+        [Fact]
+        public async Task HttpClients_AskTheBrowserForNoCookies()
+        {
+            var seen = new System.Collections.Generic.List<System.Net.Http.HttpRequestMessage>();
+            await using var provider = NordvikManager.Wasm.Hosting.WasmHost.Build(
+                NordvikManager.Wasm.Hosting.WasmHost.Configuration("http://central.test"), new NoBrowserRtc(),
+                services => services.ConfigureHttpClientDefaults(b => b.ConfigurePrimaryHttpMessageHandler(() => new Capture(seen))));
+            var factory = provider.GetRequiredService<System.Net.Http.IHttpClientFactory>();
+
+            await factory.CreateClient().GetAsync("http://central.test/api/user/userinfo");
+            await factory.CreateClient("any").GetAsync("http://central.test/api/meta");
+
+            Assert.Equal(2, seen.Count);
+            Assert.All(seen, request =>
+            {
+                Assert.True(request.Options.TryGetValue(NoBrowserCookies.FetchOptions, out var options));
+                Assert.Equal("omit", options["credentials"]);
+            });
+        }
+
+        private sealed class Capture : System.Net.Http.HttpMessageHandler
+        {
+            private readonly System.Collections.Generic.List<System.Net.Http.HttpRequestMessage> _seen;
+            public Capture(System.Collections.Generic.List<System.Net.Http.HttpRequestMessage> seen) => _seen = seen;
+
+            protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
+            {
+                _seen.Add(request);
+                return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK));
+            }
+        }
+
         [Fact]
         public void Build_ResolvesTheSessionService_EveryHandler_AndEveryStep()
         {

@@ -70,6 +70,9 @@ namespace NordvikManager.Wasm.Hosting
             ApplicationLayerModule.Register(services, configuration);
             RealTimeLayerModule.Register(services);
 
+            // No cookies on any request the host makes (the host build shares Central's origin).
+            services.ConfigureHttpClientDefaults(client => client.AddHttpMessageHandler(() => new NoBrowserCookies()));
+
             services.AddSingleton<HeldCentralTokens>();
             services.AddSingleton<ICentralTokenStore>(sp => sp.GetRequiredService<HeldCentralTokens>());
             services.AddSingleton<ICentralServerService, CentralServerService>();

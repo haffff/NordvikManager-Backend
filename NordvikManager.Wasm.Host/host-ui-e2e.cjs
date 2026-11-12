@@ -102,6 +102,18 @@ async function gmLogin(gm, { lobby = true } = {}) {
     await chat(gm, gmMessage);
     await gm.waitForSelector(`text=${gmMessage}`, { timeout: 20000 });
     step('the GM chats in the game', true, `Central session ${sessionId}`);
+
+    // The GM app's Central token comes from its backend, here the host, which holds the Central
+    // login. Central rotates the refresh token on each use: a second refresh works only if the
+    // host kept the new one.
+    const refreshes = await gm.evaluate(async () => {
+      const once = async () => {
+        const r = await fetch('/__nordvik-host__/api/user/refresh-central', { method: 'POST' });
+        return { status: r.status, token: !!(await r.json().catch(() => null))?.accessToken };
+      };
+      return [await once(), await once()];
+    });
+    step('the Central token refreshes through the host, twice (it keeps the rotated one)', refreshes.every((r) => r.status === 200 && r.token), JSON.stringify(refreshes));
     if (shots) await gm.screenshot({ path: path.join(shots, 'host-ingame.png') });
 
     player = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
