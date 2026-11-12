@@ -17,8 +17,8 @@ namespace NordvikManager.Wasm.Hosting
     /// The browser-wasm GM host's services: the same layers as the native server
     /// (<see cref="InfrastructureLayerModule"/>, <see cref="ApplicationLayerModule"/>,
     /// <see cref="RealTimeLayerModule"/>), with the browser's own WebRTC, the host's own Central
-    /// tokens, WebSocket-only signaling, and a SQLite file kept in the browser
-    /// (<see cref="DatabaseFilePersistence"/>), or an in-memory database.
+    /// tokens, WebSocket-only signaling, and a SQLite file (on OPFS in the browser host), or an
+    /// in-memory database.
     /// </summary>
     public static class WasmHost
     {
@@ -70,6 +70,8 @@ namespace NordvikManager.Wasm.Hosting
             services.AddSingleton(ApiRoutes.Shared);
             services.AddSingleton<ApiRouter>();
             services.AddSingleton<IWebRTCApiDispatcher>(sp => sp.GetRequiredService<ApiRouter>());
+            // GET api/Host/Info: a browser host, and what it doesn't provide.
+            services.AddSingleton<IHostDescription, BrowserHostDescription>();
 
             // The GM using this host in its own tab, and so its local admin.
             services.AddSingleton<HostGm>();
@@ -90,9 +92,10 @@ namespace NordvikManager.Wasm.Hosting
             return provider;
         }
 
-        // As the native server's startup: the real migrations. Then a rollback journal instead of
-        // WAL (what EF Core sets up), so a commit is in the file itself and the file alone can be
-        // copied to the browser's storage.
+        // As the native server's startup: the real migrations, with a rollback journal throughout.
+        // EF Core turns WAL on when it creates a database, and WAL needs files the browser host's
+        // OPFS filesystem doesn't have (-wal, and an mmap-ed -shm): so a new file is made here
+        // first, with a rollback journal, and EF finds a database already there.
         private static void MigrateSqlite(IServiceProvider provider, IConfiguration configuration)
         {
             // SQLite doesn't make the file's folder (a browser's filesystem starts empty).
@@ -100,6 +103,16 @@ namespace NordvikManager.Wasm.Hosting
             var folder = Path.GetDirectoryName(Path.GetFullPath(file));
             if (!string.IsNullOrEmpty(folder))
                 Directory.CreateDirectory(folder);
+
+            if (!File.Exists(file) || new FileInfo(file).Length == 0)
+            {
+                using var connection = new Microsoft.Data.Sqlite.SqliteConnection(configuration.GetConnectionString("DBData"));
+                connection.Open();
+                using var create = connection.CreateCommand();
+                // A write, so the file has its header and EF sees a database.
+                create.CommandText = "PRAGMA journal_mode=DELETE; CREATE TABLE __nordvik_new (x); DROP TABLE __nordvik_new;";
+                create.ExecuteNonQuery();
+            }
 
             using var scope = provider.CreateScope();
             var database = ((DbContext)scope.ServiceProvider.GetRequiredService<NordvikManager.Infrastructure.Interfaces.IDbContext>()).Database;

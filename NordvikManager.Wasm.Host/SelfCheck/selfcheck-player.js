@@ -13,6 +13,11 @@ export async function init() {
     host = exports.NordvikManager.Wasm.Host.SelfCheck.HostSelfCheck;
 }
 
+// When the self-check runs in the host worker: its callbacks go there (page-bridge.js).
+export function useCallbacks(target) {
+    host = target;
+}
+
 export async function offer() {
     pc = new RTCPeerConnection();
     pc.onicecandidate = (e) => {

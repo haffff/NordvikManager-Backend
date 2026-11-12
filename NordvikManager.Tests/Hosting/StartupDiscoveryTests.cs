@@ -60,5 +60,13 @@ namespace NordvikManager.Tests.Hosting
             Assert.Equal(new[] { typeof(NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator) },
                 ConfiguredServices().Where(d => d.ServiceType == typeof(NordvikManager.Application.Helpers.IThumbnailGenerator)).Select(d => d.ImplementationType));
         }
+
+        // GET api/Host/Info: the native server has every feature, and says so.
+        [Fact]
+        public void ConfigureServices_DescribesTheHostAsAServer()
+        {
+            Assert.Equal(new[] { typeof(NordvikManager.Hosting.ServerHostDescription) },
+                ConfiguredServices().Where(d => d.ServiceType == typeof(NordvikManager.Api.IHostDescription)).Select(d => d.ImplementationType));
+        }
     }
 }

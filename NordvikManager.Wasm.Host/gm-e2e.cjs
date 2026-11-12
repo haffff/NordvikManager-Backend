@@ -21,7 +21,7 @@ const step = (name, ok, detail) => { console.log(`STEP ${name}: ${ok ? 'PASS' : 
 
 server.listen(Number(port), async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', headless: true });
-  const page = await browser.newPage();
+  const page = await (await browser.newContext()).newPage(); // one context: a second tab shares its storage
   page.on('console', (m) => console.log('[page]', m.text()));
   page.on('pageerror', (e) => console.log('[pageerror]', e.message));
   let failed = false;
@@ -29,6 +29,14 @@ server.listen(Number(port), async () => {
     await page.goto(`http://localhost:${port}/index.html?central=${encodeURIComponent(central)}`);
     await page.waitForSelector('#login-submit', { timeout: 60000 });
     step('page ready', true, await page.textContent('#central'));
+
+    // The games are this tab's (OPFS handles held by its worker): a second tab is refused.
+    const other = await page.context().newPage();
+    await other.goto(`http://localhost:${port}/index.html?central=${encodeURIComponent(central)}`);
+    const refused = await other.waitForFunction(() => /another tab/.test(document.querySelector('#status').textContent), null, { timeout: 30000 })
+      .then(() => true, () => false);
+    step('a second tab is refused while this one hosts', refused, await other.textContent('#status'));
+    await other.close();
 
     await page.fill('#username', user);
     await page.fill('#password', password);
@@ -54,6 +62,53 @@ server.listen(Number(port), async () => {
     await page.waitForFunction(() => /stopped|Could not stop/.test(document.querySelector('#status').textContent), null, { timeout: 30000 });
     const stopped = await page.textContent('#status');
     step('session stopped', stopped.includes('stopped'), stopped);
+
+    // A reload: the old worker's handles are released (or waited for), and the game is still there.
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#login-submit') || /another tab/.test(document.querySelector('#status')?.textContent ?? ''), null, { timeout: 60000 });
+    step('after a reload the host opens the games again (not "another tab")', !!(await page.$('#login-submit')), await page.textContent('#status'));
+    await page.fill('#username', user);
+    await page.fill('#password', password);
+    await page.click('#login-submit');
+    await page.waitForSelector('li[data-game] .name', { timeout: 30000 });
+    const names = await page.$$eval('li[data-game] .name', (n) => n.map((x) => x.textContent));
+    step('the game is kept across the reload (OPFS)', names.includes('E2E tab game'), names.join(', '));
+
+    // Games from before OPFS: a copy of data.db in IndexedDB ("nordvik-host", store "files").
+    // A browser with only that copy gets it moved to OPFS, and the copy deleted once it opened.
+    const saved = await page.evaluate(async () => {
+      const file = await (await (await navigator.storage.getDirectory()).getFileHandle('data.db')).getFile();
+      return Array.from(new Uint8Array(await file.arrayBuffer()));
+    });
+    const legacy = await (await browser.newContext()).newPage();
+    legacy.on('console', (m) => console.log('[legacy]', m.text()));
+    await legacy.goto(`http://localhost:${port}/opfs-fs.js`); // this origin, without starting the host
+    await legacy.evaluate((bytes) => new Promise((resolve, reject) => {
+      const open = indexedDB.open('nordvik-host', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('files');
+      open.onsuccess = () => {
+        const tx = open.result.transaction('files', 'readwrite');
+        tx.objectStore('files').put(new Uint8Array(bytes).buffer, 'data.db');
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      };
+    }), saved);
+    await legacy.goto(`http://localhost:${port}/index.html?central=${encodeURIComponent(central)}`);
+    await legacy.waitForSelector('#login-submit', { timeout: 60000 });
+    await legacy.fill('#username', user);
+    await legacy.fill('#password', password);
+    await legacy.click('#login-submit');
+    await legacy.waitForSelector('li[data-game] .name', { timeout: 30000 });
+    const movedNames = await legacy.$$eval('li[data-game] .name', (n) => n.map((x) => x.textContent));
+    step('games kept in IndexedDB by an older host are moved to OPFS', movedNames.includes('E2E tab game'), movedNames.join(', '));
+    const leftInIndexedDb = await legacy.evaluate(() => new Promise((resolve) => {
+      const open = indexedDB.open('nordvik-host', 1);
+      open.onsuccess = () => {
+        const get = open.result.transaction('files').objectStore('files').get('data.db');
+        get.onsuccess = () => resolve(!!get.result);
+      };
+    }));
+    step('the IndexedDB copy is deleted once they opened', !leftInIndexedDb, String(leftInIndexedDb));
   } catch (e) {
     failed = true;
     console.log('RESULT: FAIL ' + e.message);

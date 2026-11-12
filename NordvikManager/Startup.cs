@@ -82,6 +82,7 @@ namespace NordvikManager
             services.AddHttpContextAccessor();
             services.AddSingleton<IPeerConnectionFactory, SipsorceryPeerConnectionFactory>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
+            services.AddSingleton<NordvikManager.Api.IHostDescription, ServerHostDescription>();
             services.AddHostedService<ScheduledBackupService>();
 
             // Server updates (Hosting/Updates). The download client has no timeout: a release is ~70 MB.

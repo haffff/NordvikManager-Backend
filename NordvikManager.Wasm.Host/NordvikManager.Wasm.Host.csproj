@@ -1,13 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The browser-wasm GM host: starts WasmHost (NordvikManager.Wasm.Hosting) in a browser tab.
-       For now it only has the self-check (?selfcheck, see README.md). Not in the solution:
+  <!-- The browser-wasm GM host: WasmHost (NordvikManager.Wasm.Hosting) in a browser tab's worker,
+       with the GM's page and the self-check (?selfcheck, see README.md). Not in the solution:
        browser-wasm needs the wasm-tools workload. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
-    <WasmMainJSPath>main.js</WasmMainJSPath>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
@@ -21,11 +20,21 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
+  <!-- The page (main.js, gm-page.js, page-bridge.js, the real WebRTC module) and its worker
+       (host-worker.js, worker-bridge.js, opfs-fs.js, stand-ins for the page's modules). -->
   <ItemGroup>
     <WasmExtraFilesToDeploy Include="index.html" />
+    <!-- Listed here, not as WasmMainJSPath: that one isn't an input of the bundle step, so a change to
+         main.js alone wasn't deployed. -->
+    <WasmExtraFilesToDeploy Include="main.js" />
     <WasmExtraFilesToDeploy Include="gm-page.js" />
-    <WasmExtraFilesToDeploy Include="nordvik-storage.js" />
+    <WasmExtraFilesToDeploy Include="page-bridge.js" />
+    <WasmExtraFilesToDeploy Include="host-worker.js" />
+    <WasmExtraFilesToDeploy Include="worker-bridge.js" />
+    <WasmExtraFilesToDeploy Include="opfs-fs.js" />
+    <WasmExtraFilesToDeploy Include="nordvik-webrtc-worker.js" />
     <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player.js" Link="selfcheck-player.js" />
+    <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player-worker.js" Link="selfcheck-player-worker.js" />
     <WasmExtraFilesToDeploy Include="..\NordvikManager.Wasm.WebRtc\Interop\nordvik-webrtc.js" />
   </ItemGroup>
 

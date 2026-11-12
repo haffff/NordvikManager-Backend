@@ -1,0 +1,76 @@
+{
+  "kind": "browser",
+  "version": "<version>",
+  "protocol": 2,
+  "unavailable": [
+    {
+      "path": "api/Backup",
+      "reason": "Backs up and restores the whole GM server (its database and files). A browser host keeps its games in the browser's storage instead."
+    },
+    {
+      "path": "api/Materials/BrowseLocalDirectory",
+      "reason": "Browses the GM server's own disk, to pick files to link."
+    },
+    {
+      "path": "api/Materials/LinkDirectory",
+      "reason": "Links a folder on the GM server's own disk; a browser has no disk to link it from."
+    },
+    {
+      "path": "api/Materials/LinkResource",
+      "reason": "Links a file on the GM server's own disk; a browser has no disk to link it from."
+    },
+    {
+      "path": "api/Materials/TransferResourceStorage",
+      "reason": "Moves a resource between the database and files on the GM server's own disk."
+    },
+    {
+      "path": "api/Meta",
+      "reason": "Central's details, fetched through the GM server. A browser host asks Central itself."
+    },
+    {
+      "path": "api/ServerSettings",
+      "reason": "The GM server's settings file. A browser host has fixed settings, including its upload limits."
+    },
+    {
+      "path": "api/Update",
+      "reason": "Updates the GM server's program. A browser host is updated when its page is."
+    }
+  ],
+  "limitations": [
+    {
+      "id": "tab-open",
+      "title": "Keep this tab open",
+      "detail": "The game runs in this tab. Closing or reloading it disconnects every player until you start the session again, and a background tab the browser puts to sleep can drop them too."
+    },
+    {
+      "id": "browser-storage",
+      "title": "Games are kept in this browser",
+      "detail": "They are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, clearing this site's data deletes them, and there is no backup. Unless the browser grants this site persistent storage, it may also clear them when the disk is nearly full."
+    },
+    {
+      "id": "one-tab",
+      "title": "One tab hosts at a time",
+      "detail": "Your games are opened by one tab of this site at a time: while a tab hosts, another one says so instead of opening them."
+    },
+    {
+      "id": "large-files",
+      "title": "Large files are lost when the tab closes",
+      "detail": "Uploads over 32 MB, and files a card saves as files, are kept in this tab's memory, not with your games: they are gone after a reload. Smaller uploads are kept with the games."
+    },
+    {
+      "id": "no-thumbnails",
+      "title": "No thumbnails",
+      "detail": "Images are sent to players at full size, so they load more slowly than from a GM server."
+    },
+    {
+      "id": "login-after-reload",
+      "title": "Log in again after a reload",
+      "detail": "The host keeps your login only while this tab is open."
+    },
+    {
+      "id": "upload-limits",
+      "title": "Fixed upload limits",
+      "detail": "Uploads are limited to 500 MB per game for GMs and 100 MB per player, and can't be changed."
+    }
+  ]
+}
