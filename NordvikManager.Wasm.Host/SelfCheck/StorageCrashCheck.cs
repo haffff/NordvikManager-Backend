@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using System.Runtime.Versioning;
+using NordvikManager.Wasm.Hosting;
 
 namespace NordvikManager.Wasm.Host.SelfCheck
 {
@@ -7,13 +8,32 @@ namespace NordvikManager.Wasm.Host.SelfCheck
     /// storage-e2e.cjs: SQLite on OPFS survives the tab being killed mid-commit. The writer
     /// (?selfcheck=crash-write) commits rows in a loop until the browser is closed; the checker
     /// (?selfcheck=crash-check, a new browser on the same profile) prints INTEGRITY with what it
-    /// finds. Its own file (/opfs/crash.db), with the GM host's rollback journal.
+    /// finds. Its own file (/opfs/crash.db), with the GM host's rollback journal. Between commits it
+    /// also saves one file again and again (BrowserFileStorage, its own crash-storage/ folder): after
+    /// the cut the file must be one whole version (FILE ok), never a half-written one.
     /// </summary>
     [SupportedOSPlatform("browser")]
     public static class StorageCrashCheck
     {
         public const string Database = "/opfs/crash.db";
         private const int RowBytes = 64 * 1024;
+        private const string Storage = "crash-storage";
+        private const int FileBytes = 512 * 1024;
+        private static readonly Guid FileGame = Guid.Parse("c0000000-0000-0000-0000-000000000001");
+        private static readonly Guid FileResource = Guid.Parse("c0000000-0000-0000-0000-000000000002");
+        private static string FilePath => $"{Storage}/games/{FileGame}/{FileResource}.bin";
+
+        private static async Task<BrowserFileStorage> FilesAsync() =>
+            await BrowserFileStorage.OpenAsync(await JsBrowserFiles.CreateAsync(), Storage);
+
+        // A version of the file: random bytes after an 8-byte checksum of them.
+        private static byte[] Version(Random random)
+        {
+            var data = new byte[FileBytes];
+            random.NextBytes(data.AsSpan(8));
+            BitConverter.TryWriteBytes(data, Checksum(data.AsSpan(8)));
+            return data;
+        }
 
         private static SqliteConnection Open()
         {
@@ -29,8 +49,11 @@ namespace NordvikManager.Wasm.Host.SelfCheck
             using var connection = Open();
             Execute(connection, "CREATE TABLE rows (id INTEGER PRIMARY KEY, data BLOB NOT NULL, checksum INTEGER NOT NULL);");
             var random = new Random();
+            var files = await FilesAsync();
             for (var n = 1; ; n++)
             {
+                if (n % 5 == 1)
+                    await files.SaveAsync(FileGame, FileResource, Version(random), ".bin");
                 var data = new byte[RowBytes];
                 random.NextBytes(data);
                 // Two writes per commit, so one cut between them would show.
@@ -50,8 +73,19 @@ namespace NordvikManager.Wasm.Host.SelfCheck
             }
         }
 
-        public static void Check()
+        public static async Task CheckAsync()
         {
+            try
+            {
+                var files = await FilesAsync();
+                var data = await files.ReadAsync(FilePath);
+                var whole = data != null && data.Length == FileBytes && BitConverter.ToInt64(data, 0) == Checksum(data.AsSpan(8));
+                Console.WriteLine($"FILE {(whole ? "ok" : "BAD")} {(data == null ? "missing" : $"{data.Length} bytes")}, stamp {files.GetStamp(FilePath)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"FILE BAD {ex.GetType().Name}: {ex.Message}");
+            }
             try
             {
                 using var connection = Open();
@@ -92,7 +126,7 @@ namespace NordvikManager.Wasm.Host.SelfCheck
             return $"{file.Length} bytes, {(magic ? "HOT MAGIC" : "no magic")}, starts {Convert.ToHexString(head, 0, read)}";
         }
 
-        private static long Checksum(byte[] data)
+        private static long Checksum(ReadOnlySpan<byte> data)
         {
             long sum = 17;
             foreach (var b in data)

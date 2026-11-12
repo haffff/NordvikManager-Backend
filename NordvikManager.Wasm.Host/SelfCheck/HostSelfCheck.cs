@@ -31,6 +31,7 @@ namespace NordvikManager.Wasm.Host.SelfCheck
 
         /// <summary>The self-check's own file on OPFS (host-worker.js mounts it; the GM's data.db isn't touched).</summary>
         public const string SelfCheckDatabase = "/opfs/selfcheck.db";
+        public const string SelfCheckStorage = "selfcheck-storage";
 
         // How many times opfs-fs.js flushed a file to OPFS (fsync, close, delete), and how many of
         // those were SQLite's fsync.
@@ -78,11 +79,16 @@ namespace NordvikManager.Wasm.Host.SelfCheck
 
                 _signaling = new InPageSignaling();
                 ServiceProvider provider = null!;
+                // The self-check's own file storage folder on OPFS, never the GM's storage/.
+                var browserFiles = await JsBrowserFiles.CreateAsync();
+                foreach (var left in await browserFiles.ListAsync(SelfCheckStorage))
+                    await browserFiles.DeleteAsync(left.Path);
+                var fileStorage = await BrowserFileStorage.OpenAsync(browserFiles, SelfCheckStorage);
                 await Check("host builds", () =>
                 {
                     // Central is never reached: signaling is in the page, no session is started.
                     provider = WasmHost.Build(WasmHost.Configuration("http://localhost:9"), new JsBrowserRtc(),
-                        services => services.Replace(ServiceDescriptor.Singleton<ISignalingService>(_signaling)));
+                        services => services.Replace(ServiceDescriptor.Singleton<ISignalingService>(_signaling)), files: fileStorage);
                     return Task.FromResult("every registration validated");
                 });
 
@@ -136,12 +142,57 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return $"'{name}' kept, listed by a new host ({bytes} bytes on OPFS, {flushed} flushes); a commit fsyncs to OPFS";
                 });
 
+                await Check("files kept in OPFS (big uploads, files cards save as files)", async () =>
+                {
+                    Expect(provider.GetRequiredService<NordvikManager.Infrastructure.Interfaces.IFileStorageProvider>() == fileStorage, "the host doesn't use BrowserFileStorage");
+                    var game = Guid.NewGuid();
+                    var random = new Random(7);
+                    var first = new byte[200_000];
+                    var second = new byte[150_000];
+                    random.NextBytes(first);
+                    random.NextBytes(second);
+                    var resource = Guid.NewGuid();
+                    var saved = await fileStorage.SaveAsync(game, resource, first, ".bin");
+                    // A card saving the file again: a new file moved over the old one.
+                    await fileStorage.SaveAsync(game, resource, second, ".bin");
+                    Expect((await fileStorage.ReadAsync(saved))!.AsSpan().SequenceEqual(second), "the saved-again file reads back wrong");
+
+                    // A finished upload (in the runtime's memory) copied in, in parts.
+                    var upload = "/tmp/selfcheck-upload.part";
+                    System.IO.Directory.CreateDirectory("/tmp");
+                    var big = new byte[3 * 1024 * 1024 + 123];
+                    random.NextBytes(big);
+                    await System.IO.File.WriteAllBytesAsync(upload, big);
+                    var moved = await fileStorage.MoveInAsync(game, Guid.NewGuid(), upload, ".ogg");
+                    Expect(!System.IO.File.Exists(upload), "the upload's parts file is still there");
+
+                    // Two ranges of one file at once (one handle per file: it locks the file).
+                    var ranges = await Task.WhenAll(fileStorage.ReadRangeAsync(moved, 1000, 2_000_000), fileStorage.ReadRangeAsync(moved, 1200, 4000));
+                    Expect(ranges[0]!.AsSpan().SequenceEqual(big.AsSpan(1000, 2_000_000)) && ranges[1]!.AsSpan().SequenceEqual(big.AsSpan(1200, 4000)), "overlapping ranges read wrong");
+
+                    // As after a reload: what OPFS lists, with the same stamps (the resource cache's versions).
+                    var reopened = await BrowserFileStorage.OpenAsync(browserFiles, SelfCheckStorage);
+                    foreach (var path in new[] { saved, moved })
+                    {
+                        Expect(reopened.Exists(path), $"{path} isn't listed by a new storage");
+                        Expect(reopened.GetStamp(path) == fileStorage.GetStamp(path), $"{path}'s stamp changed: {fileStorage.GetStamp(path)} -> {reopened.GetStamp(path)}");
+                    }
+                    Expect((await reopened.ReadAsync(moved))!.AsSpan().SequenceEqual(big), "the moved-in file reads back wrong");
+                    var listed = await browserFiles.ListAsync(SelfCheckStorage);
+                    Expect(listed.Count == 2, "OPFS has " + string.Join(", ", listed.Select(f => f.Path)));
+
+                    await fileStorage.DeleteAsync(saved);
+                    await fileStorage.DeleteAsync(moved);
+                    Expect((await browserFiles.ListAsync(SelfCheckStorage)).Count == 0 && !fileStorage.Exists(moved), "deleted files are still there");
+                    return $"saved, saved again, a {big.Length}-byte upload moved in, overlapping ranges, same stamps after reopening, deleted";
+                });
+
                 Guid gameId = default;
+                var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
                 await Check("game created and listed (MediatR, EF Core in memory)", async () =>
                 {
                     using var scope = provider.CreateScope();
                     var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-                    var gm = new User { Id = Guid.NewGuid().ToString(), UserName = "gm" };
                     gameId = await mediator.Send(new AddGameCommand { User = gm, Name = "Self-check game", PasswordRequired = false })
                         ?? throw new Exception("AddGameCommand gave no game");
                     var list = await mediator.Send(new GetGameListCommand { UserId = gm.Id });
@@ -150,6 +201,37 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return $"game {gameId}";
                 });
                 _gameId = gameId.ToString();
+
+                await Check("the GM uploads a file kept as a file: on OPFS, read back in ranges", async () =>
+                {
+                    var router = provider.GetRequiredService<NordvikManager.Api.ApiRouter>();
+                    var context = new NordvikManager.Api.ApiContext(gm, null);
+                    var query = new Dictionary<string, string> { ["gameId"] = gameId.ToString() };
+                    var bytes = new byte[3 * 1024 * 1024 + 7];
+                    new Random(11).NextBytes(bytes);
+                    var (status, body) = await router.InvokeAsync(context, "POST", "api/Materials/UploadStart",
+                        JObject.FromObject(new { name = "music.ogg", mimeType = "audio/ogg", size = bytes.Length, storageKind = 1 }), query);
+                    Expect(status == 200, $"UploadStart {status} {body}");
+                    var uploadId = (string?)body?["uploadId"];
+                    const int part = 1024 * 1024;
+                    for (var offset = 0; offset < bytes.Length; offset += part)
+                    {
+                        (status, body) = await router.InvokeAsync(context, "POST", "api/Materials/UploadPart",
+                            JObject.FromObject(new { uploadId, offset, data = Convert.ToBase64String(bytes, offset, Math.Min(part, bytes.Length - offset)) }), query);
+                        Expect(status == 200, $"UploadPart {status} {body}");
+                    }
+                    (status, body) = await router.InvokeAsync(context, "POST", "api/Materials/UploadFinish", JObject.FromObject(new { uploadId }), query);
+                    Expect(status == 200, $"UploadFinish {status} {body}");
+                    var id = (string?)body?["id"];
+
+                    var onOpfs = await browserFiles.ListAsync($"{SelfCheckStorage}/games/{gameId}");
+                    Expect(onOpfs.Count == 1 && onOpfs[0].Size == bytes.Length, "on OPFS: " + string.Join(", ", onOpfs.Select(f => $"{f.Path} {f.Size}")));
+                    (status, body) = await router.InvokeAsync(context, "GET", "api/Materials/ResourceRange", null,
+                        new Dictionary<string, string> { ["gameId"] = gameId.ToString(), ["id"] = id!, ["start"] = "2000000", ["length"] = "65536" });
+                    Expect(status == 200 && (long?)body?["total"] == bytes.Length, $"ResourceRange {status} {body?["total"]}");
+                    Expect(Convert.FromBase64String((string)body!["data"]!).AsSpan().SequenceEqual(bytes.AsSpan(2_000_000, 65536)), "the range read back differs");
+                    return $"{bytes.Length} bytes in {(bytes.Length + part - 1) / part} parts, {onOpfs[0].Path}, a range read back equal (version {body["version"]})";
+                });
 
                 await Check("api/Host/Info says browser, with what it doesn't provide", async () =>
                 {

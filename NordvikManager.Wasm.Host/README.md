@@ -19,6 +19,7 @@ flowchart LR
         NET[".NET: HostPage, WasmHost<br/>JsBrowserRtc → nordvik-webrtc-worker.js"]
         WB["worker-bridge.js"]
         FS["opfs-fs.js<br/>/opfs/data.db"]
+        FILES["opfs-files.js<br/>storage/"]
     end
     UI -- "host.Login / host.Call" --> PB
     PB <-- "postMessage" --> WB
@@ -27,23 +28,26 @@ flowchart LR
     PB --> RTC
     RTC -- "events, bufferedAmount" --> PB
     NET --> FS
+    NET -- "BrowserFileStorage" --> FILES
     FS --> OPFS[("OPFS<br/>sync access handles")]
+    FILES --> OPFS
 ```
 
 - **Storage.** `opfs-fs.js` mounts an emscripten filesystem at `/opfs` over OPFS sync access handles, which only exist in dedicated workers. SQLite reads and writes `/opfs/data.db` in place: the database isn't held in memory, and every commit is flushed to OPFS (fsync → `handle.flush()`). Opening a handle is async, so the files (the database and its rollback journal) are opened before .NET starts; only they can exist there. Deleting a file empties it, and an empty file counts as missing (the rollback journal after each commit, a hot journal after a crash). A new database is made with a rollback journal before EF migrates it: EF would turn on WAL, which needs files this filesystem doesn't have (`WasmHost.MigrateSqlite`).
+- **Files.** What the server keeps as files (uploads over 32 MB, files a card saves as files) is on OPFS too, under `storage/games/<game>/`: `BrowserFileStorage` (`NordvikManager.Wasm.Hosting`, the host's `IFileStorageProvider`) through `JsBrowserFiles` → `opfs-files.js`. Those files are made at any time, so they aren't opfs-fs.js's pre-opened ones: the C# side awaits the opening of a file, then reads and writes it with sync calls. A file's handle is opened once and kept (two ranges of one audio file at once share it). A save is written to `<file>.tmp`, flushed, then moved in place, so the database never points at a half-written file; a `.tmp` left by a closed tab is deleted at startup. What's there is listed once at startup, so `Exists` and the stamps (the resource cache's versions, OPFS's own last-modified times) don't change on a reload. A finished upload is copied in from the runtime's memory in 1 MB parts. Uploads still in progress are in memory: a reload cuts them off. A browser out of room answers the upload with 413 and says so.
 - **One tab.** Holding the handles locks the files, so a second tab of the site says the games are open in another tab. A reload's new worker retries for 3 s while the old one lets go; the page also tells its worker to close the handles on `pagehide`.
 - **Games from before OPFS** (a copy of `data.db` in IndexedDB, `nordvik-host`/`files`) are moved into an empty `data.db` once, and the IndexedDB copy is deleted after the host has opened them.
 - **WebRTC.** A worker has no `RTCPeerConnection`, so the page owns them: `nordvik-webrtc-worker.js` has `nordvik-webrtc.js`'s exports (`JsBrowserRtc`'s `[JSImport]`s, unchanged) and forwards each call; events come back to `JsBrowserRtc`'s `[JSExport]`s. `bufferedAmount` (the send pump polls it) is mirrored: the amount the page last reported, after every send and on `bufferedamountlow`, plus what was sent since.
 - **The bridge.** `worker-bridge.js` / `page-bridge.js`: calls (with an answer), notifications, callbacks into .NET, and the page calling `HostPage`'s `[JSExport]`s. Order is kept both ways.
 - The page asks for persistent storage (`navigator.storage.persist()`), so the browser doesn't clear the games when the disk is nearly full.
 
-`HostSelfCheck` and `storage-e2e.cjs` use their own files (`selfcheck.db`, `crash.db`), never the GM's `data.db`.
+`HostSelfCheck` and `storage-e2e.cjs` use their own files (`selfcheck.db` and `selfcheck-storage/`, `crash.db` and `crash-storage/`), never the GM's `data.db` and `storage/`.
 
 ## The GM's page
 
 `index.html` is the GM's page: log in to Central, see your games, create one (built-in addons ticked), start or stop its session. The GM's Central tokens are held by the host (a browser can't keep Central's cookies), and the GM's actions run the same shared endpoints as everyone, with those tokens. The logged-in GM is the host's local admin. Central is the page's own origin (serve the host from Central's domain and no CORS is needed), or `?central=https://...`; otherwise Central's `CORS_ORIGIN` must list the page's origin. Keep the tab open while playing. After a reload the GM logs in again and starts the game on its same Central session.
 
-`gm-e2e.cjs` drives it against a real Central in headless Chrome: a second tab is refused, log in, Basics offered, create a game, start, stop, reload (the games open again and the game is there), and games kept in IndexedDB by an older host are moved to OPFS:
+`gm-e2e.cjs` drives it against a real Central in headless Chrome: a second tab is refused, log in, Basics offered, create a game, upload 33 MB to it as the GM (kept as a file on OPFS), start, stop, reload (the games open again, the game is there, the big file reads back right), and games kept in IndexedDB by an older host are moved to OPFS:
 
 ```bash
 # a Central of your own: CORS_ORIGIN=http://localhost:<port>, an account (npm run seed with ADMIN_USERNAME/ADMIN_PASSWORD)
@@ -57,7 +61,7 @@ node NordvikManager.Wasm.Host/gm-e2e.cjs <AppBundle> [path/to/playwright] <port>
 node NordvikManager.Wasm.Host/player-e2e.cjs <host AppBundle> <player build> <playwright> <centralUrl> <hostPort> <playerPort>
 ```
 
-`storage-e2e.cjs` cuts the host off mid-commit, twice (the worker terminated outright, then the whole browser closed, on a persistent profile), and checks the database each time (`PRAGMA integrity_check`, every row whole: `SelfCheck/StorageCrashCheck.cs`):
+`storage-e2e.cjs` cuts the host off mid-commit, twice (the worker terminated outright, then the whole browser closed, on a persistent profile), and checks the database each time (`PRAGMA integrity_check`, every row whole: `SelfCheck/StorageCrashCheck.cs`), and the file the writer kept saving between commits (one whole version, never a half-written one):
 
 ```bash
 node NordvikManager.Wasm.Host/storage-e2e.cjs <AppBundle> <playwright> <profile folder, deleted after>
@@ -69,6 +73,7 @@ node NordvikManager.Wasm.Host/storage-e2e.cjs <AppBundle> <playwright> <profile 
 
 - the host builds (every registration validated); it runs in a worker;
 - games kept in OPFS: a fresh database migrates on `/opfs/selfcheck.db`, its commits are flushed, and a new host on the same file lists the game;
+- files kept in OPFS: saved, saved again, an upload moved in, two overlapping ranges at once, the same stamps from a new `BrowserFileStorage`, deleted; the GM uploads 3 MB asking for file storage (`UploadStart`/`UploadPart`/`UploadFinish`), it's on OPFS and a `ResourceRange` reads back right;
 - MediatR + EF Core create and list a game; `api/Host/Info` says browser; Basics is installed in a new game;
 - the lobby opens; the player connects over the browser's WebRTC (through the page);
 - the heartbeat is answered;
@@ -80,7 +85,8 @@ node NordvikManager.Wasm.Host/storage-e2e.cjs <AppBundle> <playwright> <profile 
 ## Not yet
 
 - Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered. `GET api/Host/Info` lists them, with the host's limitations.
-- Uploads over 32 MB, and files a card saves as files, go to the server's file storage: here, the runtime's memory, so they're lost on reload (next: file storage on OPFS). Upload parts are in memory while an upload runs.
+- Upload parts are in the runtime's memory while an upload runs: a reload cuts it off and it starts over (finished ones are on OPFS).
+- Deleting a game leaves its files (as on a GM server): they stay in `storage/games/<game>/`.
 - Where the host page is served from (from Central's domain, it needs no CORS).
 
 ## Run the self-check
