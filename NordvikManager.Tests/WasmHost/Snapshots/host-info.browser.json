@@ -44,28 +44,33 @@
     },
     {
       "id": "browser-storage",
-      "title": "Games are kept in this browser",
-      "detail": "They and their files are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, clearing this site's data deletes them, and there is no backup. Unless the browser grants this site persistent storage, it may also clear them when the disk is nearly full."
+      "title": "Your games can be lost",
+      "detail": "They exist only in this browser's storage, with no backup. Unless the browser grants this site persistent storage, it may delete them without asking when the disk gets full. Clearing the site's data deletes them too, and another browser, another computer or a private window doesn't have them."
     },
     {
-      "id": "one-tab",
-      "title": "One tab hosts at a time",
-      "detail": "Your games are opened by one tab of this site at a time: while a tab hosts, another one says so instead of opening them."
+      "id": "outside-connections",
+      "title": "No connections to other services",
+      "detail": "A browser page may only connect to the site it came from, so addons that work with other programs or websites (for example Trilium or Obsidian notes) don't work, and nor do actions that download a file from a link."
     },
     {
-      "id": "upload-restarts",
-      "title": "An upload cut off by a reload starts over",
-      "detail": "A file still uploading when this tab closes or reloads has to be uploaded again from the start. Finished uploads, big ones included, are kept with your games."
-    },
-    {
-      "id": "addon-registry",
-      "title": "Addons come from Central's registry",
-      "detail": "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. An addon you have as a file still installs from the file."
+      "id": "upload-limits",
+      "title": "Upload limits are fixed",
+      "detail": "Uploads are capped at 500 MB per game for you and 100 MB per player, and can't be raised. On the local server you set them."
     },
     {
       "id": "no-thumbnails",
-      "title": "No thumbnails",
-      "detail": "Images are sent to players at full size, so they load more slowly than from a GM server."
+      "title": "Images load slower for players",
+      "detail": "There are no small previews: players download every image (maps, tokens, handouts) at full size, so on a slow connection they appear later than from the local server."
+    },
+    {
+      "id": "one-tab",
+      "title": "Host from one tab only",
+      "detail": "Your games open in one tab of this site at a time. A second tab won't open them: close it and use the first one."
+    },
+    {
+      "id": "upload-restarts",
+      "title": "Interrupted uploads start over",
+      "detail": "If this tab closes or reloads while a file is uploading (yours or a player's), it has to be uploaded again from the start. The local server continues an interrupted upload where it stopped."
     },
     {
       "id": "login-after-reload",
@@ -73,9 +78,9 @@
       "detail": "The host keeps your login only while this tab is open."
     },
     {
-      "id": "upload-limits",
-      "title": "Fixed upload limits",
-      "detail": "Uploads are limited to 500 MB per game for GMs and 100 MB per player, and can't be changed."
+      "id": "addon-registry",
+      "title": "Addons come from Central's registry",
+      "detail": "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. An addon you have as a file still installs from the file."
     }
   ]
 }
