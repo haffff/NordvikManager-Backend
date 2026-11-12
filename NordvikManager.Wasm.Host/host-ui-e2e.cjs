@@ -77,11 +77,20 @@ async function gmLogin(gm, { lobby = true } = {}) {
     await gmLogin(gm);
     step('the GM logs in to the host build (the host in this tab holds the Central login)', true);
 
-    await gm.waitForTimeout(1500); // the host info
+    // Once the host says what it is (after login): the startup dialog, until "Don't remind me again".
+    const intro = await gm.waitForSelector("text=You're hosting from your browser", { timeout: 15000 }).then(() => true, () => false);
+    const cards = await gm.$$('[data-testid="host-intro-card"]');
+    const gmServerList = !!(await gm.$('text=Only on the local server'));
+    step('the startup dialog: a warning, six cards, the rest below, three choices', intro && cards.length === 6 && gmServerList
+      && !!(await gm.$('button:has-text("I will download local server")')) && !!(await gm.$('button:has-text("Don\'t remind me again")')), `${cards.length} cards`);
+    if (shots) await gm.screenshot({ path: path.join(shots, 'host-intro.png') });
+    await gm.click('button:has-text("Continue with browser version")');
+    await gm.waitForSelector("text=You're hosting from your browser", { state: 'detached', timeout: 10000 });
+
     step('the lobby has no server-only settings (backups, server settings)', !(await gm.$('button:has-text("Application Settings")')));
     await gm.click('button[aria-label^="Game host"]');
-    const expect = await gm.waitForSelector('text=Keep this tab open', { timeout: 10000 }).then(() => true, () => false);
-    step('the host drawer says what to expect and what only a GM server does', expect && !!(await gm.$('text=Only on a GM server')));
+    const drawer = await gm.waitForSelector('text=/Storage: .* used of/', { timeout: 10000 }).then(() => true, () => false);
+    step('the host button (lobby toolbar) opens the drawer: what runs, the storage used', drawer);
     if (shots) await gm.screenshot({ path: path.join(shots, 'host-drawer.png') });
     await gm.click('[role="tab"]:has-text("Logs")');
     const logText = await gm.waitForSelector('text=GM host ready', { timeout: 10000 }).then(() => gm.textContent('[role="tabpanel"]:visible'), () => '');
@@ -129,6 +138,8 @@ async function gmLogin(gm, { lobby = true } = {}) {
     await gm.waitForSelector('textarea[placeholder^="Type a message"]', { timeout: 60000 });
     const ownChannel = await waitFor(() => hostLog.some((l) => /Data channel open player=/.test(l)), 60000);
     step("the GM enters it: the GM app's data channel to the host in its own tab", ownChannel, hostLog.find((l) => /Data channel open/.test(l)));
+    const inToolbar = await gm.$('.nm_toolbar button[aria-label^="Game host"]');
+    step('in game the host button sits in the main toolbar', !!inToolbar);
     const sessionId = (await gm.textContent('text=/Session ID: /')).replace(/.*Session ID:\s*/, '').trim();
     const gmMessage = 'hello from the host tab ' + Date.now();
     await chat(gm, gmMessage);
