@@ -32,6 +32,9 @@ namespace NordvikManager.Wasm.Hosting
             new HostLimitation("addon-registry", "Addons come from Central's registry",
                 "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. "
                 + "An addon you have as a file still installs from the file."),
+            new HostLimitation("outside-connections", "Addons can't reach other services",
+                "A browser page may only connect to the site it came from, so addons that talk to other programs or websites "
+                + "(for example Trilium or Obsidian notes) and actions that download a file from a link don't work here."),
             new HostLimitation("no-thumbnails", "No thumbnails",
                 "Images are sent to players at full size, so they load more slowly than from a GM server."),
             new HostLimitation("login-after-reload", "Log in again after a reload",
