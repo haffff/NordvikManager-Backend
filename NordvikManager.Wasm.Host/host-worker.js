@@ -49,6 +49,20 @@ on('host-ready', async () => {
   console.log('Your games are on OPFS now; the old IndexedDB copy is deleted.');
 });
 
+// The host's log for the page (host.js keeps it, so it outlives this worker): every console line
+// here, .NET's included (its Console goes to console.log). The console keeps them too (DevTools).
+for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+  const original = console[level].bind(console);
+  console[level] = (...args) => {
+    original(...args);
+    try {
+      const text = args.map((a) => (typeof a === 'string' ? a : a instanceof Error ? `${a.name}: ${a.message}
+${a.stack ?? ''}` : (() => { try { return JSON.stringify(a); } catch { return String(a); } })())).join(' ');
+      post({ kind: 'log', level, text, at: Date.now() });
+    } catch { /* the log can't stop the host */ }
+  };
+}
+
 let mounted = null;
 on('close', () => mounted?.close());
 

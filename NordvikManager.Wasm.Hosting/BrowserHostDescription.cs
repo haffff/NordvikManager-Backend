@@ -29,6 +29,9 @@ namespace NordvikManager.Wasm.Hosting
             new HostLimitation("upload-restarts", "An upload cut off by a reload starts over",
                 "A file still uploading when this tab closes or reloads has to be uploaded again from the start. "
                 + "Finished uploads, big ones included, are kept with your games."),
+            new HostLimitation("addon-registry", "Addons come from Central's registry",
+                "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. "
+                + "An addon you have as a file still installs from the file."),
             new HostLimitation("no-thumbnails", "No thumbnails",
                 "Images are sent to players at full size, so they load more slowly than from a GM server."),
             new HostLimitation("login-after-reload", "Log in again after a reload",

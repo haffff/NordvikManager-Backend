@@ -37,6 +37,8 @@ namespace NordvikManager.Wasm.Hosting
                 ["Signaling:Transport"] = "WebSocket",
                 ["UseSqlite"] = databasePath == null ? "false" : "true",
                 ["ConnectionStrings:DBData"] = databasePath == null ? "nordvik-wasm-host" : $"Data Source={databasePath}",
+                // Central is the addon registry (CentralAddonRepository): a registry is set.
+                ["AddonsConfiguration:MainRepository"] = $"{centralServerUrl.TrimEnd('/')}/api/addons",
             };
             foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
                 settings[key] = value;
@@ -57,6 +59,11 @@ namespace NordvikManager.Wasm.Hosting
                 // AddConsole throws in a browser (it probes the terminal).
                 logging.AddProvider(new BrowserConsoleLoggerProvider(LogLevel.Information));
                 logging.SetMinimumLevel(LogLevel.Information);
+                // EF's every SQL command at Information would drown the host's log (the host
+                // drawer's): its warnings and errors still come through.
+                logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+                // ...and so would HttpClient's four lines for every request it makes.
+                logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
             });
 
             // SQLite (UseSqlite: Infrastructure's own), or else an in-memory database named by
@@ -69,6 +76,9 @@ namespace NordvikManager.Wasm.Hosting
                 services.Replace(ServiceDescriptor.Singleton(files));
             ApplicationLayerModule.Register(services, configuration);
             RealTimeLayerModule.Register(services);
+
+            // Addons from Central's registry, downloaded through Central.
+            services.Replace(ServiceDescriptor.Scoped<IAddonRepositoryService, CentralAddonRepository>());
 
             // No cookies on any request the host makes (the host build shares Central's origin).
             services.ConfigureHttpClientDefaults(client => client.AddHttpMessageHandler(() => new NoBrowserCookies()));

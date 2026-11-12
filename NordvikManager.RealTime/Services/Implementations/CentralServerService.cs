@@ -83,6 +83,50 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
+        public async Task<string?> GetAddonRegistryAsync()
+        {
+            var client = _httpClientFactory.CreateClient();
+            try
+            {
+                var response = await client.GetAsync($"{_centralServerUrl}/api/addons");
+                return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync() : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public async Task<NordvikManager.Infrastructure.Interfaces.AddonReadmeResult?> GetAddonReadmeAsync(string key)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var response = await client.GetAsync($"{_centralServerUrl}/api/addons/{Uri.EscapeDataString(key)}/readme");
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                return null;
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException(CentralError(body) ?? $"The readme of '{key}' answered {(int)response.StatusCode}.");
+            var json = JObject.Parse(body);
+            return new NordvikManager.Infrastructure.Interfaces.AddonReadmeResult(json["url"]?.ToString() ?? "", json["markdown"]?.ToString() ?? "");
+        }
+
+        public async Task<byte[]> GetAddonPackageAsync(string centralToken, string key)
+        {
+            var response = await SendAuthenticatedAsync(centralToken,
+                client => client.GetAsync($"{_centralServerUrl}/api/addons/{Uri.EscapeDataString(key)}/package"));
+            if (response.IsSuccessStatusCode)
+                return await response.Content.ReadAsByteArrayAsync();
+            var error = CentralError(await response.Content.ReadAsStringAsync());
+            throw new InvalidOperationException($"Central couldn't download the addon '{key}': {error ?? ((int)response.StatusCode).ToString()}");
+        }
+
+        // Central's { "error": "..." }, if that's what it answered.
+        private static string? CentralError(string body)
+        {
+            try { return JObject.Parse(body)["error"]?.ToString(); }
+            catch { return null; }
+        }
+
         public async Task<IceServersResult?> GetIceServersAsync(string centralToken)
         {
             try
