@@ -13,7 +13,7 @@ switch (args)
         await StorageCrashCheck.WriteForeverAsync();
         break;
     case ["selfcheck", "crash-check"]:
-        StorageCrashCheck.Check();
+        await StorageCrashCheck.CheckAsync();
         break;
     case ["selfcheck"]:
         var passed = await HostSelfCheck.RunAsync();

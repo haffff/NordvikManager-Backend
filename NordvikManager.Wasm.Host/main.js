@@ -28,6 +28,7 @@ const bridge = serve(worker, modules, {
     if (selfcheck) return;
     const page = await import('./gm-page.js');
     page.start(central, bridge.host);
+    globalThis.nordvikHost = bridge.host; // gm-e2e.cjs calls the API as the GM (a big upload)
     // Without it the browser may clear the games when the disk is nearly full.
     const persisted = await navigator.storage?.persist?.().catch(() => false);
     console.log(persisted ? 'Persistent storage granted: the browser keeps the games.' : 'Persistent storage not granted: the browser may clear the games when the disk is nearly full.');

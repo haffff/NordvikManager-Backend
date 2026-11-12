@@ -21,14 +21,14 @@ namespace NordvikManager.Wasm.Hosting
                 "The game runs in this tab. Closing or reloading it disconnects every player until you start the session again, "
                 + "and a background tab the browser puts to sleep can drop them too."),
             new HostLimitation("browser-storage", "Games are kept in this browser",
-                "They are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, "
+                "They and their files are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, "
                 + "clearing this site's data deletes them, and there is no backup. Unless the browser grants this site persistent storage, "
                 + "it may also clear them when the disk is nearly full."),
             new HostLimitation("one-tab", "One tab hosts at a time",
                 "Your games are opened by one tab of this site at a time: while a tab hosts, another one says so instead of opening them."),
-            new HostLimitation("large-files", "Large files are lost when the tab closes",
-                $"Uploads over {NordvikManager.Application.Commands.Resources.Upload.Uploads.MaxBlobSize / (1024 * 1024)} MB, and files a card saves as files, "
-                + "are kept in this tab's memory, not with your games: they are gone after a reload. Smaller uploads are kept with the games."),
+            new HostLimitation("upload-restarts", "An upload cut off by a reload starts over",
+                "A file still uploading when this tab closes or reloads has to be uploaded again from the start. "
+                + "Finished uploads, big ones included, are kept with your games."),
             new HostLimitation("no-thumbnails", "No thumbnails",
                 "Images are sent to players at full size, so they load more slowly than from a GM server."),
             new HostLimitation("login-after-reload", "Log in again after a reload",

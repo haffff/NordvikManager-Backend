@@ -204,7 +204,7 @@ namespace NordvikManager.Tests.WasmHost
         private static string SnapshotDir([System.Runtime.CompilerServices.CallerFilePath] string here = "")
             => System.IO.Path.Combine(System.IO.Path.GetDirectoryName(here)!, "Snapshots");
 
-        private sealed class NoBrowserRtc : IBrowserRtc
+        internal sealed class NoBrowserRtc : IBrowserRtc
         {
             public void CreatePeer(string peerId, string iceServersJson) { }
             public Task<string?> SetRemoteOfferAsync(string peerId, string sdp) => Task.FromResult<string?>(null);

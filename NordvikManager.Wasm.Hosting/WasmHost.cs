@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using NordvikManager.Api;
 using NordvikManager.Application;
 using NordvikManager.Infrastructure;
+using NordvikManager.Infrastructure.Interfaces;
 using NordvikManager.Services.Implementations;
 using NordvikManager.Services.Interfaces;
 using NordvikManager.Wasm.WebRtc;
@@ -42,7 +43,12 @@ namespace NordvikManager.Wasm.Hosting
             return new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
         }
 
-        public static void ConfigureServices(IServiceCollection services, IConfiguration configuration, IBrowserRtc rtc)
+        /// <param name="files">
+        /// Where uploads over the database's size and files cards save as files are kept
+        /// (<see cref="BrowserFileStorage"/> on OPFS in the browser host); without it, the
+        /// runtime's filesystem (in a browser: its memory, gone on a reload).
+        /// </param>
+        public static void ConfigureServices(IServiceCollection services, IConfiguration configuration, IBrowserRtc rtc, IFileStorageProvider? files = null)
         {
             services.AddSingleton(configuration);
             services.AddLogging(logging =>
@@ -59,6 +65,8 @@ namespace NordvikManager.Wasm.Hosting
                 (options, name) => options.UseInMemoryDatabase(name ?? "nordvik-wasm-host"));
             // No settings file in a browser: fixed settings, constant upload limits.
             services.Replace(ServiceDescriptor.Singleton<NordvikManager.Infrastructure.Interfaces.IServerSettingsStore, FixedServerSettingsStore>());
+            if (files != null)
+                services.Replace(ServiceDescriptor.Singleton(files));
             ApplicationLayerModule.Register(services, configuration);
             RealTimeLayerModule.Register(services);
 
@@ -80,10 +88,10 @@ namespace NordvikManager.Wasm.Hosting
 
         /// <summary>Every registration is checked as the provider is built.</summary>
         /// <param name="configure">Changes after the host's own registrations (e.g. another <see cref="ISignalingService"/>).</param>
-        public static ServiceProvider Build(IConfiguration configuration, IBrowserRtc rtc, Action<IServiceCollection>? configure = null)
+        public static ServiceProvider Build(IConfiguration configuration, IBrowserRtc rtc, Action<IServiceCollection>? configure = null, IFileStorageProvider? files = null)
         {
             var services = new ServiceCollection();
-            ConfigureServices(services, configuration, rtc);
+            ConfigureServices(services, configuration, rtc, files);
             configure?.Invoke(services);
             var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
             ApplicationLayerModule.AfterBuild(provider);

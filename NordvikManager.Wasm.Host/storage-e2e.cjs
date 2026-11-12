@@ -1,6 +1,7 @@
 // The browser host's database on OPFS survives being cut off mid-commit: a writer
 // (?selfcheck=crash-write) commits in a loop and is stopped while it does, then a checker
-// (?selfcheck=crash-check) finds the file intact (integrity_check ok, every row whole). Twice:
+// (?selfcheck=crash-check) finds the file intact (integrity_check ok, every row whole), and the
+// file it kept saving between commits whole (file storage on OPFS). Twice:
 // the worker terminated outright (nothing of it runs after), and the whole browser closed.
 // node storage-e2e.cjs <AppBundle> <playwright> <profile folder (made, then deleted)>
 const http = require('http');
@@ -37,6 +38,9 @@ async function open(context, url, until, ms) {
 
 // The writer prints "WRITING n commits" after its nth commit; the checker "... N rows ...".
 const committed = (lines) => Math.max(0, ...lines.map((l) => Number(/^WRITING (\d+) /.exec(l)?.[1] ?? 0)));
+// ... and "FILE ok|BAD ..." for the file the writer kept saving (printed before INTEGRITY).
+const fileLine = (lines) => lines.find((l) => l.startsWith('FILE ')) ?? 'no FILE line';
+const fileOk = (lines) => fileLine(lines).startsWith('FILE ok ');
 const rows = (line) => Number(/ (\d+) rows/.exec(line ?? '')?.[1] ?? -1);
 
 server.listen(0, async () => {
@@ -53,6 +57,7 @@ server.listen(0, async () => {
     const afterTerminate = await open(browser, `${url}?selfcheck=crash-check`, /^INTEGRITY /, 120000);
     step('intact after the worker was terminated mid-commit', /^INTEGRITY ok /.test(afterTerminate.line ?? '') && !/HOT MAGIC/.test(afterTerminate.line), afterTerminate.line ?? afterTerminate.seen.slice(-5).join(' | '));
     step('no commit the writer reported was lost', rows(afterTerminate.line) >= committed(first.seen), `${rows(afterTerminate.line)} rows, ${committed(first.seen)} reported`);
+    step('the file it kept saving is whole', fileOk(afterTerminate.seen), fileLine(afterTerminate.seen));
     await afterTerminate.page.close();
     await browser.close();
 
@@ -68,6 +73,7 @@ server.listen(0, async () => {
     const { line: verdict, seen } = await open(checker, `${url}?selfcheck=crash-check`, /^INTEGRITY /, 120000);
     step('intact after the browser was closed mid-commit', /^INTEGRITY ok /.test(verdict ?? '') && !/HOT MAGIC/.test(verdict), verdict ?? seen.slice(-5).join(' | '));
     step('no commit the writer reported was lost (browser closed)', rows(verdict) >= reported, `${rows(verdict)} rows, ${reported} reported`);
+    step('the file it kept saving is whole (browser closed)', fileOk(seen), fileLine(seen));
     await checker.close();
   } catch (e) {
     failed = true;

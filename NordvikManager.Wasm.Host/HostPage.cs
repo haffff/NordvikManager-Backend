@@ -12,7 +12,8 @@ namespace NordvikManager.Wasm.Host
     /// The GM's host, in the page's worker (host-worker.js): WasmHost, the browser's WebRTC (run by
     /// the page, nordvik-webrtc-worker.js), signaling to Central. The page's gm-page.js is its UI,
     /// calling <see cref="Login"/> and <see cref="Call"/> over the page bridge. Games are a SQLite
-    /// file on OPFS (/opfs/data.db, mounted by host-worker.js): every commit is written there.
+    /// file on OPFS (/opfs/data.db, mounted by host-worker.js): every commit is written there. Files
+    /// kept outside the database (big uploads) are on OPFS too (<see cref="BrowserFileStorage"/>).
     /// Runs until the tab closes.
     /// </summary>
     [SupportedOSPlatform("browser")]
@@ -33,7 +34,9 @@ namespace NordvikManager.Wasm.Host
             await JsBrowserRtc.InitializeAsync(WorkerRtcModule);
             await JSHost.ImportAsync("host-bridge", "../worker-bridge.js");
 
-            var provider = WasmHost.Build(WasmHost.Configuration(central, databasePath: DatabasePath), new JsBrowserRtc());
+            // Big uploads and files cards save as files: on OPFS too (storage/), not in memory.
+            var files = await BrowserFileStorage.OpenAsync(await JsBrowserFiles.CreateAsync());
+            var provider = WasmHost.Build(WasmHost.Configuration(central, databasePath: DatabasePath), new JsBrowserRtc(), files: files);
             _gm = provider.GetRequiredService<HostGm>();
             Ready(central);
             Console.WriteLine($"GM host ready (Central {central}, games on OPFS).");
@@ -51,11 +54,23 @@ namespace NordvikManager.Wasm.Host
         [JSExport]
         internal static string? UserName() => _gm?.User?.UserName;
 
-        /// <summary>An API call as the GM; { status, body } as JSON.</summary>
+        /// <summary>An API call as the GM (the path may have a query); { status, body } as JSON.</summary>
         [JSExport]
         internal static async Task<string> Call(string method, string path, string? bodyJson)
         {
-            var (status, body) = await _gm!.CallAsync(method, path, string.IsNullOrEmpty(bodyJson) ? null : JToken.Parse(bodyJson));
+            // "api/x?gameId=..": the query as the router's parameters
+            var query = new Dictionary<string, string>();
+            var mark = path.IndexOf('?');
+            if (mark >= 0)
+            {
+                foreach (var pair in path[(mark + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var eq = pair.IndexOf('=');
+                    query[Uri.UnescapeDataString(eq < 0 ? pair : pair[..eq])] = eq < 0 ? "" : Uri.UnescapeDataString(pair[(eq + 1)..]);
+                }
+                path = path[..mark];
+            }
+            var (status, body) = await _gm!.CallAsync(method, path, string.IsNullOrEmpty(bodyJson) ? null : JToken.Parse(bodyJson), query);
             return JsonConvert.SerializeObject(new { status, body });
         }
     }

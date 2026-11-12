@@ -17,6 +17,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
+const BIG = 33 * 1024 * 1024 + 5; // over Uploads.MaxBlobSize (32 MB)
 const step = (name, ok, detail) => { console.log(`STEP ${name}: ${ok ? 'PASS' : 'FAIL'} ${detail ?? ''}`); if (!ok) throw new Error(name); };
 
 server.listen(Number(port), async () => {
@@ -53,6 +54,30 @@ server.listen(Number(port), async () => {
     await page.waitForSelector('li[data-game] .start', { timeout: 30000 });
     step('game created and listed', true, await page.textContent('#status'));
 
+    // Over 32 MB: kept as a file (file storage on OPFS), not in the database.
+    const gameId = await page.$eval('li[data-game]', (li) => li.dataset.game);
+    const upload = await page.evaluate(async ({ gameId, size }) => {
+      const call = async (method, path, body) => JSON.parse(await globalThis.nordvikHost.Call(method, `${path}?gameId=${gameId}`, JSON.stringify(body)));
+      const start = await call('POST', 'api/Materials/UploadStart', { name: 'big.bin', mimeType: 'application/octet-stream', size });
+      if (start.status !== 200) return { error: 'UploadStart ' + JSON.stringify(start) };
+      const part = 2 * 1024 * 1024; // the most one part takes
+      for (let offset = 0; offset < size; offset += part) {
+        const bytes = new Uint8Array(Math.min(part, size - offset));
+        for (let i = 0; i < bytes.length; i++) bytes[i] = ((offset + i) * 31 + 7) & 255;
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+        const r = await call('POST', 'api/Materials/UploadPart', { uploadId: start.body.uploadId, offset, data: btoa(binary) });
+        if (r.status !== 200) return { error: 'UploadPart ' + JSON.stringify(r) };
+      }
+      const finish = await call('POST', 'api/Materials/UploadFinish', { uploadId: start.body.uploadId });
+      if (finish.status !== 200) return { error: 'UploadFinish ' + JSON.stringify(finish) };
+      const dir = await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('storage')).getDirectoryHandle('games')).getDirectoryHandle(gameId);
+      const files = [];
+      for await (const [name, entry] of dir.entries()) files.push(`${name} ${(await entry.getFile()).size}`);
+      return { id: finish.body.id, files };
+    }, { gameId, size: BIG });
+    step('a 33 MB upload is kept as a file on OPFS (storage/games/<game>/)', !upload.error && upload.files.length === 1 && upload.files[0].endsWith(' ' + BIG), upload.error ?? upload.files.join(', '));
+
     await page.click('li[data-game] .start');
     await page.waitForFunction(() => /is running|Could not start/.test(document.querySelector('#status').textContent), null, { timeout: 60000 });
     const started = await page.textContent('#status');
@@ -73,6 +98,14 @@ server.listen(Number(port), async () => {
     await page.waitForSelector('li[data-game] .name', { timeout: 30000 });
     const names = await page.$$eval('li[data-game] .name', (n) => n.map((x) => x.textContent));
     step('the game is kept across the reload (OPFS)', names.includes('E2E tab game'), names.join(', '));
+    const range = await page.evaluate(async ({ gameId, id, start }) => {
+      const r = JSON.parse(await globalThis.nordvikHost.Call('GET', `api/Materials/ResourceRange?gameId=${gameId}&id=${id}&start=${start}&length=65536`, null));
+      if (r.status !== 200) return { error: JSON.stringify(r).slice(0, 300) };
+      const bytes = Uint8Array.from(atob(r.body.data), (c) => c.charCodeAt(0));
+      const bad = bytes.findIndex((b, i) => b !== (((start + i) * 31 + 7) & 255));
+      return { total: r.body.total, length: bytes.length, bad };
+    }, { gameId, id: upload.id, start: BIG - 65536 });
+    step('the 33 MB file is there after the reload, its bytes right', !range.error && range.total === BIG && range.length === 65536 && range.bad === -1, JSON.stringify(range));
 
     // Games from before OPFS: a copy of data.db in IndexedDB ("nordvik-host", store "files").
     // A browser with only that copy gets it moved to OPFS, and the copy deleted once it opened.
