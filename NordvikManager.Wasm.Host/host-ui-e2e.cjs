@@ -80,7 +80,7 @@ async function gmLogin(gm, { lobby = true } = {}) {
     // Once the host says what it is (after login): the startup dialog, until "Don't remind me again".
     const intro = await gm.waitForSelector("text=You're hosting from your browser", { timeout: 15000 }).then(() => true, () => false);
     const cards = await gm.$$('[data-testid="host-intro-card"]');
-    const gmServerList = !!(await gm.$('text=Only on the local server'));
+    const gmServerList = !!(await gm.$('text=Features of the local server'));
     step('the startup dialog: a warning, six cards, the rest below, three choices', intro && cards.length === 6 && gmServerList
       && !!(await gm.$('button:has-text("I will download local server")')) && !!(await gm.$('button:has-text("Don\'t remind me again")')), `${cards.length} cards`);
     if (shots) await gm.screenshot({ path: path.join(shots, 'host-intro.png') });

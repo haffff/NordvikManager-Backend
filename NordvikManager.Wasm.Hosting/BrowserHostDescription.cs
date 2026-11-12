@@ -15,33 +15,35 @@ namespace NordvikManager.Wasm.Hosting
 
         public bool HasServerFeatures => false;
 
+        // Most important first: the host build's startup dialog shows the first ones as cards.
         public IReadOnlyList<HostLimitation> Limitations { get; } = new[]
         {
             new HostLimitation("tab-open", "Keep this tab open",
                 "The game runs in this tab. Closing or reloading it disconnects every player until you start the session again, "
                 + "and a background tab the browser puts to sleep can drop them too."),
-            new HostLimitation("browser-storage", "Games are kept in this browser",
-                "They and their files are stored in this browser profile only (its private file storage, OPFS): they don't follow you to another browser or computer, "
-                + "clearing this site's data deletes them, and there is no backup. Unless the browser grants this site persistent storage, "
-                + "it may also clear them when the disk is nearly full."),
-            new HostLimitation("one-tab", "One tab hosts at a time",
-                "Your games are opened by one tab of this site at a time: while a tab hosts, another one says so instead of opening them."),
-            new HostLimitation("upload-restarts", "An upload cut off by a reload starts over",
-                "A file still uploading when this tab closes or reloads has to be uploaded again from the start. "
-                + "Finished uploads, big ones included, are kept with your games."),
+            new HostLimitation("browser-storage", "Your games can be lost",
+                "They exist only in this browser's storage, with no backup. Unless the browser grants this site persistent storage, "
+                + "it may delete them without asking when the disk gets full. Clearing the site's data deletes them too, and "
+                + "another browser, another computer or a private window doesn't have them."),
+            new HostLimitation("outside-connections", "No connections to other services",
+                "A browser page may only connect to the site it came from, so addons that work with other programs or websites "
+                + "(for example Trilium or Obsidian notes) don't work, and nor do actions that download a file from a link."),
+            new HostLimitation("upload-limits", "Upload limits are fixed",
+                $"Uploads are capped at {FixedServerSettingsStore.GmGameLimitMb} MB per game for you and {FixedServerSettingsStore.PlayerLimitMb} MB per player, "
+                + "and can't be raised. On the local server you set them."),
+            new HostLimitation("no-thumbnails", "Images load slower for players",
+                "There are no small previews: players download every image (maps, tokens, handouts) at full size, "
+                + "so on a slow connection they appear later than from the local server."),
+            new HostLimitation("one-tab", "Host from one tab only",
+                "Your games open in one tab of this site at a time. A second tab won't open them: close it and use the first one."),
+            new HostLimitation("upload-restarts", "Interrupted uploads start over",
+                "If this tab closes or reloads while a file is uploading (yours or a player's), it has to be uploaded again from the start. "
+                + "The local server continues an interrupted upload where it stopped."),
+            new HostLimitation("login-after-reload", "Log in again after a reload",
+                "The host keeps your login only while this tab is open."),
             new HostLimitation("addon-registry", "Addons come from Central's registry",
                 "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. "
                 + "An addon you have as a file still installs from the file."),
-            new HostLimitation("outside-connections", "Addons can't reach other services",
-                "A browser page may only connect to the site it came from, so addons that talk to other programs or websites "
-                + "(for example Trilium or Obsidian notes) and actions that download a file from a link don't work here."),
-            new HostLimitation("no-thumbnails", "No thumbnails",
-                "Images are sent to players at full size, so they load more slowly than from a GM server."),
-            new HostLimitation("login-after-reload", "Log in again after a reload",
-                "The host keeps your login only while this tab is open."),
-            new HostLimitation("upload-limits", "Fixed upload limits",
-                $"Uploads are limited to {FixedServerSettingsStore.GmGameLimitMb} MB per game for GMs and {FixedServerSettingsStore.PlayerLimitMb} MB per player, "
-                + "and can't be changed."),
         };
     }
 }
