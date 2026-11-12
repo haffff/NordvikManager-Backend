@@ -59,6 +59,11 @@ namespace NordvikManager.Wasm.Hosting
                 // AddConsole throws in a browser (it probes the terminal).
                 logging.AddProvider(new BrowserConsoleLoggerProvider(LogLevel.Information));
                 logging.SetMinimumLevel(LogLevel.Information);
+                // EF's every SQL command at Information would drown the host's log (the host
+                // drawer's): its warnings and errors still come through.
+                logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+                // ...and so would HttpClient's four lines for every request it makes.
+                logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
             });
 
             // SQLite (UseSqlite: Infrastructure's own), or else an in-memory database named by

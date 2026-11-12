@@ -83,8 +83,19 @@ async function gmLogin(gm, { lobby = true } = {}) {
     const expect = await gm.waitForSelector('text=Keep this tab open', { timeout: 10000 }).then(() => true, () => false);
     step('the host drawer says what to expect and what only a GM server does', expect && !!(await gm.$('text=Only on a GM server')));
     if (shots) await gm.screenshot({ path: path.join(shots, 'host-drawer.png') });
+    await gm.click('[role="tab"]:has-text("Logs")');
+    const logText = await gm.waitForSelector('text=GM host ready', { timeout: 10000 }).then(() => gm.textContent('[role="tabpanel"]:visible'), () => '');
+    step('the drawer shows the host log, without the SQL', /GM host ready/.test(logText) && !/SELECT "/.test(logText), `${logText.length} chars`);
+    if (shots) await gm.screenshot({ path: path.join(shots, 'host-logs.png') });
     await gm.keyboard.press('Escape');
     await gm.waitForTimeout(500);
+
+    // Headless Chrome grants no persistent storage: the GM is told the games may be deleted.
+    const banner = await gm.textContent('[role="alert"]').catch(() => '');
+    const iconLabel = await gm.getAttribute('button[aria-label^="Game host"]', 'aria-label');
+    step('without persistent storage: a warning banner, and a warning on the host icon', /may delete your games/.test(banner) && /storage isn't persistent/.test(iconLabel), iconLabel);
+    if (shots) await gm.screenshot({ path: path.join(shots, 'host-storage-warning.png') });
+    await gm.click('[role="alert"] button:has-text("Dismiss")');
 
     const name = 'Host build game ' + Date.now().toString(36);
     await gm.click('button:has-text("Create new game")');

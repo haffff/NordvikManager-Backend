@@ -71,6 +71,19 @@ namespace NordvikManager.Tests.WasmHost
             }
         }
 
+        // The host's log is what a GM reads in the host drawer (and pastes into bug reports): EF's
+        // every SQL command at Information would push everything else out of it.
+        [Fact]
+        public void Logging_LeavesOutEfsSqlCommands_AndHttpClientChatter_ButKeepsTheRest()
+        {
+            var loggers = _provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
+
+            Assert.False(loggers.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command").IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information));
+            Assert.True(loggers.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command").IsEnabled(Microsoft.Extensions.Logging.LogLevel.Warning));
+            Assert.False(loggers.CreateLogger("System.Net.Http.HttpClient.Default.LogicalHandler").IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information));
+            Assert.True(loggers.CreateLogger("NordvikManager.WebRTC.WebRTCSessionService").IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information));
+        }
+
         [Fact]
         public void Build_ResolvesTheSessionService_EveryHandler_AndEveryStep()
         {
