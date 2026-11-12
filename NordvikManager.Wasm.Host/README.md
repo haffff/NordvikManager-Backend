@@ -43,6 +43,18 @@ flowchart LR
 
 `HostSelfCheck` and `storage-e2e.cjs` use their own files (`selfcheck.db` and `selfcheck-storage/`, `crash.db` and `crash-storage/`), never the GM's `data.db` and `storage/`.
 
+## Starting the host from a page: host.js
+
+`host.js` is what a page starts the host with: `startHost({ central })` makes the worker, serves it the page's WebRTC, and gives `{ worker, ready }`; `ready` resolves to `{ host, persisted }` (`host`: `HostPage`'s exports, `Login`, `Logout`, `UserName`, `Call`, each returning a promise) or rejects with an Error named `locked` when another tab has the games. This bundle's own page (`main.js`) uses it, and so does the frontend's **host build** (`REACT_APP_MODE=host`, served at Central's `/client/host/`): the full GM app, with this bundle copied into its `wasm/` folder, its backend calls answered by `host.Call`. Central's CSP for `/client/host/` allows `'wasm-unsafe-eval'` (compiling the runtime); without it the host stops at start.
+
+`host-ui-e2e.cjs` drives the host build against a real Central with a real player client: log in, no server-only settings in the lobby, the host drawer, create a game, enter it (the GM app's data channel to the host in its own tab), chat, a player joins and both chat, leaving the tab while the game runs asks first, and after the reload the GM is back in the same game on the same Central session with the chat kept:
+
+```bash
+# the host build: NORDVIK_WASM_BUNDLE=<this AppBundle> REACT_APP_CENTRAL_URL=<central> pnpm buildci_host (frontend repo)
+# Central: CORS_ORIGIN=http://localhost:<hostPort>,http://localhost:<playerPort>; gmtest / gm-test-pass-1 seeded
+node NordvikManager.Wasm.Host/host-ui-e2e.cjs <host build> <player build> <playwright> <centralUrl> <hostPort> <playerPort>
+```
+
 ## The GM's page
 
 `index.html` is the GM's page: log in to Central, see your games, create one (built-in addons ticked), start or stop its session. The GM's Central tokens are held by the host (a browser can't keep Central's cookies), and the GM's actions run the same shared endpoints as everyone, with those tokens. The logged-in GM is the host's local admin. Central is the page's own origin (serve the host from Central's domain and no CORS is needed), or `?central=https://...`; otherwise Central's `CORS_ORIGIN` must list the page's origin. Keep the tab open while playing. After a reload the GM logs in again and starts the game on its same Central session.
@@ -87,7 +99,6 @@ node NordvikManager.Wasm.Host/storage-e2e.cjs <AppBundle> <playwright> <profile 
 - Server-only routes answer 501 by design (backup, server settings, updates, Central's meta, linking files on a disk); everything else a player client calls is answered. `GET api/Host/Info` lists them, with the host's limitations.
 - Upload parts are in the runtime's memory while an upload runs: a reload cuts it off and it starts over (finished ones are on OPFS).
 - Deleting a game leaves its files (as on a GM server): they stay in `storage/games/<game>/`.
-- Where the host page is served from (from Central's domain, it needs no CORS).
 
 ## Run the self-check
 
