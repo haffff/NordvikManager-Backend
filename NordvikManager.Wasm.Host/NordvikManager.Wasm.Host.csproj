@@ -34,6 +34,7 @@
     <WasmExtraFilesToDeploy Include="worker-bridge.js" />
     <WasmExtraFilesToDeploy Include="opfs-fs.js" />
     <WasmExtraFilesToDeploy Include="opfs-files.js" />
+    <WasmExtraFilesToDeploy Include="runtime-pack.js" />
     <WasmExtraFilesToDeploy Include="nordvik-webrtc-worker.js" />
     <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player.js" Link="selfcheck-player.js" />
     <WasmExtraFilesToDeploy Include="SelfCheck\selfcheck-player-worker.js" Link="selfcheck-player-worker.js" />
@@ -50,5 +51,79 @@
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager.Wasm.Hosting\NordvikManager.Wasm.Hosting.csproj" />
   </ItemGroup>
+
+  <!-- The runtime's files (about 240: assemblies, dotnet.native.wasm, the built-in addons, the .pdb and
+       symbols the runtime also loads, for line numbers in errors) packed into
+       one gzipped file, _framework/runtime.<hash>.pack.gz, named in _framework/runtime-pack.json.
+       host-worker.js downloads it once, keeps it in Cache Storage and hands the runtime each file
+       from it (dotnet.withResourceLoader): a dozen requests to start instead of ~250, which a host
+       that rate-limits bursts (429) lets through. The files stay next to it, for the runtime's own
+       loading when the pack can't be used. The JS modules (dotnet*.js) are imported, not packed.
+       Format (inside the gzip): "NVPK", uint32 LE index length, the index (UTF-8 JSON
+       [{"path","offset","length"}], paths relative to _framework with '/'), then the files. -->
+  <UsingTask TaskName="PackRuntimeFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Framework ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var root = Path.GetFullPath(Framework);
+        var imported = new[] { "dotnet.js", "dotnet.native.js", "dotnet.runtime.js", "dotnet.boot.js" };
+        var files = Directory.GetFiles(root, "*", SearchOption.AllDirectories)
+            .Select(f => new { Full = f, Rel = f.Substring(root.TrimEnd(Path.DirectorySeparatorChar).Length + 1).Replace(Path.DirectorySeparatorChar, '/') })
+            .Where(f => !imported.Contains(f.Rel)
+                && !f.Rel.EndsWith(".map")
+                && !f.Rel.EndsWith(".pack.gz") && f.Rel != "runtime-pack.json")
+            .OrderBy(f => f.Rel, StringComparer.Ordinal)
+            .ToList();
+        // Plain file names (no quotes or backslashes): the JSON is written by hand.
+        long offset = 0;
+        var index = new StringBuilder("[");
+        foreach (var f in files)
+        {
+            var length = new FileInfo(f.Full).Length;
+            if (f.Rel.IndexOfAny(new[] { '"', (char)92 }) >= 0)
+                throw new InvalidOperationException("Can't pack " + f.Rel);
+            index.Append(index.Length > 1 ? "," : "").Append("{\"path\":\"").Append(f.Rel).Append("\",\"offset\":").Append(offset).Append(",\"length\":").Append(length).Append("}");
+            offset += length;
+        }
+        index.Append("]");
+        var indexBytes = Encoding.UTF8.GetBytes(index.ToString());
+
+        var packed = new MemoryStream();
+        using (var gzip = new GZipStream(packed, CompressionLevel.Optimal, true))
+        {
+            // (an inline task builds against .NET Standard 2.0: the older APIs)
+            var magic = Encoding.ASCII.GetBytes("NVPK");
+            var size = BitConverter.GetBytes((uint)indexBytes.Length);
+            gzip.Write(magic, 0, magic.Length);
+            gzip.Write(size, 0, size.Length);
+            gzip.Write(indexBytes, 0, indexBytes.Length);
+            foreach (var f in files)
+                using (var input = File.OpenRead(f.Full))
+                    input.CopyTo(gzip);
+        }
+        var bytes = packed.ToArray();
+        string hash;
+        using (var sha = System.Security.Cryptography.SHA256.Create())
+            hash = BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").Substring(0, 16).ToLowerInvariant();
+        var name = "runtime." + hash + ".pack.gz";
+        foreach (var old in Directory.GetFiles(root, "runtime.*.pack.gz"))
+            if (Path.GetFileName(old) != name) File.Delete(old);
+        File.WriteAllBytes(Path.Combine(root, name), bytes);
+        File.WriteAllText(Path.Combine(root, "runtime-pack.json"),
+            "{\"file\":\"" + name + "\",\"files\":" + files.Count + ",\"bytes\":" + offset + ",\"packed\":" + bytes.Length + "}");
+        Log.LogMessage(MessageImportance.High, "Runtime pack: " + files.Count + " files, " + (offset >> 20) + " MB -> " + name + " (" + (bytes.Length >> 20) + " MB)");
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="PackRuntimeFiles" AfterTargets="WasmBuildApp" Condition="Exists('$(WasmAppDir)_framework')">
+    <PackRuntimeFiles Framework="$(WasmAppDir)_framework" />
+  </Target>
 
 </Project>
