@@ -20,13 +20,14 @@
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
 
-  <!-- The page (main.js, gm-page.js, page-bridge.js, the real WebRTC module) and its worker
+  <!-- The page (main.js, host.js: what a page starts the host with, gm-page.js, page-bridge.js, the real WebRTC module) and its worker
        (host-worker.js, worker-bridge.js, opfs-fs.js, opfs-files.js, stand-ins for the page's modules). -->
   <ItemGroup>
     <WasmExtraFilesToDeploy Include="index.html" />
     <!-- Listed here, not as WasmMainJSPath: that one isn't an input of the bundle step, so a change to
          main.js alone wasn't deployed. -->
     <WasmExtraFilesToDeploy Include="main.js" />
+    <WasmExtraFilesToDeploy Include="host.js" />
     <WasmExtraFilesToDeploy Include="gm-page.js" />
     <WasmExtraFilesToDeploy Include="page-bridge.js" />
     <WasmExtraFilesToDeploy Include="host-worker.js" />
