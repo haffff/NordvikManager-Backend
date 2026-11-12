@@ -93,6 +93,27 @@ async function gmLogin(gm, { lobby = true } = {}) {
     await gm.waitForSelector(`text=${name}`, { timeout: 30000 });
     step('a game is created from the GM lobby', true, name);
 
+    // Addons: the host's registry is its Central (browse, readme, and the package Central downloads).
+    const addons = await gm.evaluate(async (gameName) => {
+      const api = async (path, init) => {
+        const r = await fetch(`/__nordvik-host__/api/${path}`, init);
+        return { status: r.status, body: await r.json().catch(() => null) };
+      };
+      const game = (await api('gamelist/getgames')).body.find((g) => g.name === gameName);
+      const q = `gameid=${game.id}`;
+      const browse = await api(`addon/repository?${q}`);
+      const readme = await api(`addon/readme?key=poll&${q}`);
+      const install = await api(`addon/install?${q}`, { method: 'POST', body: JSON.stringify({ key: 'poll' }) });
+      let installed = [];
+      for (let i = 0; i < 40 && !installed.includes('poll'); i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        installed = ((await api(`addon/installed?${q}`)).body ?? []).map((a) => a.key);
+      }
+      return { browse: browse.status === 200 ? browse.body.map((a) => a.key) : browse, readme: readme.status, install: install.status, installed };
+    }, name);
+    step('the addons panel browses Central\'s registry (with readmes)', Array.isArray(addons.browse) && addons.browse.includes('poll') && addons.readme === 200, JSON.stringify(addons.browse));
+    step('a registry addon installs, downloaded through Central', addons.install === 200 && addons.installed.includes('poll'), addons.installed.join(', '));
+
     await gm.click(`text=${name}`);
     await gm.waitForSelector('textarea[placeholder^="Type a message"]', { timeout: 60000 });
     const ownChannel = await waitFor(() => hostLog.some((l) => /Data channel open player=/.test(l)), 60000);

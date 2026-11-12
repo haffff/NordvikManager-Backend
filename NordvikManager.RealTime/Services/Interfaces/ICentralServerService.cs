@@ -100,6 +100,15 @@ namespace NordvikManager.Services.Interfaces
     public interface ICentralServerService
     {
         Task<CentralServerMeta?> GetMetaAsync();
+
+        /// <summary>Central's copy of the addon registry (GET api/addons: { categories, addons }), or null.</summary>
+        Task<string?> GetAddonRegistryAsync();
+
+        /// <summary>A registry addon's readme, through Central; null when it has none.</summary>
+        Task<NordvikManager.Infrastructure.Interfaces.AddonReadmeResult?> GetAddonReadmeAsync(string key);
+
+        /// <summary>A registry addon's release file, which Central downloads (by key only) for a logged-in user.</summary>
+        Task<byte[]> GetAddonPackageAsync(string centralToken, string key);
         /// <summary>Fetches ICE servers (incl. TURN credentials) for the given Central user; null on failure.</summary>
         Task<IceServersResult?> GetIceServersAsync(string centralToken);
         Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session);

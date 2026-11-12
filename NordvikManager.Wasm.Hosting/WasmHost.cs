@@ -37,6 +37,8 @@ namespace NordvikManager.Wasm.Hosting
                 ["Signaling:Transport"] = "WebSocket",
                 ["UseSqlite"] = databasePath == null ? "false" : "true",
                 ["ConnectionStrings:DBData"] = databasePath == null ? "nordvik-wasm-host" : $"Data Source={databasePath}",
+                // Central is the addon registry (CentralAddonRepository): a registry is set.
+                ["AddonsConfiguration:MainRepository"] = $"{centralServerUrl.TrimEnd('/')}/api/addons",
             };
             foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
                 settings[key] = value;
@@ -69,6 +71,9 @@ namespace NordvikManager.Wasm.Hosting
                 services.Replace(ServiceDescriptor.Singleton(files));
             ApplicationLayerModule.Register(services, configuration);
             RealTimeLayerModule.Register(services);
+
+            // Addons from Central's registry, downloaded through Central.
+            services.Replace(ServiceDescriptor.Scoped<IAddonRepositoryService, CentralAddonRepository>());
 
             // No cookies on any request the host makes (the host build shares Central's origin).
             services.ConfigureHttpClientDefaults(client => client.AddHttpMessageHandler(() => new NoBrowserCookies()));
