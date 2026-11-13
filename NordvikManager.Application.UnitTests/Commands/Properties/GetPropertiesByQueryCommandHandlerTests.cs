@@ -69,61 +69,34 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             Assert.Equal(2, result.Count);
         }
 
-        [Fact]
-        public async Task Handle_FilterByParentIds_ReturnsOnlyMatchingParent()
+        // Each filter picks "img_main" out of it and "Description" on another card.
+        private static readonly Dictionary<string, Action<GetPropertiesByQueryCommand, PropertyModel>> Filters = new()
         {
-            var wantedParent = Guid.NewGuid();
-            var otherParent = Guid.NewGuid();
-            SeedProperty(wantedParent, "Name");
-            SeedProperty(otherParent, "Name");
-            var cmd = new GetPropertiesByQueryCommand { GameId = gameId, Player = Player(), ParentIDs = new[] { wantedParent } };
+            ["ParentIds"] = (cmd, wanted) => cmd.ParentIDs = new[] { wanted.ParentID },
+            ["Ids"] = (cmd, wanted) => cmd.Ids = new[] { wanted.Id },
+            ["PropertyNames"] = (cmd, wanted) => cmd.PropertyNames = new[] { "img_main" },
+            ["Prefix"] = (cmd, wanted) => cmd.Prefix = "img_",
+        };
 
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Single(result);
-            Assert.Equal(wantedParent, result[0].ParentID);
+        public static TheoryData<string> FilterNames()
+        {
+            var names = new TheoryData<string>();
+            foreach (var name in Filters.Keys) names.Add(name);
+            return names;
         }
 
-        [Fact]
-        public async Task Handle_FilterByIds_ReturnsOnlyMatchingIds()
+        [Theory]
+        [MemberData(nameof(FilterNames))]
+        public async Task Handle_Filter_ReturnsOnlyWhatMatches(string filter)
         {
-            var parentId = Guid.NewGuid();
-            var wanted = SeedProperty(parentId, "Name");
-            SeedProperty(parentId, "Description");
-            var cmd = new GetPropertiesByQueryCommand { GameId = gameId, Player = Player(), Ids = new[] { wanted.Id } };
+            var wanted = SeedProperty(Guid.NewGuid(), "img_main");
+            SeedProperty(Guid.NewGuid(), "Description");
+            var cmd = Query();
+            Filters[filter](cmd, wanted);
 
             var result = await Handler().Handle(cmd, CancellationToken.None);
 
-            Assert.Single(result);
-            Assert.Equal(wanted.Id, result[0].Id);
-        }
-
-        [Fact]
-        public async Task Handle_FilterByPropertyNames_ReturnsOnlyMatchingNames()
-        {
-            var parentId = Guid.NewGuid();
-            SeedProperty(parentId, "Name");
-            SeedProperty(parentId, "Description");
-            var cmd = new GetPropertiesByQueryCommand { GameId = gameId, Player = Player(), PropertyNames = new[] { "Name" } };
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Single(result);
-            Assert.Equal("Name", result[0].Name);
-        }
-
-        [Fact]
-        public async Task Handle_FilterByPrefix_ReturnsOnlyMatchingPrefix()
-        {
-            var parentId = Guid.NewGuid();
-            SeedProperty(parentId, "img_main");
-            SeedProperty(parentId, "Description");
-            var cmd = new GetPropertiesByQueryCommand { GameId = gameId, Player = Player(), Prefix = "img_" };
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Single(result);
-            Assert.Equal("img_main", result[0].Name);
+            Assert.Equal(wanted.Id, Assert.Single(result).Id);
         }
 
         [Fact]

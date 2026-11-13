@@ -15,74 +15,33 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties.CustomLayers
             JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(dto.Value!)!
                 .ToDictionary(i => i.Fields["name"]!, i => int.Parse(i.Fields["layerId"]!));
 
-        [Fact]
-        public async Task Handle_MoveDown_CrossesGridIntoMapGridBand()
+        // A lone layer moved one step leaves its band for the next one; Grid and Token are
+        // boundaries shared by two bands, not gaps to skip:
+        // - down from Grid-Token lands in Map-Grid;
+        // - up from Map-Grid lands in Grid-Token (the mirror image);
+        // - up from Grid-Token lands in the top band, skipping the dead Token-TokenUi gap
+        //   instead of bouncing back into Grid-Token.
+        [Theory]
+        [InlineData(CustomLayerLayout.GridLayerId, -1, CustomLayerLayout.MapLayerId, CustomLayerLayout.GridLayerId)]
+        [InlineData(CustomLayerLayout.MapLayerId, 1, CustomLayerLayout.GridLayerId, CustomLayerLayout.TokenLayerId)]
+        [InlineData(CustomLayerLayout.GridLayerId, 1, CustomLayerLayout.TokenUiLayerId, CustomLayerLayout.TopBandCeiling)]
+        public async Task Handle_Move_CrossesIntoTheNextBand(int addedAfter, int direction, int above, int below)
         {
             var game = BuildGame();
-            var addHandler = AddHandler();
 
-            // Lands alone in the Grid->Token band.
-            var (_, addedDto) = await addHandler.Handle(
-                new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "L", AfterLayerId = CustomLayerLayout.GridLayerId },
+            var (_, addedDto) = await AddHandler().Handle(
+                new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "L", AfterLayerId = addedAfter },
                 CancellationToken.None);
             var itemId = JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(addedDto!.Value!)!.Single().Id;
 
             var (response, movedDto) = await MoveHandler().Handle(
-                new MoveCustomLayerCommand { Player = Player(), GameId = game.Id, ItemId = itemId, Direction = -1 },
+                new MoveCustomLayerCommand { Player = Player(), GameId = game.Id, ItemId = itemId, Direction = direction },
                 CancellationToken.None);
 
             Assert.Equal(CommandResponse.Ok, response);
             var newLayerId = LayerIdsByName(movedDto!)["L"];
-            Assert.True(newLayerId > CustomLayerLayout.MapLayerId);
-            Assert.True(newLayerId < CustomLayerLayout.GridLayerId);
-        }
-
-        // Grid is a genuine shared boundary (band1's Hi and band2's Lo simultaneously),
-        // not a dead-gap skip — moving up out of the Map-Grid band must land in
-        // Grid-Token, the mirror image of Handle_MoveDown_CrossesGridIntoMapGridBand.
-        [Fact]
-        public async Task Handle_MoveUp_CrossesGridIntoGridTokenBand()
-        {
-            var game = BuildGame();
-            var addHandler = AddHandler();
-
-            var (_, addedDto) = await addHandler.Handle(
-                new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "L", AfterLayerId = CustomLayerLayout.MapLayerId },
-                CancellationToken.None);
-            var itemId = JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(addedDto!.Value!)!.Single().Id;
-
-            var (response, movedDto) = await MoveHandler().Handle(
-                new MoveCustomLayerCommand { Player = Player(), GameId = game.Id, ItemId = itemId, Direction = 1 },
-                CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
-            var newLayerId = LayerIdsByName(movedDto!)["L"];
-            Assert.True(newLayerId > CustomLayerLayout.GridLayerId);
-            Assert.True(newLayerId < CustomLayerLayout.TokenLayerId);
-        }
-
-        // Symmetric counterpart to the downward dead-gap regression below: moving UP
-        // out of the Grid-Token band must land in the top band (skipping the dead
-        // 100-110 gap upward), not bounce back into Grid-Token.
-        [Fact]
-        public async Task Handle_MoveUp_CrossesTokenIntoTopBand()
-        {
-            var game = BuildGame();
-            var addHandler = AddHandler();
-
-            var (_, addedDto) = await addHandler.Handle(
-                new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "L", AfterLayerId = CustomLayerLayout.GridLayerId },
-                CancellationToken.None);
-            var itemId = JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(addedDto!.Value!)!.Single().Id;
-
-            var (response, movedDto) = await MoveHandler().Handle(
-                new MoveCustomLayerCommand { Player = Player(), GameId = game.Id, ItemId = itemId, Direction = 1 },
-                CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
-            var newLayerId = LayerIdsByName(movedDto!)["L"];
-            Assert.True(newLayerId > CustomLayerLayout.TokenUiLayerId);
-            Assert.True(newLayerId < CustomLayerLayout.TopBandCeiling);
+            Assert.True(newLayerId > above);
+            Assert.True(newLayerId < below);
         }
 
         [Fact]

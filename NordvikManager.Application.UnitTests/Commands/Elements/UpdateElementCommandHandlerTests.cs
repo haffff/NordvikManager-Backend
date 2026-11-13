@@ -76,76 +76,31 @@ namespace NordvikManager.Application.UnitTests.Commands.Elements
             await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
-        [Fact]
-        public async Task Handle_NewDetailWithValue_IsAdded()
+        // The element's object sets its details: a value adds or updates one, null removes it
+        // (and never adds one).
+        [Theory]
+        [InlineData(null, "{\"color\":\"red\"}", "red")]
+        [InlineData(null, "{\"color\":null}", null)]
+        [InlineData("red", "{\"color\":null}", null)]
+        [InlineData("red", "{\"color\":\"blue\"}", "blue")]
+        public async Task Handle_ObjectFieldSetsTheDetail(string? colorBefore, string obj, string? colorAfter)
         {
             var game = BuildGame();
             var map = SeedMap(game);
-            var element = SeedElement(map);
+            var element = SeedElement(map, details: colorBefore == null ? null : new[] { ("color", colorBefore) });
             var cmd = new UpdateElementCommand
             {
                 Player = Player(),
-                Element = new ElementDTO { Id = element.Id, Object = "{\"color\":\"red\"}" },
+                Element = new ElementDTO { Id = element.Id, Object = obj },
             };
 
             await Handler().Handle(cmd, CancellationToken.None);
 
-            var updated = Db.Elements.Include(x => x.Details).First(x => x.Id == element.Id);
-            Assert.Contains(updated.Details!, d => d.Key == "color" && d.Value == "red");
-        }
-
-        [Fact]
-        public async Task Handle_NewDetailWithNullValue_IsNotAdded()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var element = SeedElement(map);
-            var cmd = new UpdateElementCommand
-            {
-                Player = Player(),
-                Element = new ElementDTO { Id = element.Id, Object = "{\"color\":null}" },
-            };
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            var updated = Db.Elements.Include(x => x.Details).First(x => x.Id == element.Id);
-            Assert.DoesNotContain(updated.Details!, d => d.Key == "color");
-        }
-
-        [Fact]
-        public async Task Handle_ExistingDetailSetToNull_IsRemoved()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var element = SeedElement(map, details: new[] { ("color", "red") });
-            var cmd = new UpdateElementCommand
-            {
-                Player = Player(),
-                Element = new ElementDTO { Id = element.Id, Object = "{\"color\":null}" },
-            };
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            var updated = Db.Elements.Include(x => x.Details).First(x => x.Id == element.Id);
-            Assert.DoesNotContain(updated.Details!, d => d.Key == "color");
-        }
-
-        [Fact]
-        public async Task Handle_ExistingDetailWithNewValue_IsUpdated()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var element = SeedElement(map, details: new[] { ("color", "red") });
-            var cmd = new UpdateElementCommand
-            {
-                Player = Player(),
-                Element = new ElementDTO { Id = element.Id, Object = "{\"color\":\"blue\"}" },
-            };
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            var updated = Db.Elements.Include(x => x.Details).First(x => x.Id == element.Id);
-            Assert.Contains(updated.Details!, d => d.Key == "color" && d.Value == "blue");
+            var color = Db.Elements.Include(x => x.Details).First(x => x.Id == element.Id).Details!.Where(d => d.Key == "color");
+            if (colorAfter == null)
+                Assert.Empty(color);
+            else
+                Assert.Equal(colorAfter, Assert.Single(color).Value);
         }
 
         [Fact]
