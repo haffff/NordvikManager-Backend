@@ -128,7 +128,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
             // The same areas as markers (AreaShape): a cone from the goblin, 2 squares long.
             "Cone_FromATokenTowardAnother" => new() { NearElementId = goblin, Shape = "cone", Radius = 2, TowardElementId = rat },
             "Cone_PointingAway" => new() { NearElementId = goblin, Shape = "cone", Radius = 2, TowardX = 0, TowardY = 125 },
-            // From (0,125) east, 2.5 squares long and 1 wide: the goblin is on it, the rat past its end.
+            // From (0,125) east, 3 squares long and 1 wide: the goblin (centre 125) is on it, the rat (175) past its end.
             "Line_OfTheGivenWidth" => new() { NearX = 0, NearY = 125, Shape = "line", Radius = 2.5, Width = 1, TowardX = 100, TowardY = 125 },
             "Rect" => new() { NearX = 100, NearY = 125, Shape = "rect", Width = 0.2, Height = 0.2 },
             _ => throw new ArgumentException(area),
