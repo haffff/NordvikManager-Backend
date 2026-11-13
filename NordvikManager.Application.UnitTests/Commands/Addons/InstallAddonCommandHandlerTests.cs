@@ -25,81 +25,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
     // and the scripts/resources/actions/templates/views happy paths.
     // Dependency-resolution logic is covered separately in
     // InstallAddonDependencyCommandHandlerTests.cs.
-    public class InstallAddonCommandHandlerTests : HandlerTestBase
+    public class InstallAddonCommandHandlerTests : InstallAddonTestBase
     {
-        protected readonly Mock<IMediator> Mediator = new();
-        protected readonly Mock<IAddonRepositoryService> RepositoryService = new();
-        protected readonly Mock<IGameEventLogger> Logger = new();
-        protected readonly Mock<IBuiltInAddons> BuiltIns = new();
-
-        public InstallAddonCommandHandlerTests()
-        {
-            BuiltIns.Setup(b => b.GetAll()).Returns(Array.Empty<BuiltInAddon>());
-
-            Mediator.Setup(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((AddTreeEntryCommand cmd, CancellationToken _) =>
-                    (CommandResponse.Ok, new List<TreeEntryDto> { new TreeEntryDto { Id = Guid.NewGuid(), Name = cmd.TreeEntryDto.Name } }));
-
-            Mediator.Setup(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((AddResourceCommand cmd, CancellationToken _) =>
-                {
-                    var id = Guid.NewGuid();
-                    Db.Resources.Add(new ResourceModel { Id = id, Name = cmd.Name, Key = cmd.Key, GameId = cmd.GameID!.Value, PlayerId = PlayerId });
-                    Db.SaveChanges();
-                    return (CommandResponse.Ok, (Guid?)id);
-                });
-
-            Mediator.Setup(m => m.Send(It.IsAny<AddActionCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((AddActionCommand cmd, CancellationToken _) =>
-                {
-                    var game = Db.Games.First(g => g.Id == cmd.GameId);
-                    var id = Guid.NewGuid();
-                    Db.Actions.Add(new ActionModel { Id = id, Name = cmd.Action.Name, Content = cmd.Action.Content ?? "[]", Prefix = cmd.Action.Prefix ?? "addon", Game = game });
-                    Db.SaveChanges();
-                    return (CommandResponse.Ok, id);
-                });
-
-            Mediator.Setup(m => m.Send(It.IsAny<AddCardCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((AddCardCommand cmd, CancellationToken _) =>
-                {
-                    var id = Guid.NewGuid();
-                    Db.Cards.Add(new CardModel { Id = id, Name = cmd.Dto.Name, GameId = cmd.GameID, IsTemplate = cmd.IsTemplate, IsCustomUi = cmd.IsCustomUi, Properties = new List<PropertyModel>() });
-                    Db.SaveChanges();
-                    return (CommandResponse.Ok, id);
-                });
-        }
-
-        private protected InstallAddonCommandHandler Handler() => new(Db, Mapper, RepositoryService.Object, Mediator.Object, Logger.Object, BuiltIns.Object);
-
-        protected static byte[] BuildAddonZip(string infoJson, params (string Path, string Content)[] entries)
-        {
-            using var ms = new MemoryStream();
-            using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                WriteEntry(archive, "info.json", infoJson);
-                foreach (var (path, content) in entries)
-                    WriteEntry(archive, path, content);
-            }
-            return ms.ToArray();
-        }
-
-        private static void WriteEntry(ZipArchive archive, string path, string content)
-        {
-            var entry = archive.CreateEntry(path);
-            using var stream = entry.Open();
-            using var writer = new StreamWriter(stream);
-            writer.Write(content);
-        }
-
-        protected const string BasicInfoJson = "{\"name\":\"DnD 5e\",\"key\":\"dnd5e\",\"version\":\"1.0\"}";
-
-        protected static InstallAddonCommand ValidCommand(GameModel game, PlayerDTO player, byte[] file) => new()
-        {
-            GameID = game.Id,
-            Player = player,
-            AddonFile = file,
-        };
-
         // ---- Guard clauses ----
 
         [Fact]
@@ -346,38 +273,15 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
         }
 
+        // An addon's action is added with the addon's key as its prefix, its hook filter as
+        // written, and enabled.
+        // Enabled is a regression: ActionDto.IsEnabled has no explicit default (unlike
+        // AddonDto/AddonModel, which default to true), so it deserializes to false unless the
+        // addon's own JSON says "isEnabled": true. Addon authors have no reason to write that
+        // (an addon's actions are meant to work right after install), so without forcing it
+        // every hook the addon declares (Install included) would silently never run.
         [Fact]
-        public async Task Handle_ActionPrefixIsSetToAddonKey()
-        {
-            var game = BuildGame();
-            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
-            var cmd = ValidCommand(game, Player(), archive);
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        // Regression test: ActionDto.IsEnabled has no explicit default (unlike
-        // AddonDto/AddonModel, which default to true), so it deserializes to false
-        // unless the addon's own JSON happens to say "isEnabled": true. Addon authors
-        // have no reason to write that — an addon's actions are meant to work
-        // immediately after install — so without forcing it here, every hook the
-        // addon declares (Install included) would silently never run.
-        [Fact]
-        public async Task Handle_InstalledActionIsEnabledByDefault_EvenWhenJsonOmitsTheField()
-        {
-            var game = BuildGame();
-            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
-            var cmd = ValidCommand(game, Player(), archive);
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task Handle_ActionHookFilter_IsPassedOn()
+        public async Task Handle_Action_IsAddedPrefixedEnabledAndWithItsHookFilter()
         {
             var game = BuildGame();
             var archive = BuildAddonZip(BasicInfoJson, ("actions/chat.json", "{\"name\":\"chat\",\"hook\":19,\"hookFilter\":\"poll, vote\",\"content\":\"[]\"}"));
@@ -385,6 +289,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
 
             await Handler().Handle(cmd, CancellationToken.None);
 
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
             Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.HookFilter == "poll, vote"), It.IsAny<CancellationToken>()), Times.Once);
         }
 
@@ -402,40 +308,26 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Contains("hook filter", e.Message);
         }
 
-        [Fact]
-        public async Task Handle_ScriptAlreadyExists_ReinstallFalse_SkipsWithoutCallingAddResource()
+        // A script whose key is already taken: the GM's own copy stays unless reinstalling; a
+        // player's upload squatting the key is replaced either way.
+        [Theory]
+        [InlineData(true, false, false)]
+        [InlineData(true, true, true)]
+        [InlineData(false, false, true)]
+        public async Task Handle_ScriptKeyTaken(bool takenByTheGm, bool reinstall, bool replaced)
         {
             var game = BuildGame();
-            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerId };
+            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = takenByTheGm ? PlayerId : PlayerWithoutEditOnTheGame() };
             Db.Resources.Add(existing);
             Db.SaveChanges();
 
-            var archive = BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');"));
-            var cmd = ValidCommand(game, Player(), archive);
-            cmd.Reinstall = false;
+            var cmd = ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');")));
+            cmd.Reinstall = reinstall;
 
             await Handler().Handle(cmd, CancellationToken.None);
 
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-            Assert.True(Db.Resources.Any(r => r.Id == existing.Id)); // untouched
-        }
-
-        [Fact]
-        public async Task Handle_ScriptAlreadyExists_ReinstallTrue_RemovesOldAndInstallsNew()
-        {
-            var game = BuildGame();
-            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerId };
-            Db.Resources.Add(existing);
-            Db.SaveChanges();
-
-            var archive = BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');"));
-            var cmd = ValidCommand(game, Player(), archive);
-            cmd.Reinstall = true;
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.False(Db.Resources.Any(r => r.Id == existing.Id));
+            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), replaced ? Times.Once() : Times.Never());
+            Assert.Equal(!replaced, Db.Resources.Any(r => r.Id == existing.Id));
         }
 
         // A player can upload a resource under any free key (Resources.Global.Create). If it
@@ -447,23 +339,6 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(squatter, It.Is<NordvikManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
                 .Returns(false);
             return squatter;
-        }
-
-        [Fact]
-        public async Task Handle_KeyTakenByAPlayersUpload_ReplacesIt_EvenWithoutReinstall()
-        {
-            var game = BuildGame();
-            var squatted = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerWithoutEditOnTheGame() };
-            Db.Resources.Add(squatted);
-            Db.SaveChanges();
-
-            var cmd = ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');")));
-            cmd.Reinstall = false;
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.False(Db.Resources.Any(r => r.Id == squatted.Id));
         }
 
         [Fact]

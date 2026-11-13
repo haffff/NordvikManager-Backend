@@ -79,24 +79,21 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             await Assert.ThrowsAsync<ActionProcessException>(() => Run(vars, "vars.x = 5;"));
         }
 
-        [Fact]
-        public async Task NonObjectReturnWithoutOutput_Throws()
+        // Scripts that fail, and what the error says (when it matters): a bad return, the
+        // sandbox limits (time, recursion, memory, no eval), and errors in the script itself.
+        [Theory]
+        [InlineData("NonObjectReturnWithoutOutput", "return 5;", "")]
+        [InlineData("InfiniteLoop_IsStopped", "while (true) {}", "stopped")]
+        [InlineData("DeepRecursion_IsStopped", "function f(n) { return f(n + 1); } return { v: f(0) };", "")]
+        [InlineData("HugeArray_IsRejected", "return { n: new Array(1e7).fill(0).length };", "")]
+        [InlineData("Eval_IsDisabled", "return { v: eval('1 + 1') };", "")]
+        [InlineData("RuntimeError_ReportsUserLineNumber", "const a = 1;\nundefinedThing.x;", "line 2")]
+        [InlineData("SyntaxError_IsReported", "return { ;", "SyntaxError")]
+        public async Task FailingScript_Throws(string because, string script, string messageHas)
         {
-            await Assert.ThrowsAsync<ActionProcessException>(() => Run(new Dictionary<string, object>(), "return 5;"));
-        }
-
-        [Fact]
-        public async Task InfiniteLoop_IsStopped()
-        {
-            var ex = await Assert.ThrowsAsync<ActionProcessException>(() => Run(new Dictionary<string, object>(), "while (true) {}"));
-            Assert.Contains("stopped", ex.Message);
-        }
-
-        [Fact]
-        public async Task DeepRecursion_IsStopped()
-        {
-            await Assert.ThrowsAsync<ActionProcessException>(() =>
-                Run(new Dictionary<string, object>(), "function f(n) { return f(n + 1); } return { v: f(0) };"));
+            _ = because;
+            var ex = await Assert.ThrowsAsync<ActionProcessException>(() => Run(new Dictionary<string, object>(), script));
+            Assert.Contains(messageHas, ex.Message);
         }
 
         [Fact]
@@ -106,20 +103,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             await Assert.ThrowsAsync<ActionProcessException>(() =>
                 Run(new Dictionary<string, object>(), "return { m: /^(a+)+$/.test('a'.repeat(40) + '!') };"));
             Assert.True(sw.Elapsed.TotalSeconds < 10);
-        }
-
-        [Fact]
-        public async Task HugeArray_IsRejected()
-        {
-            await Assert.ThrowsAsync<ActionProcessException>(() =>
-                Run(new Dictionary<string, object>(), "return { n: new Array(1e7).fill(0).length };"));
-        }
-
-        [Fact]
-        public async Task Eval_IsDisabled()
-        {
-            await Assert.ThrowsAsync<ActionProcessException>(() =>
-                Run(new Dictionary<string, object>(), "return { v: eval('1 + 1') };"));
         }
 
         [Fact]
@@ -139,22 +122,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                 Run(new Dictionary<string, object>(), "return { t: System.IO.File.ReadAllText('x') };"));
             await Assert.ThrowsAsync<ActionProcessException>(() =>
                 Run(new Dictionary<string, object>(), "return { t: importNamespace('System') };"));
-        }
-
-        [Fact]
-        public async Task RuntimeError_ReportsUserLineNumber()
-        {
-            var ex = await Assert.ThrowsAsync<ActionProcessException>(() =>
-                Run(new Dictionary<string, object>(), "const a = 1;\nundefinedThing.x;"));
-            Assert.Contains("line 2", ex.Message);
-        }
-
-        [Fact]
-        public async Task SyntaxError_IsReported()
-        {
-            var ex = await Assert.ThrowsAsync<ActionProcessException>(() =>
-                Run(new Dictionary<string, object>(), "return { ;"));
-            Assert.Contains("SyntaxError", ex.Message);
         }
 
         [Fact]

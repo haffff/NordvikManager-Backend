@@ -19,6 +19,8 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
             Assert.True(ProxyAddressRules.IsAllowed("example.com", 443, Ips("172.32.0.1"), None));
         }
 
+        // Private, loopback and link-local addresses are blocked, also when only one of a host's
+        // addresses is private, and so is a host with no address at all. (Addresses comma-separated.)
         [Theory]
         [InlineData("127.0.0.1")]
         [InlineData("10.1.2.3")]
@@ -32,21 +34,11 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
         [InlineData("fe80::1")]
         [InlineData("::ffff:10.0.0.1")]
         [InlineData("::ffff:127.0.0.1")]
-        public void IsAllowed_PrivateAddress_IsBlocked(string ip)
+        [InlineData("8.8.8.8,10.0.0.1")]
+        [InlineData("")]
+        public void IsAllowed_PrivateOrNoAddress_IsBlocked(string ips)
         {
-            Assert.False(ProxyAddressRules.IsAllowed("somewhere.example", 80, Ips(ip), None));
-        }
-
-        [Fact]
-        public void IsAllowed_AnyPrivateAddressAmongSeveral_IsBlocked()
-        {
-            Assert.False(ProxyAddressRules.IsAllowed("example.com", 80, Ips("8.8.8.8", "10.0.0.1"), None));
-        }
-
-        [Fact]
-        public void IsAllowed_NoAddress_IsBlocked()
-        {
-            Assert.False(ProxyAddressRules.IsAllowed("example.com", 80, Ips(), None));
+            Assert.False(ProxyAddressRules.IsAllowed("somewhere.example", 80, Ips(ips.Split(',', StringSplitOptions.RemoveEmptyEntries)), None));
         }
 
         [Fact]
