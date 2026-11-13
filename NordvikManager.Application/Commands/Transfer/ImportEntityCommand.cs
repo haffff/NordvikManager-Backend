@@ -1,4 +1,4 @@
-using NordvikManager.Application.DataTransferObjects;
+﻿using NordvikManager.Application.DataTransferObjects;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.DataTransferObjects.Transfer;
 
@@ -40,6 +40,8 @@ namespace NordvikManager.Application.Commands.Transfer
     /// <param name="Missing">The names of the files it uses that this game doesn't have.</param>
     /// <param name="NewFolders">Folders made for <see cref="ImportEntityCommand.FolderPath"/>.</param>
     /// <param name="Cards">A map's: the cards of its tokens that were made for it.</param>
+    /// <param name="LinkedTemplate">A card's: the template it is linked to here (found by its key), if any.</param>
+    /// <param name="LinkedCards">A template's: how many cards made from a template with its key it now links.</param>
     public record ImportEntityResult(Guid Id, string Kind, TreeEntryDto? TreeEntry, List<string> Missing, List<TreeEntryDto> NewFolders,
-        List<ImportEntityResult>? Cards = null);
+        List<ImportEntityResult>? Cards = null, string? LinkedTemplate = null, int? LinkedCards = null);
 }

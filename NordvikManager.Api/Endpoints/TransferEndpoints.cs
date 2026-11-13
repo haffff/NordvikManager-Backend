@@ -79,7 +79,7 @@ namespace NordvikManager.Api.Endpoints
                     return ApiResult.Conflict(new { error = "This file is from another server and brings card code. Import it only if you trust where it came from.", inspection });
 
                 await EntityImportNotifier.NotifyAsync(mediator, lobbyService.GetLobby(gameId), player, result);
-                return ApiResult.Ok(new { id = result.Id, kind = result.Kind, treeEntryId = result.TreeEntry?.Id, missing = result.Missing });
+                return ApiResult.Ok(new { id = result.Id, kind = result.Kind, treeEntryId = result.TreeEntry?.Id, missing = result.Missing, linkedTemplate = result.LinkedTemplate, linkedCards = result.LinkedCards });
             }
             catch (Exception e) when (Refusal(e) is { } refused)
             {

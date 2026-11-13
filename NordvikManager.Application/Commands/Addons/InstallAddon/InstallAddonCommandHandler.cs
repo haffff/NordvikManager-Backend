@@ -1,6 +1,7 @@
 ﻿using NordvikManager.Application.Exceptions;
 using NordvikManager.Application.Mapping;
 using NordvikManager.Application.Commands.Actions;
+using NordvikManager.Application.Commands.Card;
 using NordvikManager.Application.Commands.Card.AddCard;
 using NordvikManager.Application.Commands.Addons.UninstallAddon;
 using NordvikManager.Application.Commands.Folder.AddFolder;
@@ -117,6 +118,13 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                     .Where(r => r.Key != null)
                     .Select(r => new { r.Id, r.Key })
                     .ToDictionary(r => r.Id, r => r.Key!);
+
+                // Cards made from its templates remember the templates' keys, so they link to
+                // the new version's templates with the same keys (TemplateLinks).
+                TemplateLinks.RememberKeys(dbContext, game.Id, dbContext.Addons
+                    .Where(a => a.Id == existingAddon.Id)
+                    .SelectMany(a => a.Templates!)
+                    .ToList());
 
                 gameEventLogger.Info("AddonInstall", $"Addon '{addon.Key}' is already installed for game '{game.Name}' — removing the existing install before reinstalling.");
                 await mediator.Send(new UninstallAddonCommand

@@ -29,6 +29,8 @@ namespace NordvikManager.Application.Commands.Card.UpdateCard
             card.ThrowIfNoPermission(playerId, Permission.Edit);
             ThrowIfCodeChangeNotAllowed(card, request.Dto, playerId);
 
+            var templateKeyChanged = card.IsTemplate && (card.Key ?? "") != (request.Dto.Key ?? "");
+
             // Update the card properties
             card.Name = request.Dto.Name;
             card.Description = request.Dto.Description;
@@ -40,6 +42,10 @@ namespace NordvikManager.Application.Commands.Card.UpdateCard
 
             // Save the changes to the database
             await dbContext.SaveChangesAsync();
+
+            // The cards made from it remember the new key (see TemplateLinks).
+            if (templateKeyChanged)
+                TemplateLinks.KeyChanged(dbContext, card);
 
             return CommandResponse.Ok;
         }

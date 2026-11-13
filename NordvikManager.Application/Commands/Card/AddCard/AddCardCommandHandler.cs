@@ -83,7 +83,7 @@ namespace NordvikManager.Application.Commands.Card.AddCard
                     model.AdditionalResources = template.AdditionalResources;
 
                     model.Properties = new List<PropertyModel>();
-                    foreach (var prop in template.Properties)
+                    foreach (var prop in template.Properties.Where(p => p.Name != TemplateLinks.IdProperty && p.Name != TemplateLinks.KeyProperty))
                     {
                         model.Properties.Add(new PropertyModel()
                         {
@@ -93,6 +93,12 @@ namespace NordvikManager.Application.Commands.Card.AddCard
                             Card = model,
                         });
                     }
+
+                    // The link to the template: its id, and its key to find it again by
+                    // when the id changes (an addon update, another game).
+                    model.Properties.Add(new PropertyModel { Name = TemplateLinks.IdProperty, Value = template.Id.ToString(), EntityName = "CardModel", Card = model });
+                    if (!string.IsNullOrWhiteSpace(template.Key))
+                        model.Properties.Add(new PropertyModel { Name = TemplateLinks.KeyProperty, Value = template.Key, EntityName = "CardModel", Card = model });
                 }
             }
 
@@ -175,6 +181,12 @@ namespace NordvikManager.Application.Commands.Card.AddCard
 
                 var resultProps = await mediator.Send(addPropertiesCommand);
                 CommandResponse commandResponse = (CommandResponse)Math.Max((int)result, (int)resultProps);
+
+                // Cards made from an earlier template with this key (one an addon update
+                // replaced, or from another game) link to this one.
+                var template = await dbContext.Cards.FindAsync(new object[] { id }, cancellationToken);
+                if (template != null)
+                    TemplateLinks.LinkOrphans(dbContext, template);
 
                 return (commandResponse, id);
             }

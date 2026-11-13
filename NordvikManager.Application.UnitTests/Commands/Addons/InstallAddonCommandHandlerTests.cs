@@ -254,6 +254,43 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Equal(new[] { newLogo, unrelated }, System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(stored.AdditionalResources!));
         }
 
+        // An update removes and re-creates the addon's templates with new ids. Cards made from
+        // them (also before template keys were kept) remember the old template's key first,
+        // so they link to the new one with that key (TemplateLinks, see TemplateLinkTests).
+        [Fact]
+        public async Task Handle_Reinstall_CardsRememberTheirTemplatesKey()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"monster\"}"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var template = Db.Cards.Single(c => c.IsTemplate);
+            template.Key = "monster"; // the mocked AddCard leaves keys out
+            var card = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Goblin", GameId = game.Id,
+                Properties = new List<PropertyModel>(),
+            };
+            card.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = card.Id, Name = "template_id", Value = template.Id.ToString(), EntityName = "CardModel", Card = card });
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Templates).First(a => a.Id == cmd.AddonId);
+                    Db.Cards.RemoveRange(addon.Templates!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var reinstall = ValidCommand(game, Player(), archive);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            Assert.Equal("monster", SeedContext().Properties.Single(p => p.ParentID == card.Id && p.Name == "template_key").Value);
+        }
+
         // ---- Archive / info.json parsing ----
 
         [Fact]
