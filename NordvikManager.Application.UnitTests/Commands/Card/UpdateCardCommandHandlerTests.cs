@@ -30,6 +30,37 @@ namespace NordvikManager.Application.UnitTests.Commands.Card
             AdditionalResources = new List<Guid> { Guid.NewGuid() },
         };
 
+        // Keys are unique in a game (cards made from a template find it by its key): a taken
+        // one is refused with a reason for the GM, and a blank one means none.
+        [Fact]
+        public async Task Handle_KeyTakenByAnotherCard_ThrowsWrongArgumentsException()
+        {
+            var game = BuildGame();
+            var other = SeedCard(game.Id, "Monster");
+            other.Key = "goblin-key";
+            Db.SaveChanges();
+            var card = SeedCard(game.Id);
+            var cmd = new UpdateCardCommand { Player = Player(), Dto = UpdateDto(card.Id) };
+
+            var error = await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
+            Assert.Contains("goblin-key", error.Message);
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public async Task Handle_BlankKey_StoresNone(string key)
+        {
+            var game = BuildGame();
+            var card = SeedCard(game.Id);
+            var dto = UpdateDto(card.Id);
+            dto.Key = key;
+
+            await Handler().Handle(new UpdateCardCommand { Player = Player(), Dto = dto }, CancellationToken.None);
+
+            Assert.Null(Db.Cards.Single(c => c.Id == card.Id).Key);
+        }
+
         [Fact]
         public async Task Handle_CardNotFound_ThrowsResourceNotFoundException()
         {

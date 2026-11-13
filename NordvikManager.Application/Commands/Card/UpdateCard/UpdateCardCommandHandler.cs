@@ -27,6 +27,14 @@ namespace NordvikManager.Application.Commands.Card.UpdateCard
 
             var playerId = request.Player?.Id ?? default;
             card.ThrowIfNoPermission(playerId, Permission.Edit);
+
+            // Keys are unique in a game (ShowView finds views by key, cards their template):
+            // blank means none, and a taken one is refused with a reason rather than failing
+            // on save.
+            request.Dto.Key = string.IsNullOrWhiteSpace(request.Dto.Key) ? null : request.Dto.Key.Trim();
+            if (request.Dto.Key != null && request.Dto.Key != card.Key
+                && dbContext.Cards.Any(c => c.Id != card.Id && c.GameId == card.GameId && c.Key == request.Dto.Key))
+                throw WrongArgumentsException.Because($"The key \"{request.Dto.Key}\" is already used by another card, template or view in this game.");
             ThrowIfCodeChangeNotAllowed(card, request.Dto, playerId);
 
             var templateKeyChanged = card.IsTemplate && (card.Key ?? "") != (request.Dto.Key ?? "");
