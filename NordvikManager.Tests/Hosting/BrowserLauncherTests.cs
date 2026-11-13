@@ -12,36 +12,20 @@ namespace NordvikManager.Tests.Hosting
                     : new Dictionary<string, string?> { ["OpenBrowser"] = openBrowser })
                 .Build();
 
-        [Fact]
-        public void ShouldOpen_True_ForAnInteractiveReleaseStart()
+        // Only an interactive release start opens the browser. Not with --no-browser, not when
+        // OpenBrowser is off in the settings, not without a console user (services, containers
+        // and redirected output in a hosted install have nobody to show a browser to), and not
+        // in development (launchSettings already opens one, and the frontend usually runs from
+        // its own dev server).
+        [Theory]
+        [InlineData(false, null, false, true, true)]
+        [InlineData(true, null, false, true, false)]
+        [InlineData(false, "false", false, true, false)]
+        [InlineData(false, null, false, false, false)]
+        [InlineData(false, null, true, true, false)]
+        public void ShouldOpen(bool noBrowserFlag, string? openBrowserSetting, bool isDevelopment, bool interactive, bool opens)
         {
-            Assert.True(BrowserLauncher.ShouldOpen(noBrowserFlag: false, Config(), isDevelopment: false, interactive: true));
-        }
-
-        [Fact]
-        public void ShouldOpen_False_WithNoBrowserFlag()
-        {
-            Assert.False(BrowserLauncher.ShouldOpen(noBrowserFlag: true, Config(), isDevelopment: false, interactive: true));
-        }
-
-        [Fact]
-        public void ShouldOpen_False_WhenTurnedOffInSettings()
-        {
-            Assert.False(BrowserLauncher.ShouldOpen(noBrowserFlag: false, Config("false"), isDevelopment: false, interactive: true));
-        }
-
-        [Fact]
-        public void ShouldOpen_False_WithoutAConsoleUser()
-        {
-            // Services, containers and redirected output (a hosted install) have nobody to show a browser to.
-            Assert.False(BrowserLauncher.ShouldOpen(noBrowserFlag: false, Config(), isDevelopment: false, interactive: false));
-        }
-
-        [Fact]
-        public void ShouldOpen_False_InDevelopment()
-        {
-            // launchSettings already opens one, and the frontend usually runs from its own dev server.
-            Assert.False(BrowserLauncher.ShouldOpen(noBrowserFlag: false, Config(), isDevelopment: true, interactive: true));
+            Assert.Equal(opens, BrowserLauncher.ShouldOpen(noBrowserFlag, Config(openBrowserSetting), isDevelopment, interactive));
         }
 
         [Fact]

@@ -119,55 +119,37 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
             Assert.Equal(new[] { "Goblin" }, Names(await Find(new FindCommand { What = "tokens", MapId = mapId, WithCard = true })));
         }
 
-        [Fact]
-        public async Task Tokens_NearAPoint_WithinRadiusInSquares()
+        // Areas on the Cave map (50 px squares). Centres: goblin (125,125), rat (175,125), far (1025,1025).
+        private FindCommand InArea(string area) => area switch
         {
             // 4 squares = 200 px from (150,125): goblin and rat, not the far one.
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearX = 150, NearY = 125, Radius = 4 });
+            "NearAPoint_WithinRadiusInSquares" => new() { NearX = 150, NearY = 125, Radius = 4 },
+            "NearAToken_ExcludesItself" => new() { NearElementId = goblin, Radius = 2 },
+            // The same areas as markers (AreaShape): a cone from the goblin, 2 squares long.
+            "Cone_FromATokenTowardAnother" => new() { NearElementId = goblin, Shape = "cone", Radius = 2, TowardElementId = rat },
+            "Cone_PointingAway" => new() { NearElementId = goblin, Shape = "cone", Radius = 2, TowardX = 0, TowardY = 125 },
+            // From (0,125) east, 2.5 squares long and 1 wide: the goblin is on it, the rat past its end.
+            "Line_OfTheGivenWidth" => new() { NearX = 0, NearY = 125, Shape = "line", Radius = 2.5, Width = 1, TowardX = 100, TowardY = 125 },
+            "Rect" => new() { NearX = 100, NearY = 125, Shape = "rect", Width = 0.2, Height = 0.2 },
+            _ => throw new ArgumentException(area),
+        };
 
-            Assert.Equal(new[] { "Goblin", "Rat" }, Names(found));
-        }
-
-        [Fact]
-        public async Task Tokens_NearAToken_ExcludesItself()
+        [Theory]
+        [InlineData("NearAPoint_WithinRadiusInSquares", "Goblin,Rat")]
+        [InlineData("NearAToken_ExcludesItself", "Rat")]
+        [InlineData("Cone_FromATokenTowardAnother", "Rat")]
+        [InlineData("Cone_PointingAway", "")]
+        [InlineData("Line_OfTheGivenWidth", "Goblin")]
+        [InlineData("Rect", "Goblin")]
+        public async Task Tokens_InAnArea(string area, string expected)
         {
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearElementId = goblin, Radius = 2 });
+            var command = InArea(area);
+            command.What = "tokens";
+            command.MapId = mapId;
 
-            Assert.Equal(new[] { "Rat" }, Names(found));
-        }
+            var found = await Find(command);
 
-        // The same areas as markers (AreaShape): a cone from the goblin toward the rat, 2 squares long.
-        [Fact]
-        public async Task Tokens_InACone_FromATokenTowardAnother()
-        {
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearElementId = goblin, Shape = "cone", Radius = 2, TowardElementId = rat });
-
-            Assert.Equal(new[] { "Rat" }, Names(found));
-        }
-
-        [Fact]
-        public async Task Tokens_InACone_PointingAway_FindNothing()
-        {
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearElementId = goblin, Shape = "cone", Radius = 2, TowardX = 0, TowardY = 125 });
-
-            Assert.Empty(found);
-        }
-
-        [Fact]
-        public async Task Tokens_OnALine_OfTheGivenWidth()
-        {
-            // From (0,125) east, 3 squares long and 1 wide: the goblin (centre 125) is on it, the rat (175) past its end.
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearX = 0, NearY = 125, Shape = "line", Radius = 2.5, Width = 1, TowardX = 100, TowardY = 125 });
-
-            Assert.Equal(new[] { "Goblin" }, Names(found));
-        }
-
-        [Fact]
-        public async Task Tokens_InARect()
-        {
-            var found = await Find(new FindCommand { What = "tokens", MapId = mapId, NearX = 100, NearY = 125, Shape = "rect", Width = 0.2, Height = 0.2 });
-
-            Assert.Equal(new[] { "Goblin" }, Names(found));
+            Assert.Equal(expected.Split(',', StringSplitOptions.RemoveEmptyEntries), Names(found));
         }
 
         [Fact]

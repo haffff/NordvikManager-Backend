@@ -150,10 +150,25 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(problems);
         }
 
-        [Fact]
-        public void AddMenuItem_Location_IsAMenuLocationPicker()
+        // Arguments the editor shows with their own widget: blocks of steps, action pickers, a
+        // menu location picker, the kinds Find knows instead of a free-text What, and the
+        // fixed-choice pickers.
+        [Theory]
+        [InlineData("If", "Then", "steps")]
+        [InlineData("If", "Else", "steps")]
+        [InlineData("ForEach", "Do", "steps")]
+        [InlineData("ExecuteAction", "Value", "action")]
+        [InlineData("RollDice", "FollowUpActionName", "action")]
+        [InlineData("AddMenuItem", "Location", "menulocation")]
+        [InlineData("Find", "What", "findkind")]
+        [InlineData("Find", "Shape", "areashape")]
+        [InlineData("ShowMarker", "Shape", "markershape")]
+        [InlineData("AddElement", "Shape", "markershape")]
+        [InlineData("RequestPoint", "Shape", "pointshape")]
+        [InlineData("RequestPoint", "SnapToGrid", "gridsnap")]
+        public void Argument_UsesItsWidget(string step, string arg, string type)
         {
-            Assert.Equal("menulocation", Arg("AddMenuItem", "Location").Arg.Type);
+            Assert.Equal(type, Arg(step, arg).Arg.Type);
         }
 
         [Fact]
@@ -172,23 +187,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             Assert.Equal("Script {Script}[ → {Output}]", script.Step.Summary);
 
             Assert.True(Arg("RunScript", "Output").Arg.IsOutput);
-        }
-
-        [Theory]
-        [InlineData("If", "Then")]
-        [InlineData("If", "Else")]
-        [InlineData("ForEach", "Do")]
-        public void Blocks_UseTheStepsWidget(string step, string arg)
-        {
-            Assert.Equal("steps", Arg(step, arg).Arg.Type);
-        }
-
-        [Theory]
-        [InlineData("ExecuteAction", "Value")]
-        [InlineData("RollDice", "FollowUpActionName")]
-        public void ActionReferences_UseActionWidget(string step, string arg)
-        {
-            Assert.Equal("action", Arg(step, arg).Arg.Type);
         }
 
         [Theory]
@@ -218,24 +216,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(hooks.Where(h => h.Variables.Length == 0).Select(h => h.Key));
             Assert.Equal(new[] { "ChatCommand", "ChatArgs", "ChatText", "Player" },
                 hooks.Single(h => h.Key == nameof(Hook.ChatCommand)).Variables);
-        }
-
-        // The editor offers the kinds Find knows instead of a free-text What.
-        [Fact]
-        public void Find_What_IsAKindPicker()
-        {
-            Assert.Equal("findkind", Arg("Find", "What").Arg.Type);
-        }
-
-        [Theory]
-        [InlineData("Find", "Shape", "areashape")]
-        [InlineData("ShowMarker", "Shape", "markershape")]
-        [InlineData("AddElement", "Shape", "markershape")]
-        [InlineData("RequestPoint", "Shape", "pointshape")]
-        [InlineData("RequestPoint", "SnapToGrid", "gridsnap")]
-        public void FixedChoiceArguments_ArePickers(string step, string arg, string type)
-        {
-            Assert.Equal(type, Arg(step, arg).Arg.Type);
         }
 
         [Theory]

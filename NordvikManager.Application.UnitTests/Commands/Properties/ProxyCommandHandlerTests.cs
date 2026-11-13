@@ -35,34 +35,14 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
-        [Fact]
-        public async Task Handle_DisallowedScheme_ReturnsBadRequest()
+        // Only http(s) to public hosts: anything else is a bad request (SSRF protection).
+        [Theory]
+        [InlineData("ftp://8.8.8.8/file")]
+        [InlineData("http://127.0.0.1/internal")]
+        [InlineData("http://192.168.1.1/internal")]
+        public async Task Handle_DisallowedTarget_ReturnsBadRequest(string url)
         {
-            var cmd = BaseCommand("ftp://8.8.8.8/file");
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.False(result.Success);
-            Assert.Equal(400, result.StatusCode);
-        }
-
-        [Fact]
-        public async Task Handle_LoopbackHost_ReturnsBadRequest_SsrfProtection()
-        {
-            var cmd = BaseCommand("http://127.0.0.1/internal");
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.False(result.Success);
-            Assert.Equal(400, result.StatusCode);
-        }
-
-        [Fact]
-        public async Task Handle_PrivateNetworkHost_ReturnsBadRequest_SsrfProtection()
-        {
-            var cmd = BaseCommand("http://192.168.1.1/internal");
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await Handler().Handle(BaseCommand(url), CancellationToken.None);
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
