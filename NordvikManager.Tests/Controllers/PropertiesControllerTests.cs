@@ -54,188 +54,53 @@ namespace NordvikManager.Tests.Controllers
             mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(WithPlayer(player));
 
-        // =========================================================================
-        // GetProperties
-        // =========================================================================
-
-        [Fact]
-        public async Task GetProperties_ReturnsUnauthorized_WhenPlayerIsNull()
+        private static readonly Dictionary<string, Func<PropertiesController, Task<IActionResult>>> Actions = new()
         {
-            // Arrange
+            ["GetProperties"] = c => c.GetProperties(Guid.NewGuid(), Guid.NewGuid()),
+            ["QueryProperties"] = c => c.QueryProperties(Guid.NewGuid(), Guid.NewGuid().ToString(), null, null, null),
+            ["GetSelectedIds"] = c => c.GetSelectedIds(Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>()),
+            ["AddBulkProperties"] = c => c.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()),
+            ["UpdateBulkProperties"] = c => c.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()),
+        };
+
+        public static TheoryData<string> ActionNames() => new(Actions.Keys);
+
+        [Theory]
+        [MemberData(nameof(ActionNames))]
+        public async Task Action_ReturnsUnauthorized_WhenPlayerIsNull(string action)
+        {
             SetupPlayer(_mediator, null);
 
-            // Act
-            var result = await _controller.GetProperties(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.IsType<UnauthorizedObjectResult>(await Actions[action](_controller));
         }
 
-        [Fact]
-        public async Task GetProperties_ReturnsOk_WhenPlayerExists()
+        // Reads answer what the command found; bulk writes answer Ok when the command succeeds.
+        [Theory]
+        [MemberData(nameof(ActionNames))]
+        public async Task Action_ReturnsOk_WhenTheCommandSucceeds(string action)
         {
-            // Arrange
             var properties = new List<PropertyDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(properties);
+            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(properties);
+            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesByQueryCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(properties);
+            _mediator.Setup(m => m.Send(It.IsAny<AddPropertiesCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertiesCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
 
-            // Act
-            var result = await _controller.GetProperties(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(properties, ok.Value);
+            var ok = Assert.IsType<OkObjectResult>(await Actions[action](_controller));
+            if (action is "GetProperties" or "QueryProperties") Assert.Same(properties, ok.Value);
         }
 
-        // =========================================================================
-        // QueryProperties
-        // =========================================================================
-
-        [Fact]
-        public async Task QueryProperties_ReturnsUnauthorized_WhenPlayerIsNull()
+        // Invalid properties: the command's refusal reaches the middleware (400).
+        [Theory]
+        [InlineData("AddBulkProperties")]
+        [InlineData("UpdateBulkProperties")]
+        public async Task BulkWrite_LetsTheCommandsRefusalThrough(string action)
         {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.QueryProperties(Guid.NewGuid(), Guid.NewGuid().ToString(), null, null, null);
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task QueryProperties_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var properties = new List<PropertyDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesByQueryCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(properties);
-
-            // Act
-            var result = await _controller.QueryProperties(Guid.NewGuid(), Guid.NewGuid().ToString(), null, null, null);
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(properties, ok.Value);
-        }
-
-        // =========================================================================
-        // GetSelectedIds (obsolete)
-        // =========================================================================
-
-        [Fact]
-        public async Task GetSelectedIds_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetSelectedIds(Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetSelectedIds_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var properties = new List<PropertyDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(properties);
-
-            // Act
-            var result = await _controller.GetSelectedIds(Guid.NewGuid(), Guid.NewGuid(), Array.Empty<Guid>());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // AddBulkProperties
-        // =========================================================================
-
-        [Fact]
-        public async Task AddBulkProperties_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task AddBulkProperties_ThrowsWrongArgumentsException_WhenPropertiesInvalid()
-        {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<AddPropertiesCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new WrongArgumentsException(nameof(AddPropertiesCommand.Properties)));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                _controller.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()));
-        }
-
-        [Fact]
-        public async Task AddBulkProperties_ReturnsOk_WhenCommandResponseIsOk()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<AddPropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            // Act
-            var result = await _controller.AddBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // UpdateBulkProperties
-        // =========================================================================
-
-        [Fact]
-        public async Task UpdateBulkProperties_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task UpdateBulkProperties_ThrowsWrongArgumentsException_WhenPropertiesInvalid()
-        {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertiesCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new WrongArgumentsException(nameof(UpdatePropertiesCommand.Properties)));
 
-            // Act & Assert
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                _controller.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>()));
-        }
-
-        [Fact]
-        public async Task UpdateBulkProperties_ReturnsOk_WhenCommandResponseIsOk()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<UpdatePropertiesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            // Act
-            var result = await _controller.UpdateBulkProperties(Guid.NewGuid(), Array.Empty<PropertyDTO>());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Actions[action](_controller));
         }
     }
 }

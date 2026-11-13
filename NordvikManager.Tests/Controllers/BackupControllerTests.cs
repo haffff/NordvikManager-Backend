@@ -39,29 +39,24 @@ namespace NordvikManager.Tests.Controllers
         // Authorization
         // =========================================================================
 
-        [Fact]
-        public async Task GetBackups_ReturnsUnauthorized_WhenNotLocalAdmin()
+        // Backups are the local admin's: anyone else (or no one) is refused before anything runs.
+        [Theory]
+        [InlineData("GetBackups", true)]
+        [InlineData("StageRestore", false)]
+        [InlineData("SetSchedule", true)]
+        public async Task Action_ReturnsUnauthorized_WhenNotLocalAdmin(string action, bool aPlayer)
         {
-            var result = await CreateController(Player()).GetBackups();
+            var controller = CreateController(aPlayer ? Player() : null);
+
+            var result = action switch
+            {
+                "GetBackups" => await controller.GetBackups(),
+                "StageRestore" => await controller.StageRestore(Name),
+                _ => await controller.SetSchedule(new SetBackupScheduleCommand { Enabled = true, IntervalHours = 24, RetentionCount = 7 }),
+            };
 
             Assert.IsType<UnauthorizedResult>(result);
-            _mediator.Verify(m => m.Send(It.IsAny<GetBackupsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task StageRestore_ReturnsUnauthorized_WhenNoUser()
-        {
-            var result = await CreateController(null).StageRestore(Name);
-
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task SetSchedule_ReturnsUnauthorized_WhenNotLocalAdmin()
-        {
-            var result = await CreateController(Player()).SetSchedule(new SetBackupScheduleCommand { Enabled = true, IntervalHours = 24, RetentionCount = 7 });
-
-            Assert.IsType<UnauthorizedResult>(result);
+            Assert.Empty(_mediator.Invocations);
         }
 
         // =========================================================================

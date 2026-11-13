@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Moq;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -59,293 +60,139 @@ namespace NordvikManager.Tests.Controllers
         private static User RegularUser() => new User { Id = "user-id", UserName = "regular", IsAdmin = false, IsLocalAdmin = false };
 
         // =========================================================================
-        // Login
+        // Login, registration and lookups answered by the Central Server
         // =========================================================================
 
         [Fact]
-        public async Task Login_ReturnsOk_WhenCredentialsAreValid()
+        public async Task Login_ReturnsOk_WhenCredentialsAreValid_UnauthorizedOtherwise()
         {
             var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.LoginAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync((CentralLoginResult?)null);
             central.Setup(x => x.LoginAsync("user", "pass"))
-                .ReturnsAsync(new CentralLoginResult
-                {
-                    CentralToken = "central-jwt",
-                    UserId = "abc123",
-                    UserName = "user",
-                    Email = "u@test.com",
-                    IsAdmin = false
-                });
+                .ReturnsAsync(new CentralLoginResult { CentralToken = "central-jwt", UserId = "abc123", UserName = "user", Email = "u@test.com", IsAdmin = false });
             var controller = CreateController(central);
 
-            var result = await controller.Login(new LoginRequest { Username = "user", Password = "pass" });
-
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.Login(new LoginRequest { Username = "user", Password = "pass" }));
+            Assert.IsType<UnauthorizedObjectResult>(await controller.Login(new LoginRequest { Username = "user", Password = "wrong" }));
         }
 
         [Fact]
-        public async Task Login_ReturnsUnauthorized_WhenCredentialsAreInvalid()
+        public void CheckLogin_Logout_AndUserInfo_ReturnOk()
+        {
+            var controller = CreateController(contextUser: new User { UserName = "testuser", Email = "test@example.com", IsAdmin = false });
+
+            Assert.IsType<OkResult>(controller.CheckLogin());
+            Assert.IsType<OkResult>(controller.Logout());
+            Assert.NotNull(Assert.IsType<OkObjectResult>(controller.GetUserInfo()).Value);
+        }
+
+        [Fact]
+        public async Task GetUserNameById_ReturnsOk_WhenFound_NotFoundOtherwise()
         {
             var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.LoginAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync((CentralLoginResult?)null);
-            var controller = CreateController(central);
-
-            var result = await controller.Login(new LoginRequest { Username = "user", Password = "wrong" });
-
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        // =========================================================================
-        // CheckLogin
-        // =========================================================================
-
-        [Fact]
-        public void CheckLogin_ReturnsOk()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = controller.CheckLogin();
-            Assert.IsType<OkResult>(result);
-        }
-
-        // =========================================================================
-        // Logout
-        // =========================================================================
-
-        [Fact]
-        public void Logout_ReturnsOk()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = controller.Logout();
-            Assert.IsType<OkResult>(result);
-        }
-
-        // =========================================================================
-        // UserInfo
-        // =========================================================================
-
-        [Fact]
-        public void GetUserInfo_ReturnsOkWithUserData()
-        {
-            var user = new User { UserName = "testuser", Email = "test@example.com", IsAdmin = false };
-            var controller = CreateController(contextUser: user);
-
-            var result = controller.GetUserInfo();
-
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        // =========================================================================
-        // GetUserNameById
-        // =========================================================================
-
-        [Fact]
-        public async Task GetUserNameById_ReturnsOk_WhenFound()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), "some-id"))
-                .ReturnsAsync("John");
+            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync((string?)null);
+            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), "some-id")).ReturnsAsync("John");
             var controller = CreateController(central, contextUser: RegularUser());
 
-            var result = await controller.GetUserNameById("some-id");
-
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.GetUserNameById("some-id"));
+            Assert.IsType<NotFoundResult>(await controller.GetUserNameById("unknown"));
         }
 
-        [Fact]
-        public async Task GetUserNameById_ReturnsNotFound_WhenMissing()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.GetUserNameAsync(It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync((string?)null);
-            var controller = CreateController(central, contextUser: RegularUser());
-
-            var result = await controller.GetUserNameById("unknown");
-
-            Assert.IsType<NotFoundResult>(result);
-        }
-
-        // =========================================================================
-        // Register
-        // =========================================================================
-
-        [Fact]
-        public async Task Register_ReturnsOk_WhenSuccessful()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Register_ReturnsOk_WhenCentralCreatesTheUser_BadRequestOtherwise(bool created)
         {
             var central = new Mock<ICentralServerService>();
             central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync((true, "User created successfully!"));
+                .ReturnsAsync((created, created ? "User created successfully!" : "User already exists!"));
             var controller = CreateController(central);
 
-            var result = await controller.Register(new RegisterRequest
-            {
-                Username = "user",
-                Password = "pass",
-                Email = "a@b.com",
-                InviteCode = "code"
-            });
+            var result = await controller.Register(new RegisterRequest { Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code" });
 
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType(created ? typeof(OkObjectResult) : typeof(BadRequestObjectResult), result);
         }
 
         [Fact]
-        public async Task Register_ReturnsBadRequest_WhenFailed()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-                .ReturnsAsync((false, "User already exists!"));
-            var controller = CreateController(central);
-
-            var result = await controller.Register(new RegisterRequest
-            {
-                Username = "user",
-                Password = "pass",
-                Email = "a@b.com",
-                InviteCode = "code"
-            });
-
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        // =========================================================================
-        // CheckRegistrationKey
-        // =========================================================================
-
-        [Fact]
-        public async Task CheckRegistrationKey_ReturnsOk_WhenValid()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.CheckRegistrationKeyAsync("valid-key")).ReturnsAsync(true);
-            var controller = CreateController(central);
-
-            var result = await controller.CheckRegistrationKey("valid-key");
-
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task CheckRegistrationKey_ReturnsBadRequest_WhenInvalid()
+        public async Task CheckRegistrationKey_ReturnsOk_WhenValid_BadRequestOtherwise()
         {
             var central = new Mock<ICentralServerService>();
             central.Setup(x => x.CheckRegistrationKeyAsync(It.IsAny<string>())).ReturnsAsync(false);
+            central.Setup(x => x.CheckRegistrationKeyAsync("valid-key")).ReturnsAsync(true);
             var controller = CreateController(central);
 
-            var result = await controller.CheckRegistrationKey("bad-key");
-
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.CheckRegistrationKey("valid-key"));
+            Assert.IsType<BadRequestResult>(await controller.CheckRegistrationKey("bad-key"));
         }
 
         // =========================================================================
-        // Users
+        // The local admin's user management
         // =========================================================================
 
-        [Fact]
-        public async Task Users_ReturnsUnauthorized_WhenNotAdmin()
+        private static readonly Dictionary<string, Func<UserController, Task<IActionResult>>> AdminActions = new()
         {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.Users(1);
-            Assert.IsType<UnauthorizedResult>(result);
+            ["Users"] = c => c.Users(1, 10),
+            ["KickPlayer"] = c => c.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() }),
+            ["RemoveUser"] = c => c.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" }),
+            ["UnbanUser"] = c => c.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" }),
+        };
+
+        public static TheoryData<string> AdminActionNames() => new(AdminActions.Keys);
+
+        [Theory]
+        [MemberData(nameof(AdminActionNames))]
+        public async Task AdminAction_ReturnsUnauthorized_WhenNotAdmin(string action)
+        {
+            var mediator = new Mock<IMediator>();
+            var controller = CreateController(mediatorMock: mediator, contextUser: RegularUser());
+
+            Assert.IsType<UnauthorizedResult>(await AdminActions[action](controller));
+            Assert.Empty(mediator.Invocations);
         }
 
         [Fact]
-        public async Task Users_ReturnsBadRequest_WhenPageIsZero()
-        {
-            var controller = CreateController(contextUser: AdminUser());
-            var result = await controller.Users(0);
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task Users_ReturnsOk_WhenAdminRequestsValidPage()
+        public async Task Users_ReturnsOk_ForAValidPage_BadRequestForPageZero()
         {
             var mediator = new Mock<IMediator>();
             mediator.Setup(x => x.Send(It.IsAny<GetLocalPlayersCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new GetLocalPlayersCommandResponse { Page = 1, Count = 10, Total = 0, Data = new() });
             var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
-            var result = await controller.Users(1, 10);
-
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.Users(1, 10));
+            Assert.IsType<BadRequestResult>(await controller.Users(0));
         }
 
-        // =========================================================================
-        // KickPlayer
-        // =========================================================================
+        public static TheoryData<string> AdminCommandNames() => new() { "KickPlayer", "RemoveUser", "UnbanUser" };
 
-        [Fact]
-        public async Task KickPlayer_ReturnsUnauthorized_WhenNotAdmin()
+        private static void SetupAdminCommands(Mock<IMediator> mediator, Func<Moq.Language.Flow.ISetup<IMediator, Task<NordvikManager.Domain.Enums.CommandResponse>>, object> answer)
         {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() });
-            Assert.IsType<UnauthorizedResult>(result);
+            answer(mediator.Setup(x => x.Send(It.IsAny<KickPlayerCommand>(), It.IsAny<CancellationToken>())));
+            answer(mediator.Setup(x => x.Send(It.IsAny<RemoveUserPlayersCommand>(), It.IsAny<CancellationToken>())));
+            answer(mediator.Setup(x => x.Send(It.IsAny<UnbanUserCommand>(), It.IsAny<CancellationToken>())));
         }
 
-        [Fact]
-        public async Task KickPlayer_ReturnsOk_WhenPlayerExists()
+        [Theory]
+        [MemberData(nameof(AdminCommandNames))]
+        public async Task AdminCommand_ReturnsOk_WhenItSucceeds(string action)
         {
             var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<KickPlayerCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.Ok);
-            var lobby = new Mock<ILobbyService>();
-            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser(), lobbyMock: lobby);
-
-            var result = await controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() });
-
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task KickPlayer_ThrowsWrongArgumentsException_WhenPlayerMissing()
-        {
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<KickPlayerCommand>(), It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new WrongArgumentsException(nameof(KickPlayerRequest.PlayerId)));
+            SetupAdminCommands(mediator, s => s.ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.Ok));
             var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                controller.KickPlayer(new KickPlayerRequest { PlayerId = Guid.NewGuid() }));
+            Assert.IsType<OkResult>(await AdminActions[action](controller));
         }
 
-        // =========================================================================
-        // RemoveUser
-        // =========================================================================
-
-        [Fact]
-        public async Task RemoveUser_ReturnsUnauthorized_WhenNotAdmin()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" });
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task RemoveUser_ReturnsOk_WhenPlayersExist()
+        // Nothing to kick, remove or unban: the command's refusal reaches the middleware (400).
+        [Theory]
+        [MemberData(nameof(AdminCommandNames))]
+        public async Task AdminCommand_LetsTheCommandsRefusalThrough(string action)
         {
             var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<RemoveUserPlayersCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.Ok);
+            SetupAdminCommands(mediator, s => s.ThrowsAsync(new WrongArgumentsException("id")));
             var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
-            var result = await controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" });
-
-            Assert.IsType<OkResult>(result);
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => AdminActions[action](controller));
         }
-
-        [Fact]
-        public async Task RemoveUser_ThrowsWrongArgumentsException_WhenNoPlayersFound()
-        {
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<RemoveUserPlayersCommand>(), It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new WrongArgumentsException(nameof(CentralUserRequest.CentralUserId)));
-            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
-
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                controller.RemoveUser(new CentralUserRequest { CentralUserId = "central-id" }));
-        }
-
-        // =========================================================================
-        // BanUser
-        // =========================================================================
 
         // A ban takes effect at once: the user's open game connections are closed, not just
         // their next connection refused.
@@ -365,64 +212,17 @@ namespace NordvikManager.Tests.Controllers
         }
 
         [Fact]
-        public async Task BanUser_DisconnectsNobody_WhenTheBanFails()
+        public async Task BanUser_DisconnectsNobody_WhenTheBanFailsOrTheCallerIsNotAdmin()
         {
             var mediator = new Mock<IMediator>();
             mediator.Setup(x => x.Send(It.IsAny<BanUserCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.WrongArguments);
             var webRtc = new Mock<IWebRTCSessionService>();
-            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
 
-            await controller.BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object);
+            await CreateController(mediatorMock: mediator, contextUser: AdminUser()).BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object);
+            Assert.IsType<UnauthorizedResult>(await CreateController(contextUser: RegularUser()).BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object));
 
             webRtc.Verify(w => w.DisconnectUserAsync(It.IsAny<string>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task BanUser_IsRefused_ForANonAdmin()
-        {
-            var webRtc = new Mock<IWebRTCSessionService>();
-            var controller = CreateController(contextUser: RegularUser());
-
-            Assert.IsType<UnauthorizedResult>(await controller.BanUser(new CentralUserRequest { CentralUserId = "central-id" }, webRtc.Object));
-            webRtc.Verify(w => w.DisconnectUserAsync(It.IsAny<string>()), Times.Never);
-        }
-
-        // =========================================================================
-        // UnbanUser
-        // =========================================================================
-
-        [Fact]
-        public async Task UnbanUser_ReturnsUnauthorized_WhenNotAdmin()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var result = await controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" });
-            Assert.IsType<UnauthorizedResult>(result);
-        }
-
-        [Fact]
-        public async Task UnbanUser_ReturnsOk_WhenBanExists()
-        {
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<UnbanUserCommand>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(NordvikManager.Domain.Enums.CommandResponse.Ok);
-            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
-
-            var result = await controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" });
-
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task UnbanUser_ThrowsWrongArgumentsException_WhenNoBanFound()
-        {
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(x => x.Send(It.IsAny<UnbanUserCommand>(), It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new WrongArgumentsException(nameof(CentralUserRequest.CentralUserId)));
-            var controller = CreateController(mediatorMock: mediator, contextUser: AdminUser());
-
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                controller.UnbanUser(new CentralUserRequest { CentralUserId = "central-id" }));
         }
 
         // =========================================================================
@@ -437,103 +237,29 @@ namespace NordvikManager.Tests.Controllers
                 .ReturnsAsync(new Dictionary<string, string> { { "Ctrl+S", "save" } });
             var controller = CreateController(central, contextUser: RegularUser());
 
-            var result = await controller.KeyboardBindings();
-
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.KeyboardBindings());
         }
 
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenKeyIsInvalid()
+        // The same rules as the frontend and the Central Server (change all three together).
+        [Theory]
+        [InlineData("Ctrl+S", "game.Save", true)]
+        [InlineData("Shift+G", "", true)] // the empty-string tombstone
+        [InlineData("Ctrl+Shift+S", "Playlist.PlaySound --resourceId=abc-123-def-456", true)] // an argument tail
+        [InlineData("Ctrl+Shift+Alt+G", "battlemap.GroupSelected", true)] // modifiers in CreateActionName's order
+        [InlineData("INVALID KEY!!", "game.Save", false)]
+        [InlineData("Ctrl+S", "save", false)] // not panel.command
+        [InlineData("Ctrl+S", "TOO_LONG", false)]
+        public async Task SaveKeyboardBindings_AcceptsOnlyValidBindings(string key, string value, bool valid)
         {
-            var controller = CreateController(contextUser: RegularUser());
-            var invalidBindings = new Dictionary<string, string> { { "INVALID KEY!!", "action" } };
-
-            var result = await controller.SaveKeyboardBindings(invalidBindings);
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsOk_WhenBindingsAreValid()
-        {
+            if (value == "TOO_LONG") value = "game.Do --value=" + new string('x', 300);
             var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
-                .ReturnsAsync(true);
+            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>())).ReturnsAsync(true);
             var controller = CreateController(central, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string> { { "Ctrl+S", "game.Save" }, { "Alt+C", "game.Close" } };
 
-            var result = await controller.SaveKeyboardBindings(validBindings);
+            var result = await controller.SaveKeyboardBindings(new Dictionary<string, string> { { key, value } });
 
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsOk_WhenValueIsEmptyTombstone()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
-                .ReturnsAsync(true);
-            var controller = CreateController(central, contextUser: RegularUser());
-            var bindingsWithTombstone = new Dictionary<string, string> { { "Shift+G", "" } };
-
-            var result = await controller.SaveKeyboardBindings(bindingsWithTombstone);
-
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenValueIsNotPanelDotCommand()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var invalidBindings = new Dictionary<string, string> { { "Ctrl+S", "save" } };
-
-            var result = await controller.SaveKeyboardBindings(invalidBindings);
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsOk_WhenValueHasArgumentTail()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
-                .ReturnsAsync(true);
-            var controller = CreateController(central, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string>
-            {
-                { "Ctrl+Shift+S", "Playlist.PlaySound --resourceId=abc-123-def-456" },
-            };
-
-            var result = await controller.SaveKeyboardBindings(validBindings);
-
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsBadRequest_WhenValueExceedsMaxLength()
-        {
-            var controller = CreateController(contextUser: RegularUser());
-            var tooLong = "game.Do --value=" + new string('x', 300);
-            var invalidBindings = new Dictionary<string, string> { { "Ctrl+S", tooLong } };
-
-            var result = await controller.SaveKeyboardBindings(invalidBindings);
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task SaveKeyboardBindings_ReturnsOk_WhenAllThreeModifiersPressed()
-        {
-            var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
-                .ReturnsAsync(true);
-            var controller = CreateController(central, contextUser: RegularUser());
-            // Order must match CreateActionName's emission order (Ctrl, Shift, Alt).
-            var validBindings = new Dictionary<string, string> { { "Ctrl+Shift+Alt+G", "battlemap.GroupSelected" } };
-
-            var result = await controller.SaveKeyboardBindings(validBindings);
-
-            Assert.IsType<OkResult>(result);
+            Assert.IsType(valid ? typeof(OkResult) : typeof(BadRequestResult), result);
+            central.Verify(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()), valid ? Times.Once() : Times.Never());
         }
 
         [Fact]
@@ -543,11 +269,8 @@ namespace NordvikManager.Tests.Controllers
             central.Setup(x => x.SetKeyboardBindingsAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
                 .ReturnsAsync(false);
             var controller = CreateController(central, contextUser: RegularUser());
-            var validBindings = new Dictionary<string, string> { { "Ctrl+Z", "game.Undo" } };
 
-            var result = await controller.SaveKeyboardBindings(validBindings);
-
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<BadRequestResult>(await controller.SaveKeyboardBindings(new Dictionary<string, string> { { "Ctrl+Z", "game.Undo" } }));
         }
     }
 }
