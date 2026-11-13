@@ -230,6 +230,23 @@ namespace NordvikManager.Application.UnitTests.Commands.Transfer
             Assert.True(Db.TreeEntries.Any(x => x.TargetId == result.Id && x.EntryType == TreeEntryTypes.CardTemplate));
         }
 
+        // Cards made from a template find it by its "template_id" property: an imported template
+        // (or a duplicate) must point at itself, not at the template it was exported from.
+        [Fact]
+        public async Task Template_Imported_TemplateIdIsItsOwnNewId()
+        {
+            Db.Cards.Single(x => x.Id == cardId).IsTemplate = true;
+            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = cardId, Name = "template_id", Value = cardId.ToString(), EntityName = "CardModel" });
+            Db.SaveChanges();
+
+            var export = await Export(cardId, EntityTransferKinds.Template);
+            Assert.Contains(cardId.ToString(), export!.Data.ToString()); // the old template_id goes along
+            var result = await Mediator.Send(new ImportEntityCommand { GameId = GameId, Player = Gm, Export = export!, ExpectedKind = EntityTransferKinds.Template });
+
+            var templateIds = Card(result.Id).Properties.Where(p => p.Name == "template_id").Select(p => p.Value).ToList();
+            Assert.Equal(new[] { result.Id.ToString() }, templateIds);
+        }
+
         [Fact]
         public async Task Import_OfAnotherKind_IsRefused()
         {
