@@ -339,6 +339,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                 }
 
                 addon.Templates!.Add(card);
+                TemplateLinks.AdoptUnprefixed(dbContext, card, addon.Key!);
 
                 gameEventLogger.Info("AddonInstall", $"Added template '{dto.Name}' (Key: {addon.Key + "_" + dto.Name}) to addon '{addon.Name}'.");
                 reportProgress("templates", $"Added template '{dto.Name}'");

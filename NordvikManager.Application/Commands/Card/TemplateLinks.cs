@@ -67,6 +67,36 @@ namespace NordvikManager.Application.Commands.Card
             RememberKey(db, gameId, keys.Keys, id => keys[id]);
         }
 
+        /// <summary>
+        /// An addon's template whose key is "&lt;addon&gt;_&lt;key&gt;": cards whose template is gone
+        /// and that remember the bare "&lt;key&gt;" (addon template keys weren't prefixed at first)
+        /// take the prefixed key and link to it. Saves; returns how many.
+        /// </summary>
+        public static int AdoptUnprefixed(IDbContext db, CardModel template, string addonKey)
+        {
+            var prefix = addonKey + "_";
+            if (!template.IsTemplate || template.Key == null || !template.Key.StartsWith(prefix) || template.Key.Length == prefix.Length)
+                return 0;
+
+            var bare = template.Key[prefix.Length..];
+            var keys = db.Properties.Where(p => p.Name == KeyProperty && p.Value == bare).ToList();
+            var cardIds = CardsOf(db, template.GameId, keys.Select(p => p.ParentID).ToList());
+            if (cardIds.Count == 0)
+                return 0;
+
+            var templates = TemplateIds(db, template.GameId);
+            var links = db.Properties.Where(p => p.Name == IdProperty && cardIds.Contains(p.ParentID)).ToList();
+            foreach (var key in keys.Where(k => cardIds.Contains(k.ParentID)))
+            {
+                var link = links.FirstOrDefault(p => p.ParentID == key.ParentID);
+                if (link != null && Guid.TryParse(link.Value, out var current) && templates.Contains(current))
+                    continue; // its template is still here
+                key.Value = template.Key;
+            }
+            db.SaveChanges();
+            return LinkOrphans(db, template);
+        }
+
         /// <summary>The template in this game the card's link points at: by id, else by key.</summary>
         public static CardModel? Resolve(IDbContext db, Guid gameId, string? templateId, string? templateKey)
         {
