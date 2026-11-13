@@ -7,6 +7,7 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,85 +33,61 @@ namespace NordvikManager.Tests.Controllers
 
         private static SetProxyAllowedPrivateHostsCommand Hosts(params string[] hosts) => new() { Hosts = new List<string>(hosts) };
 
-        [Fact]
-        public async Task Get_ReturnsUnauthorized_WhenNotLocalAdmin()
+        // Server settings are the local admin's: anyone else (or no one) changes nothing.
+        private static readonly Dictionary<string, Func<ServerSettingsController, Task<IActionResult>>> Actions = new()
         {
-            var result = await CreateController(Player()).Get();
+            ["Get"] = c => c.Get(),
+            ["SetProxyAllowedPrivateHosts"] = c => c.SetProxyAllowedPrivateHosts(Hosts("localhost")),
+            ["SetSandboxAllowedOrigins"] = c => c.SetSandboxAllowedOrigins(new SetSandboxAllowedOriginsCommand { Origins = new List<string> { "https://cdn.example.com" } }),
+            ["SetAddonRegistry"] = c => c.SetAddonRegistry(new SetAddonRegistryCommand { MainRepository = "https://mine.example/addons.json" }),
+            ["SetUploadLimits"] = c => c.SetUploadLimits(new SetUploadLimitsCommand { GmGameLimitMb = 0, PlayerLimitMb = 300 }),
+        };
+
+        public static TheoryData<string, bool> NotLocalAdmin()
+        {
+            var data = new TheoryData<string, bool>();
+            foreach (var action in Actions.Keys)
+            {
+                data.Add(action, true);  // a player
+                data.Add(action, false); // no user
+            }
+            return data;
+        }
+
+        [Theory]
+        [MemberData(nameof(NotLocalAdmin))]
+        public async Task Action_ReturnsUnauthorized_WhenNotLocalAdmin(string action, bool aPlayer)
+        {
+            var result = await Actions[action](CreateController(aPlayer ? Player() : null));
 
             Assert.IsType<UnauthorizedResult>(result);
-            _mediator.Verify(m => m.Send(It.IsAny<GetServerSettingsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+            Assert.Empty(_mediator.Invocations);
         }
 
         [Fact]
-        public async Task SetProxyHosts_ReturnsUnauthorized_WhenNoUser()
-        {
-            var result = await CreateController(null).SetProxyAllowedPrivateHosts(Hosts("localhost"));
-
-            Assert.IsType<UnauthorizedResult>(result);
-            _mediator.Verify(m => m.Send(It.IsAny<SetProxyAllowedPrivateHostsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task SetSandboxOrigins_ReturnsUnauthorized_WhenNotLocalAdmin()
-        {
-            var result = await CreateController(Player()).SetSandboxAllowedOrigins(new SetSandboxAllowedOriginsCommand { Origins = new List<string> { "https://cdn.example.com" } });
-
-            Assert.IsType<UnauthorizedResult>(result);
-            _mediator.Verify(m => m.Send(It.IsAny<SetSandboxAllowedOriginsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task SetSandboxOrigins_ReturnsBadRequest_ForAnInvalidEntry()
-        {
-            _mediator.Setup(m => m.Send(It.IsAny<SetSandboxAllowedOriginsCommand>(), It.IsAny<CancellationToken>()))
-                .ThrowsAsync(new ServerSettingsException("Not an https origin"));
-
-            var result = await CreateController(LocalAdmin()).SetSandboxAllowedOrigins(new SetSandboxAllowedOriginsCommand { Origins = new List<string> { "*" } });
-
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task SetAddonRegistry_ReturnsUnauthorized_WhenNotLocalAdmin()
-        {
-            var result = await CreateController(Player()).SetAddonRegistry(new SetAddonRegistryCommand { MainRepository = "https://mine.example/addons.json" });
-
-            Assert.IsType<UnauthorizedResult>(result);
-            _mediator.Verify(m => m.Send(It.IsAny<SetAddonRegistryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task SetUploadLimits_ReturnsUnauthorized_WhenNotLocalAdmin_AndOkForTheAdmin()
-        {
-            var command = new SetUploadLimitsCommand { GmGameLimitMb = 0, PlayerLimitMb = 300 };
-            Assert.IsType<UnauthorizedResult>(await CreateController(Player()).SetUploadLimits(command));
-            _mediator.Verify(m => m.Send(It.IsAny<SetUploadLimitsCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-
-            var dto = new ServerSettingsDTO();
-            _mediator.Setup(m => m.Send(command, It.IsAny<CancellationToken>())).ReturnsAsync(dto);
-            Assert.Same(dto, Assert.IsType<OkObjectResult>(await CreateController(LocalAdmin()).SetUploadLimits(command)).Value);
-        }
-
-        [Fact]
-        public async Task Get_ReturnsOk_ForLocalAdmin()
+        public async Task Get_AndSetUploadLimits_ReturnTheSettings_ForLocalAdmin()
         {
             var dto = new ServerSettingsDTO();
             _mediator.Setup(m => m.Send(It.IsAny<GetServerSettingsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(dto);
+            Assert.Same(dto, Assert.IsType<OkObjectResult>(await CreateController(LocalAdmin()).Get()).Value);
 
-            var result = await CreateController(LocalAdmin()).Get();
-
-            Assert.Same(dto, Assert.IsType<OkObjectResult>(result).Value);
+            var command = new SetUploadLimitsCommand { GmGameLimitMb = 0, PlayerLimitMb = 300 };
+            var updated = new ServerSettingsDTO();
+            _mediator.Setup(m => m.Send(command, It.IsAny<CancellationToken>())).ReturnsAsync(updated);
+            Assert.Same(updated, Assert.IsType<OkObjectResult>(await CreateController(LocalAdmin()).SetUploadLimits(command)).Value);
         }
 
-        [Fact]
-        public async Task SetProxyHosts_ReturnsBadRequest_ForAnInvalidEntry()
+        [Theory]
+        [InlineData("SetProxyAllowedPrivateHosts")]
+        [InlineData("SetSandboxAllowedOrigins")]
+        public async Task Set_ReturnsBadRequest_ForAnInvalidEntry(string action)
         {
             _mediator.Setup(m => m.Send(It.IsAny<SetProxyAllowedPrivateHostsCommand>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(new ServerSettingsException("Not a host"));
+            _mediator.Setup(m => m.Send(It.IsAny<SetSandboxAllowedOriginsCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new ServerSettingsException("Not an https origin"));
 
-            var result = await CreateController(LocalAdmin()).SetProxyAllowedPrivateHosts(Hosts("http://x"));
-
-            Assert.IsType<BadRequestObjectResult>(result);
+            Assert.IsType<BadRequestObjectResult>(await Actions[action](CreateController(LocalAdmin())));
         }
 
         [Fact]

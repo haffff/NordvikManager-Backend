@@ -82,38 +82,50 @@ namespace NordvikManager.Tests.Controllers
             mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(new GetPlayerCommandResponse { Player = player });
 
+        private static TResult Answer<TCommand, TResult>(Mock<IMediator> m, TResult value) where TCommand : IRequest<TResult>
+        {
+            m.Setup(x => x.Send(It.IsAny<TCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(value);
+            return value;
+        }
+
         // =========================================================================
-        // GetActions
+        // Reads: what the command answers is what the action answers
         // =========================================================================
+
+        private static readonly Dictionary<string, (Func<Mock<IMediator>, object> Setup, Func<AddonController, Task<IActionResult>> Call)> Reads = new()
+        {
+            ["GetActions"] = (m => { var a = new List<ActionDto>(); m.Setup(x => x.Send(It.IsAny<GetActionsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, a)); return a; },
+                c => c.GetActions(Guid.NewGuid(), 0)),
+            ["GetInstalledAddons"] = (m => Answer<GetAddonsCommand, List<AddonDto>>(m, new()), c => c.GetInstalledAddons(Guid.NewGuid())),
+            ["GetAddons"] = (m => Answer<GetAddonsCommand, List<AddonDto>>(m, new()), c => c.GetAddons(Guid.NewGuid())),
+            ["GetCategories"] = (m => Answer<GetAddonCategoriesCommand, List<RegistryCategoryDto>>(m, new() { new() { Key = "tools", Name = "Tools" } }), c => c.GetCategories(Guid.NewGuid())),
+            ["GetRepository"] = (m => Answer<GetAddonsFromRepositoryCommand, List<RegistryAddonDto>>(m, new()), c => c.GetRepository(Guid.NewGuid())),
+            ["GetAction"] = (m => { var a = new ActionDto { Id = Guid.NewGuid() }; m.Setup(x => x.Send(It.IsAny<GetActionByIdCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, a)); return a; },
+                c => c.GetAction(Guid.NewGuid(), Guid.NewGuid())),
+            ["GetCustomPanel"] = (m => Answer<GetCardCommand, CardDto>(m, new CardDto { Id = Guid.NewGuid(), Name = "panel" }), c => c.GetCustomPanel(Guid.NewGuid(), "MyPanel")),
+            ["GetCustomPanels"] = (m => { var cards = new List<CardDto>(); m.Setup(x => x.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, cards)); return cards; },
+                c => c.GetCustomPanels(Guid.NewGuid())),
+        };
+
+        public static TheoryData<string> ReadNames() => new(Reads.Keys);
+
+        [Theory]
+        [MemberData(nameof(ReadNames))]
+        public async Task Read_ReturnsOk_WithTheCommandsAnswer(string action)
+        {
+            var expected = Reads[action].Setup(_mediator);
+
+            var ok = Assert.IsType<OkObjectResult>(await Reads[action].Call(_controller));
+            Assert.Same(expected, ok.Value);
+        }
 
         [Fact]
         public async Task GetActions_ReturnsBadRequest_WhenCommandResponseIsNotOk()
         {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<GetActionsCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.WrongArguments, new List<ActionDto>()));
 
-            // Act
-            var result = await _controller.GetActions(Guid.NewGuid(), 0);
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetActions_ReturnsOk_WhenCommandResponseIsOk()
-        {
-            // Arrange
-            var actions = new List<ActionDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetActionsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, actions));
-
-            // Act
-            var result = await _controller.GetActions(Guid.NewGuid(), 0);
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(actions, ok.Value);
+            Assert.IsType<BadRequestObjectResult>(await _controller.GetActions(Guid.NewGuid(), 0));
         }
 
         // The Actions panel asks without a page: it must get every action, not the first
@@ -129,339 +141,132 @@ namespace NordvikManager.Tests.Controllers
             _mediator.Verify(m => m.Send(It.Is<GetActionsCommand>(c => c.Page == null), It.IsAny<CancellationToken>()), Times.Once);
         }
 
-        // =========================================================================
-        // GetStepDefinitions
-        // =========================================================================
-
         [Fact]
-        public async Task GetStepDefinitions_ReturnsOk_WithEmptyDefinitions()
+        public async Task GetStepDefinitionsAndHooks_ReturnOk()
         {
-            // Arrange — use a custom controller with an empty service provider
-            var serviceProvider = new ServiceCollection().BuildServiceProvider();
-            var controller = CreateController(_mediator, serviceProvider, contextUser: AnyUser());
+            var controller = CreateController(_mediator, new ServiceCollection().BuildServiceProvider(), contextUser: AnyUser());
 
-            // Act
-            var result = await controller.GetStepDefinitions();
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetHooks
-        // =========================================================================
-
-        [Fact]
-        public void GetHooks_ReturnsOk_WithAllHooks()
-        {
-            // Act
-            var result = _controller.GetHooks();
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        // =========================================================================
-        // GetInstalledAddons
-        // =========================================================================
-
-        [Fact]
-        public async Task GetInstalledAddons_ReturnsOk_WithAddonList()
-        {
-            // Arrange
-            var addons = new List<AddonDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(addons);
-
-            // Act
-            var result = await _controller.GetInstalledAddons(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(addons, ok.Value);
-        }
-
-        // =========================================================================
-        // GetRepository
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCategories_ReturnsTheRegistrysCategories()
-        {
-            var categories = new List<RegistryCategoryDto> { new() { Key = "tools", Name = "Tools" } };
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCategoriesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(categories);
-
-            var ok = Assert.IsType<OkObjectResult>(await _controller.GetCategories(Guid.NewGuid()));
-            Assert.Equal(categories, ok.Value);
+            Assert.IsType<OkObjectResult>(await controller.GetStepDefinitions());
+            Assert.NotNull(Assert.IsType<OkObjectResult>(_controller.GetHooks()).Value);
         }
 
         [Fact]
-        public async Task GetReadme_WithoutKey_IsABadRequest()
-        {
-            Assert.IsType<BadRequestObjectResult>(await _controller.GetReadme(Guid.NewGuid(), " "));
-        }
-
-        [Fact]
-        public async Task GetReadme_NoReadme_IsNotFound()
-        {
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonReadmeCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((AddonReadmeDto?)null);
-
-            Assert.IsType<NotFoundObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "dnd5e"));
-        }
-
-        [Fact]
-        public async Task GetReadme_ReturnsTheMarkdown_ForThatKey()
+        public async Task GetReadme_ReturnsTheMarkdown_ForThatKey_NotFoundWithoutOne_BadGatewayWhenTheFetchFails()
         {
             var readme = new AddonReadmeDto { Key = "poll", Url = "https://raw.githubusercontent.com/h/X/t/README.md", Markdown = "# Poll" };
-            _mediator.Setup(m => m.Send(It.Is<GetAddonReadmeCommand>(c => c.Key == "poll"), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(readme);
-
-            var ok = Assert.IsType<OkObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "poll"));
-            Assert.Equal(readme, ok.Value);
-        }
-
-        [Fact]
-        public async Task GetReadme_FetchFails_IsABadGateway()
-        {
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonReadmeCommand>(), It.IsAny<CancellationToken>()))
+            _mediator.Setup(m => m.Send(It.Is<GetAddonReadmeCommand>(c => c.Key == "poll"), It.IsAny<CancellationToken>())).ReturnsAsync(readme);
+            _mediator.Setup(m => m.Send(It.Is<GetAddonReadmeCommand>(c => c.Key == "dnd5e"), It.IsAny<CancellationToken>())).ReturnsAsync((AddonReadmeDto?)null);
+            _mediator.Setup(m => m.Send(It.Is<GetAddonReadmeCommand>(c => c.Key == "broken"), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new InvalidOperationException("The readme answered 404."));
 
-            var result = Assert.IsType<ObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "poll"));
-            Assert.Equal(StatusCodes.Status502BadGateway, result.StatusCode);
-        }
-
-        [Fact]
-        public async Task GetRepository_ReturnsOk_WithAddonList()
-        {
-            // Arrange
-            var addons = new List<RegistryAddonDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(addons);
-
-            // Act
-            var result = await _controller.GetRepository(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(addons, ok.Value);
+            Assert.Same(readme, Assert.IsType<OkObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "poll")).Value);
+            Assert.IsType<NotFoundObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "dnd5e"));
+            Assert.Equal(StatusCodes.Status502BadGateway, Assert.IsType<ObjectResult>(await _controller.GetReadme(Guid.NewGuid(), "broken")).StatusCode);
         }
 
         // =========================================================================
-        // GetAddons (legacy)
+        // Requests missing what they need are refused before anything runs
         // =========================================================================
 
-        [Fact]
-        public async Task GetAddons_ReturnsOk_WithAddonList()
+        private static readonly Dictionary<string, Func<AddonController, Task<IActionResult>>> Incomplete = new()
         {
-            // Arrange
-            var addons = new List<AddonDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(addons);
+            ["GetReadme without a key"] = c => c.GetReadme(Guid.NewGuid(), " "),
+            ["InstallAddon without a key"] = c => c.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null }),
+            ["UpdateAddon without a key"] = c => c.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null }),
+            ["UninstallAddon without an id"] = c => c.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = null }),
+            ["SetEnabled without an id"] = c => c.SetEnabled(Guid.NewGuid(), new AddonController.SetEnabledRequest { AddonId = null, Enabled = true }),
+            ["InstallFromFile without data"] = c => c.InstallFromFile(Guid.NewGuid(), new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = null }),
+            ["InstallFromFile with data that is not base64"] = c => c.InstallFromFile(Guid.NewGuid(), new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = "not-base64!!!" }),
+        };
 
-            // Act
-            var result = await _controller.GetAddons(Guid.NewGuid());
+        public static TheoryData<string> IncompleteNames() => new(Incomplete.Keys);
 
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(addons, ok.Value);
+        [Theory]
+        [MemberData(nameof(IncompleteNames))]
+        public async Task IncompleteRequest_ReturnsBadRequest(string request)
+        {
+            Assert.IsType<BadRequestObjectResult>(await Incomplete[request](_controller));
         }
 
         // =========================================================================
-        // InstallAddon
+        // Install / uninstall: kicked off in the background, answered with an operation id
         // =========================================================================
 
-        [Fact]
-        public async Task InstallAddon_ReturnsBadRequest_WhenKeyMissing()
+        private static readonly Dictionary<string, (bool Uninstall, Func<AddonController, Task<IActionResult>> Call)> KickOffs = new()
         {
-            // Act
-            var result = await _controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null });
+            ["InstallAddon"] = (false, c => c.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" })),
+            ["InstallFromFile"] = (false, c => c.InstallFromFile(Guid.NewGuid(), new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = Convert.ToBase64String(new byte[] { 1, 2, 3 }) })),
+            ["UninstallAddon by id"] = (true, c => c.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() })),
+            ["UninstallAddon by key"] = (true, c => c.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = "dnd5e" })),
+        };
 
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+        public static TheoryData<string> KickOffNames() => new(KickOffs.Keys);
+
+        /// <summary>The background work the action starts: succeeds, calls back first, or throws.</summary>
+        private void SetupBackgroundWork(string action, Action? callback = null, Exception? failure = null)
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(new AddonDto { Key = "dnd5e" });
+            if (KickOffs[action].Uninstall)
+            {
+                var setup = _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()));
+                if (failure != null) setup.ThrowsAsync(failure);
+                else setup.Callback(() => callback?.Invoke()).ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
+            }
+            else
+            {
+                var setup = _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()));
+                if (failure != null) setup.ThrowsAsync(failure);
+                else setup.Callback(() => callback?.Invoke()).ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
+            }
         }
 
-        [Fact]
-        public async Task InstallAddon_ReturnsOkWithOperationId_WhenKeyProvided()
+        [Theory]
+        [MemberData(nameof(KickOffNames))]
+        public async Task KickOff_ReturnsOkWithOperationId(string action)
         {
-            // Arrange — the install itself now runs in the background (fire-and-forget,
-            // mirrors LinkDirectory); this just proves the kick-off response shape.
             var lobbyMock = new Mock<ILobbyService>();
             var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
+            SetupBackgroundWork(action);
 
-            // Act
-            var result = await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
+            var ok = Assert.IsType<OkObjectResult>(await KickOffs[action].Call(controller));
             Assert.NotNull(ok.Value);
         }
 
-        [Fact]
-        public async Task InstallAddon_ReturnsOkImmediately_EvenWhenInstallFailsInBackground()
+        // A failure in the background is reported through operation_failed, not as the
+        // request's answer.
+        [Theory]
+        [InlineData("InstallAddon")]
+        [InlineData("UninstallAddon by id")]
+        public async Task KickOff_ReturnsOkImmediately_EvenWhenTheWorkFailsInBackground(string action)
         {
-            // Arrange — a failure inside the backgrounded install no longer propagates as an
-            // HTTP exception (it's reported via operation_failed instead), so the kick-off
-            // response should still come back Ok.
             var lobbyMock = new Mock<ILobbyService>();
             var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new ResourceNotFoundException("Game", Guid.NewGuid()));
+            SetupBackgroundWork(action, failure: new ResourceNotFoundException("Addon", Guid.NewGuid()));
 
-            // Act
-            var result = await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await KickOffs[action].Call(controller));
         }
 
-        [Fact]
-        public async Task InstallAddon_RunsInstallInBackground_AfterRequestScopeIsDisposed()
+        // The WebRTC dispatcher disposes the request's DI scope as soon as the answer is sent;
+        // the background work must not depend on it (it used to build its scope from the
+        // request's IServiceProvider and crash with ObjectDisposedException, leaving the
+        // "Installing…" toast spinning).
+        [Theory]
+        [InlineData("InstallAddon")]
+        [InlineData("UninstallAddon by key")]
+        public async Task KickOff_RunsTheWorkInBackground_AfterRequestScopeIsDisposed(string action)
         {
-            // Arrange — the WebRTC dispatcher disposes the request's DI scope as soon as the
-            // answer is sent; the background install must not depend on it (it used to build
-            // its scope from the request's IServiceProvider and crash with
-            // ObjectDisposedException, leaving the "Installing…" toast spinning).
             var lobbyMock = new Mock<ILobbyService>();
             var root = (ServiceProvider)BuildBackgroundServiceProvider(_mediator, lobbyMock);
             var requestScope = root.CreateScope();
             var controller = CreateController(_mediator, requestScope.ServiceProvider, lobbyMock, AnyUser());
-            var installRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .Callback(() => installRan.TrySetResult())
-                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
+            var ran = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            SetupBackgroundWork(action, callback: () => ran.TrySetResult());
 
-            // Act
-            await controller.InstallAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
+            await KickOffs[action].Call(controller);
             requestScope.Dispose();
 
-            // Assert
-            var finished = await Task.WhenAny(installRan.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.Same(installRan.Task, finished);
-        }
-
-        // =========================================================================
-        // UpdateAddon
-        // =========================================================================
-
-        [Fact]
-        public async Task UpdateAddon_ReturnsOk_WhenKeyProvided()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.Is<InstallAddonCommand>(c => c.Reinstall), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
-
-            // Act
-            var result = await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" });
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task UpdateAddon_ReturnsBadRequest_WhenKeyMissing()
-        {
-            // Act
-            var result = await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = null });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        // =========================================================================
-        // UninstallAddon
-        // =========================================================================
-
-        [Fact]
-        public async Task UninstallAddon_ReturnsOkWithOperationId_WhenAddonIdProvided()
-        {
-            // Arrange — UninstallAddon still looks up the existing addon synchronously (for
-            // the immediate 400 on a bad id and the hook call's key), but the uninstall itself
-            // now runs in the background (fire-and-forget, mirrors InstallAddon) — this just
-            // proves the kick-off response shape.
-            var lobbyMock = new Mock<ILobbyService>();
-            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
-            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
-
-            // Act
-            var result = await controller.UninstallAddon(Guid.NewGuid(),
-                new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() });
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        [Fact]
-        public async Task UninstallAddon_ReturnsOkWithOperationId_WhenKeyProvided()
-        {
-            // Arrange
-            var lobbyMock = new Mock<ILobbyService>();
-            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
-            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
-
-            // Act
-            var result = await controller.UninstallAddon(Guid.NewGuid(),
-                new AddonController.UninstallAddonRequest { AddonId = "dnd5e" });
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        [Fact]
-        public async Task UninstallAddon_RunsUninstallInBackground_AfterRequestScopeIsDisposed()
-        {
-            // Arrange — see InstallAddon_RunsInstallInBackground_AfterRequestScopeIsDisposed.
-            var lobbyMock = new Mock<ILobbyService>();
-            var root = (ServiceProvider)BuildBackgroundServiceProvider(_mediator, lobbyMock);
-            var requestScope = root.CreateScope();
-            var controller = CreateController(_mediator, requestScope.ServiceProvider, lobbyMock, AnyUser());
-            var uninstallRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
-            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .Callback(() => uninstallRan.TrySetResult())
-                     .ReturnsAsync((CommandResponse.Ok, new UninstallAddonCommandResponse()));
-
-            // Act
-            await controller.UninstallAddon(Guid.NewGuid(), new AddonController.UninstallAddonRequest { AddonId = "dnd5e" });
-            requestScope.Dispose();
-
-            // Assert
-            var finished = await Task.WhenAny(uninstallRan.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.Same(uninstallRan.Task, finished);
-        }
-
-        [Fact]
-        public async Task UninstallAddon_ReturnsOkImmediately_EvenWhenUninstallFailsInBackground()
-        {
-            // Arrange — a failure inside the backgrounded uninstall no longer propagates as an
-            // HTTP exception (it's reported via operation_failed instead), so the kick-off
-            // response should still come back Ok, exactly like InstallAddon's equivalent test.
-            var lobbyMock = new Mock<ILobbyService>();
-            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<GetAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new AddonDto { Key = "dnd5e" });
-            _mediator.Setup(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new ResourceNotFoundException("Addon", Guid.NewGuid()));
-
-            // Act
-            var result = await controller.UninstallAddon(Guid.NewGuid(),
-                new AddonController.UninstallAddonRequest { AddonId = Guid.NewGuid().ToString() });
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            var finished = await Task.WhenAny(ran.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.Same(ran.Task, finished);
         }
 
         // Refused on the request, before the addon's Uninstall hook can run.
@@ -480,177 +285,40 @@ namespace NordvikManager.Tests.Controllers
             _mediator.Verify(m => m.Send(It.IsAny<UninstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
-        [Fact]
-        public async Task UninstallAddon_ReturnsBadRequest_WhenAddonIdMissing()
-        {
-            // Act
-            var result = await _controller.UninstallAddon(Guid.NewGuid(),
-                new AddonController.UninstallAddonRequest { AddonId = null });
+        // =========================================================================
+        // UpdateAddon, SetEnabled, GetAction errors
+        // =========================================================================
 
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+        [Fact]
+        public async Task UpdateAddon_ReinstallsAndReturnsOk()
+        {
+            _mediator.Setup(m => m.Send(It.Is<InstallAddonCommand>(c => c.Reinstall), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
+
+            Assert.IsType<OkResult>(await _controller.UpdateAddon(Guid.NewGuid(), new AddonController.InstallAddonRequest { Key = "dnd5e" }));
         }
 
-        // =========================================================================
-        // SetEnabled
-        // =========================================================================
-
         [Fact]
-        public async Task SetEnabled_ReturnsOk_WhenAddonIdAndEnabledProvided()
+        public async Task SetEnabled_ReturnsOk_AndLetsAMissingAddonsExceptionThrough()
         {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<SetAddonEnabledCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(CommandResponse.Ok);
+            Assert.IsType<OkResult>(await _controller.SetEnabled(Guid.NewGuid(), new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = true }));
 
-            // Act
-            var result = await _controller.SetEnabled(Guid.NewGuid(),
-                new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = true });
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task SetEnabled_ReturnsBadRequest_WhenAddonIdMissing()
-        {
-            // Act
-            var result = await _controller.SetEnabled(Guid.NewGuid(),
-                new AddonController.SetEnabledRequest { AddonId = null, Enabled = true });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task SetEnabled_ThrowsResourceNotFoundException_WhenAddonMissing()
-        {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<SetAddonEnabledCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new ResourceNotFoundException("Addon", "dnd5e"));
-
-            // Act & Assert
             await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
                 _controller.SetEnabled(Guid.NewGuid(), new AddonController.SetEnabledRequest { AddonId = "dnd5e", Enabled = false }));
         }
 
-        // =========================================================================
-        // InstallFromFile
-        // =========================================================================
-
+        // GetActionByIdCommandHandler's not-found path throws rather than returning NoResource.
         [Fact]
-        public async Task InstallFromFile_ReturnsBadRequest_WhenDataMissing()
+        public async Task GetAction_LetsAMissingActionsExceptionThrough()
         {
-            // Act
-            var result = await _controller.InstallFromFile(Guid.NewGuid(),
-                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = null });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task InstallFromFile_ReturnsBadRequest_WhenDataIsNotBase64()
-        {
-            // Act
-            var result = await _controller.InstallFromFile(Guid.NewGuid(),
-                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = "not-base64!!!" });
-
-            // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task InstallFromFile_ReturnsOkWithOperationId_WhenValidBase64Provided()
-        {
-            // Arrange — the install itself now runs in the background (fire-and-forget,
-            // mirrors LinkDirectory); this just proves the kick-off response shape.
-            var lobbyMock = new Mock<ILobbyService>();
-            var controller = CreateController(_mediator, BuildBackgroundServiceProvider(_mediator, lobbyMock), lobbyMock, AnyUser());
-            _mediator.Setup(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, new InstallAddonCommandResponse { AddonKey = "dnd5e" }));
-            var base64 = Convert.ToBase64String(new byte[] { 1, 2, 3 });
-
-            // Act
-            var result = await controller.InstallFromFile(Guid.NewGuid(),
-                new AddonController.InstallFromFileRequest { FileName = "test.zip", Data = base64 });
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        // =========================================================================
-        // GetAction
-        // =========================================================================
-
-        [Fact]
-        public async Task GetAction_ThrowsResourceNotFoundException_WhenActionMissing()
-        {
-            // Arrange
-            // GetActionByIdCommandHandler's not-found path throws (Part 2) rather than
-            // returning CommandResponse.NoResource.
             _mediator.Setup(m => m.Send(It.IsAny<GetActionByIdCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new ResourceNotFoundException("Action", Guid.NewGuid()));
 
-            // Act & Assert
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
-                _controller.GetAction(Guid.NewGuid(), Guid.NewGuid()));
-        }
-
-        [Fact]
-        public async Task GetAction_ReturnsOk_WhenCommandResponseIsOk()
-        {
-            // Arrange
-            var actionDto = new ActionDto { Id = Guid.NewGuid() };
-            _mediator.Setup(m => m.Send(It.IsAny<GetActionByIdCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, actionDto));
-
-            // Act
-            var result = await _controller.GetAction(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(actionDto, ok.Value);
-        }
-
-        // =========================================================================
-        // GetCustomPanel
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCustomPanel_ReturnsOk_WithCardDto()
-        {
-            // Arrange
-            var card = new CardDto { Id = Guid.NewGuid(), Name = "panel" };
-            _mediator.Setup(m => m.Send(It.IsAny<GetCardCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(card);
-
-            // Act
-            var result = await _controller.GetCustomPanel(Guid.NewGuid(), "MyPanel");
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(card, ok.Value);
-        }
-
-        // =========================================================================
-        // GetCustomPanels
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCustomPanels_ReturnsOk_WithCardList()
-        {
-            // Arrange
-            var cards = new List<CardDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, cards));
-
-            // Act
-            var result = await _controller.GetCustomPanels(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(cards, ok.Value);
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => _controller.GetAction(Guid.NewGuid(), Guid.NewGuid()));
         }
     }
 }
