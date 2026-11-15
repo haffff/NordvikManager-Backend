@@ -35,34 +35,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             }),
         };
 
-        // GameLobby's constructor eagerly resolves IActionProcessingService via
-        // GetRequiredService (throws on null) and a couple of optional services via
-        // GetService (tolerates null), so a bare Mock.Of<IServiceScopeFactory>() isn't
-        // enough — it needs a scope/provider chain wired through to a mocked
-        // IActionProcessingService.
-        private static GameLobby MakeLobby()
-        {
-            var actionProcessingService = new Mock<IActionProcessingService>();
-
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(actionProcessingService.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new NordvikManager.Application.DataTransferObjects.Game.PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         [Fact]
         public async Task Execute_MediatorThrows_StoresFailureResultInsteadOfPropagating()
         {
@@ -72,7 +44,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             var variables = new Dictionary<string, object>();
 
             // Must not throw — a network failure should be captured as data, not an exception.
-            await _step.Execute(_mediator.Object, variables, MakeLobby(), MakeStep());
+            await _step.Execute(_mediator.Object, variables, TestLobby.Create(), MakeStep());
 
             Assert.True(variables.ContainsKey("output"));
             var result = Assert.IsType<ProxyCommandResult>(variables["output"]);
@@ -90,7 +62,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
 
             var variables = new Dictionary<string, object>();
 
-            await _step.Execute(_mediator.Object, variables, MakeLobby(), MakeStep());
+            await _step.Execute(_mediator.Object, variables, TestLobby.Create(), MakeStep());
 
             Assert.Same(expected, variables["output"]);
         }

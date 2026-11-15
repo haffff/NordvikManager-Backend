@@ -41,15 +41,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                     return check.Player.Id == _coGm.Id && check.EntityId == _lobby.GameId && check.RequiredPermission == Permission.Edit;
                 });
 
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            _lobby = new GameLobby(factory.Object) { GameId = Guid.NewGuid(), SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" } };
+            _lobby = TestLobby.Create();
 
             foreach (var p in new[] { _owner, _coGm, _player })
             {

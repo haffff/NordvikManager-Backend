@@ -57,36 +57,6 @@ namespace NordvikManager.Tests.Controllers
             mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(new GetPlayerCommandResponse { Player = player });
 
-        /// <summary>
-        /// PlaySound/StopSound broadcast over lobby.HandlePostCommand, which needs a real
-        /// GameLobby — not just a mocked ILobbyService. Same construction as
-        /// PlaylistControllerTests.MakeLobby().
-        /// </summary>
-        private static GameLobby MakeLobby(Mock<IMediator> mediatorMock)
-        {
-            var actionProcessingService = new Mock<IActionProcessingService>();
-
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(actionProcessingService.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            provider.Setup(p => p.GetService(typeof(IMediator)))
-                    .Returns(mediatorMock.Object);
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         private static ILobbyService LobbyServiceReturning(GameLobby lobby)
         {
             var lobbyService = new Mock<ILobbyService>();
@@ -115,7 +85,7 @@ namespace NordvikManager.Tests.Controllers
             // access to the resource — the controller must not broadcast sound_play in that case.
             var connection = new Mock<IPlayerConnection>();
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             var listener = new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" };
             lobby.ConnectedPlayers[listener] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
@@ -142,7 +112,7 @@ namespace NordvikManager.Tests.Controllers
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))
                       .Callback<object>(m => sent = m as WebSocketCommand)
                       .ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             var listener = new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" };
             lobby.ConnectedPlayers[listener] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
@@ -184,7 +154,7 @@ namespace NordvikManager.Tests.Controllers
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))
                       .Callback<object>(m => sent = m as WebSocketCommand)
                       .ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             var listener = new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" };
             lobby.ConnectedPlayers[listener] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
@@ -206,7 +176,7 @@ namespace NordvikManager.Tests.Controllers
         {
             var connection = new Mock<IPlayerConnection>();
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             var listener = new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" };
             lobby.ConnectedPlayers[listener] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
@@ -226,7 +196,7 @@ namespace NordvikManager.Tests.Controllers
             var connection = new Mock<IPlayerConnection>();
             WebSocketCommand? sent = null;
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => sent = m as WebSocketCommand).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
             var resourceId = Guid.NewGuid();
@@ -251,7 +221,7 @@ namespace NordvikManager.Tests.Controllers
             var connection = new Mock<IPlayerConnection>();
             WebSocketCommand? sent = null;
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => sent = m as WebSocketCommand).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
             _mediator.Setup(m => m.Send(It.IsAny<StopSoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
@@ -267,7 +237,7 @@ namespace NordvikManager.Tests.Controllers
         {
             var connection = new Mock<IPlayerConnection>();
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
             var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
             _mediator.Setup(m => m.Send(It.IsAny<StopSoundCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.NoPermission);

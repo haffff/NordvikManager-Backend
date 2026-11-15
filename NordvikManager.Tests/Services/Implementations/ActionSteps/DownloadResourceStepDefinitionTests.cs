@@ -22,24 +22,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
     public class DownloadResourceStepDefinitionTests
     {
         private readonly Mock<IMediator> _mediator = new();
-        private readonly GameLobby _lobby = MakeLobby();
-
-        private static GameLobby MakeLobby()
-        {
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            return new GameLobby(factory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new NordvikManager.Application.DataTransferObjects.Game.PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
+        private readonly GameLobby _lobby = TestLobby.Create();
 
         private async Task<Dictionary<string, object>> Run(object data)
         {

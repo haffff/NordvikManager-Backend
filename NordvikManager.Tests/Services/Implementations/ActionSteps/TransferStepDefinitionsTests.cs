@@ -23,25 +23,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         private readonly Mock<IMediator> _mediator = new();
         private readonly Guid _newId = Guid.NewGuid();
 
-        private GameLobby MakeLobby()
-        {
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            provider.Setup(p => p.GetService(typeof(IMediator))).Returns(_mediator.Object);
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         private static ActionStep Step(string type, object data) => new() { Type = type, Data = JObject.FromObject(data) };
 
         private ImportEntityResult Imported(params string[] missing) => new(_newId, EntityTransferKinds.Map, null, new List<string>(missing), new());
@@ -49,7 +30,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task Duplicate_CopiesNextToTheOriginal_AndStoresTheCopysId()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             var mapId = Guid.NewGuid();
             var export = new EntityExportDto { Kind = EntityTransferKinds.Map, Name = "Forest", Data = new JObject() };
             _mediator.Setup(m => m.Send(It.Is<ExportEntityCommand>(c => c.Id == mapId && c.Kind == "map" && c.GameId == lobby.GameId && c.Player == lobby.SystemPlayer && !c.IncludeFiles), It.IsAny<CancellationToken>()))
@@ -79,7 +60,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                      .Callback<IRequest<ImportEntityResult>, CancellationToken>((c, _) => sent = (ImportEntityCommand)c)
                      .ReturnsAsync(Imported());
 
-            await new DuplicateStepDefinition().Execute(_mediator.Object, new(), MakeLobby(),
+            await new DuplicateStepDefinition().Execute(_mediator.Object, new(), TestLobby.Create(mediator: _mediator.Object),
                 Step("Duplicate", new { Kind = "card", Id = Guid.NewGuid().ToString(), Name = "Goblin 2", Folder = "Encounter" }));
 
             Assert.Equal("Goblin 2", sent!.Name);
@@ -92,16 +73,16 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         {
             _mediator.Setup(m => m.Send(It.IsAny<ExportEntityCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((EntityExportDto?)null);
 
-            await Assert.ThrowsAsync<ActionProcessException>(() => new DuplicateStepDefinition().Execute(_mediator.Object, new(), MakeLobby(),
+            await Assert.ThrowsAsync<ActionProcessException>(() => new DuplicateStepDefinition().Execute(_mediator.Object, new(), TestLobby.Create(mediator: _mediator.Object),
                 Step("Duplicate", new { Kind = "map", Id = Guid.NewGuid().ToString() })));
-            await Assert.ThrowsAsync<ActionProcessException>(() => new DuplicateStepDefinition().Execute(_mediator.Object, new(), MakeLobby(),
+            await Assert.ThrowsAsync<ActionProcessException>(() => new DuplicateStepDefinition().Execute(_mediator.Object, new(), TestLobby.Create(mediator: _mediator.Object),
                 Step("Duplicate", new { Kind = "spell", Id = Guid.NewGuid().ToString() })));
         }
 
         [Fact]
         public async Task ImportJson_ImportsTheFile_AndSaysWhatIsMissing()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
             ImportEntityFromResourceCommand? sent = null;
             _mediator.Setup(m => m.Send(It.IsAny<ImportEntityFromResourceCommand>(), It.IsAny<CancellationToken>()))
                      .Callback<IRequest<ImportEntityResult>, CancellationToken>((c, _) => sent = (ImportEntityFromResourceCommand)c)
@@ -125,7 +106,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             _mediator.Setup(m => m.Send(It.IsAny<ImportEntityFromResourceCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(WrongArgumentsException.Because("\"x.json\" was uploaded by a player"));
 
-            var error = await Assert.ThrowsAsync<ActionProcessException>(() => new ImportJsonStepDefinition().Execute(_mediator.Object, new(), MakeLobby(),
+            var error = await Assert.ThrowsAsync<ActionProcessException>(() => new ImportJsonStepDefinition().Execute(_mediator.Object, new(), TestLobby.Create(mediator: _mediator.Object),
                 Step("ImportJson", new { Resource = "x.json" })));
             Assert.Contains("uploaded by a player", error.Message);
         }

@@ -37,15 +37,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             _mediator.Setup(m => m.Send(It.IsAny<GetBattleMapsCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new List<BattleMapDto> { new() { Id = Guid.NewGuid(), MapId = _viewMap } });
 
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            _lobby = new GameLobby(factory.Object) { GameId = Guid.NewGuid(), SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" } };
+            _lobby = TestLobby.Create();
         }
 
         private Task<Guid> Resolve(string of, string parentId, Dictionary<string, object> variables = null) =>
