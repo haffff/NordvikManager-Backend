@@ -10,6 +10,7 @@ using NordvikManager.Domain.Entities.Resources;
 using NordvikManager.Domain.Enums;
 using MediatR;
 using Moq;
+using GameModel = NordvikManager.Domain.Entities.BattleMap.GameModel;
 
 namespace NordvikManager.Application.UnitTests.Commands.Addons
 {
@@ -36,28 +37,22 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             return addon;
         }
 
-        [Fact]
-        public async Task Handle_ByKey_AddonOfAnotherGame_IsNotFoundAndStays()
+        private Task<(CommandResponse, UninstallAddonCommandResponse)> Uninstall(Guid gameId, Guid? addonId = null, string? key = null, bool forReinstall = false) =>
+            Handler().Handle(new UninstallAddonCommand { GameID = gameId, Player = Player(), AddonId = addonId, AddonKey = key, ForReinstall = forReinstall }, CancellationToken.None);
+
+        private bool AddonExists(Guid id) => SeedContext().Addons.Any(a => a.Id == id);
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task Handle_AddonOfAnotherGame_IsNotFoundAndStays(bool byKey)
         {
             var game = BuildGame();
             var otherGame = OtherGame();
             var otherAddon = SeedAddon(otherGame.Id, key: "dnd5e");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "dnd5e" };
 
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
-            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
-        }
-
-        [Fact]
-        public async Task Handle_ById_AddonOfAnotherGame_IsNotFoundAndStays()
-        {
-            var game = BuildGame();
-            var otherGame = OtherGame();
-            var otherAddon = SeedAddon(otherGame.Id);
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = otherAddon.Id };
-
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
-            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => byKey ? Uninstall(game.Id, key: "dnd5e") : Uninstall(game.Id, otherAddon.Id));
+            Assert.True(AddonExists(otherAddon.Id));
         }
 
         [Fact]
@@ -67,29 +62,24 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             var otherAddon = SeedAddon(otherGame.Id, key: "dnd5e");
             var game = BuildGame();
             var addon = SeedAddon(game.Id, key: "dnd5e");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "dnd5e" };
-
-            var (_, result) = await Handler().Handle(cmd, CancellationToken.None);
+            var (_, result) = await Uninstall(game.Id, key: "dnd5e");
 
             Assert.Equal(addon.Id, result.AddonId);
-            Assert.True(SeedContext().Addons.Any(a => a.Id == otherAddon.Id));
+            Assert.True(AddonExists(otherAddon.Id));
         }
 
         [Fact]
         public async Task Handle_GameNotFound_ThrowsResourceNotFoundException()
         {
-            var cmd = new UninstallAddonCommand { GameID = Guid.NewGuid(), Player = Player(), AddonId = Guid.NewGuid() };
-
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Uninstall(Guid.NewGuid(), Guid.NewGuid()));
         }
 
         [Fact]
         public async Task Handle_AddonNotFound_ThrowsResourceNotFoundException()
         {
             var game = BuildGame();
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = Guid.NewGuid() };
 
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Uninstall(game.Id, Guid.NewGuid()));
         }
 
         [Fact]
@@ -97,9 +87,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         {
             var game = BuildGame();
             var addon = SeedAddon(game.Id);
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-
-            var (response, result) = await Handler().Handle(cmd, CancellationToken.None);
+            var (response, result) = await Uninstall(game.Id, addon.Id);
 
             Assert.Equal(CommandResponse.Ok, response);
             Assert.Equal(addon.Id, result.AddonId);
@@ -112,9 +100,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         {
             var game = BuildGame();
             var addon = SeedAddon(game.Id, key: "custom-key");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "custom-key" };
-
-            var (response, result) = await Handler().Handle(cmd, CancellationToken.None);
+            var (response, result) = await Uninstall(game.Id, key: "custom-key");
 
             Assert.Equal(CommandResponse.Ok, response);
             Assert.Equal(addon.Id, result.AddonId);
@@ -125,9 +111,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         {
             var game = BuildGame();
             var addon = SeedAddon(game.Id);
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Uninstall(game.Id, addon.Id);
 
             _mediator.Verify(m => m.Send(It.IsAny<RemoveResourceCommand>(), It.IsAny<CancellationToken>()), Times.Never);
             _mediator.Verify(m => m.Send(It.IsAny<RemoveCardCommand>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -151,8 +135,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             addon.Actions!.Add(action);
             Db.SaveChanges();
 
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Uninstall(game.Id, addon.Id);
 
             _mediator.Verify(m => m.Send(It.IsAny<RemoveResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
             _mediator.Verify(m => m.Send(It.IsAny<RemoveCardCommand>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -176,7 +159,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
                     return CommandResponse.Ok;
                 });
 
-        private TreeEntryModel SeedFolder(NordvikManager.Domain.Entities.BattleMap.GameModel game, string name, TreeEntryModel? parent = null, bool isFolder = true)
+        private TreeEntryModel SeedFolder(GameModel game, string name, TreeEntryModel? parent = null, bool isFolder = true)
         {
             var folder = new TreeEntryModel
             {
@@ -192,6 +175,18 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             return folder;
         }
 
+        // An addon with the "Addons/<AddonName>" folders install made, and a tree removal that behaves like the real one.
+        private (GameModel Game, AddonModel Addon, TreeEntryModel Root, TreeEntryModel Folder) AddonWithFolder()
+        {
+            SetupRealisticTreeEntryRemoval();
+            var game = BuildGame();
+            var addon = SeedAddon(game.Id);
+            var root = SeedFolder(game, "Addons");
+            return (game, addon, root, SeedFolder(game, addon.Name, root));
+        }
+
+        private bool Exists(TreeEntryModel entry) => Db.TreeEntries.Any(x => x.Id == entry.Id);
+
         // Regression coverage from the addon install/uninstall triage: InstallAddonCommandHandler
         // .CreateFolder builds "Addons/<AddonName>/{Scripts,Resources}" on install, but nothing
         // removed those folder entries on uninstall — every uninstall left empty ghost folders
@@ -199,49 +194,35 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         [Fact]
         public async Task Handle_RemovesEmptyAddonFolderStructure_AfterUninstall()
         {
-            SetupRealisticTreeEntryRemoval();
-            var game = BuildGame();
-            var addon = SeedAddon(game.Id);
-            var addonsRoot = SeedFolder(game, "Addons");
-            var addonFolder = SeedFolder(game, addon.Name, addonsRoot);
+            var (game, addon, addonsRoot, addonFolder) = AddonWithFolder();
             var scripts = SeedFolder(game, "Scripts", addonFolder);
             var resources = SeedFolder(game, "Resources", addonFolder);
 
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Uninstall(game.Id, addon.Id);
 
-            Assert.False(Db.TreeEntries.Any(x => x.Id == scripts.Id));
-            Assert.False(Db.TreeEntries.Any(x => x.Id == resources.Id));
-            Assert.False(Db.TreeEntries.Any(x => x.Id == addonFolder.Id));
-            Assert.False(Db.TreeEntries.Any(x => x.Id == addonsRoot.Id));
+            Assert.False(Exists(scripts));
+            Assert.False(Exists(resources));
+            Assert.False(Exists(addonFolder));
+            Assert.False(Exists(addonsRoot));
         }
 
         [Fact]
         public async Task Handle_LeavesSharedAddonsRootInPlace_WhenAnotherAddonStillHasAFolderThere()
         {
-            SetupRealisticTreeEntryRemoval();
-            var game = BuildGame();
-            var addon = SeedAddon(game.Id);
-            var addonsRoot = SeedFolder(game, "Addons");
-            var addonFolder = SeedFolder(game, addon.Name, addonsRoot);
+            var (game, addon, addonsRoot, addonFolder) = AddonWithFolder();
             // Another addon's folder under the same shared root — untouched by this uninstall.
             SeedFolder(game, "Pathfinder", addonsRoot);
 
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Uninstall(game.Id, addon.Id);
 
-            Assert.False(Db.TreeEntries.Any(x => x.Id == addonFolder.Id));
-            Assert.True(Db.TreeEntries.Any(x => x.Id == addonsRoot.Id), "Shared 'Addons' root should survive while another addon still has a folder under it.");
+            Assert.False(Exists(addonFolder));
+            Assert.True(Exists(addonsRoot), "Shared 'Addons' root should survive while another addon still has a folder under it.");
         }
 
         [Fact]
         public async Task Handle_LeavesAddonFolderInPlace_WhenGmAddedExtraContentToIt()
         {
-            SetupRealisticTreeEntryRemoval();
-            var game = BuildGame();
-            var addon = SeedAddon(game.Id);
-            var addonsRoot = SeedFolder(game, "Addons");
-            var addonFolder = SeedFolder(game, addon.Name, addonsRoot);
+            var (game, addon, addonsRoot, addonFolder) = AddonWithFolder();
             // A tree entry the addon didn't create (e.g. the GM dragged a file in here) — a real
             // file, not a folder, so it must be seeded with isFolder: false. Getting this wrong
             // previously made the test a false positive: TryRemoveEmptyAddonFoldersAsync's own
@@ -250,10 +231,9 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             // addonFolder looking empty too.
             SeedFolder(game, "gm-added.png", addonFolder, isFolder: false);
 
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonId = addon.Id };
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Uninstall(game.Id, addon.Id);
 
-            Assert.True(Db.TreeEntries.Any(x => x.Id == addonFolder.Id), "Addon folder with unrelated GM content should not be deleted.");
+            Assert.True(Exists(addonFolder), "Addon folder with unrelated GM content should not be deleted.");
         }
 
         // ---- Dependencies ----
@@ -273,12 +253,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             var game = BuildGame();
             var core = SeedAddon(game.Id, "core");
             SeedDependent(game.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core" };
-
-            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Handler().Handle(cmd, CancellationToken.None));
+            var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Uninstall(game.Id, key: "core"));
 
             Assert.Contains("Fifth Edition", e.Message);
-            Assert.True(SeedContext().Addons.Any(a => a.Id == core.Id));
+            Assert.True(AddonExists(core.Id));
         }
 
         // An update removes the old version itself; the addons that need it still get one.
@@ -288,11 +266,9 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             var game = BuildGame();
             var core = SeedAddon(game.Id, "core");
             SeedDependent(game.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core", ForReinstall = true };
+            await Uninstall(game.Id, key: "core", forReinstall: true);
 
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.False(SeedContext().Addons.Any(a => a.Id == core.Id));
+            Assert.False(AddonExists(core.Id));
         }
 
         // Only this game's addons count.
@@ -303,11 +279,9 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             var otherGame = OtherGame();
             var core = SeedAddon(game.Id, "core");
             SeedDependent(otherGame.Id, "dnd5e", "Fifth Edition", dependsOn: "core");
-            var cmd = new UninstallAddonCommand { GameID = game.Id, Player = Player(), AddonKey = "core" };
+            await Uninstall(game.Id, key: "core");
 
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.False(SeedContext().Addons.Any(a => a.Id == core.Id));
+            Assert.False(AddonExists(core.Id));
         }
     }
 }
