@@ -26,6 +26,9 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         {
             await base.Handle(request, cancellationToken);
 
+            if (!proxyOptions.OutsideConnections)
+                return new DownloadResourceResult { Success = false, StatusCode = 0, Reason = ProxyReasons.NoOutsideConnections };
+
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
                 return new DownloadResourceResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
 

@@ -73,6 +73,14 @@ namespace NordvikManager.Tests.WasmHost
 
         // The host's log is what a GM reads in the host drawer (and pastes into bug reports): EF's
         // every SQL command at Information would push everything else out of it.
+        // A browser page may only connect to its own site: the browser host says so instead of
+        // trying (actions' requests come back with Reason no-outside-connections, GMs told).
+        [Fact]
+        public void Build_MakesNoOutsideConnections()
+        {
+            Assert.False(_provider.GetRequiredService<NordvikManager.Infrastructure.Services.Proxy.ProxyOptions>().OutsideConnections);
+        }
+
         [Fact]
         public void Logging_LeavesOutEfsSqlCommands_AndHttpClientChatter_ButKeepsTheRest()
         {

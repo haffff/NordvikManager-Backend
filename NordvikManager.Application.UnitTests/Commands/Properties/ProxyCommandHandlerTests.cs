@@ -77,6 +77,19 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             Assert.Null(result.Reason);
         }
 
+        // A host that can't connect outside (the browser version) says so instead of trying.
+        [Fact]
+        public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
+        {
+            _options.OutsideConnections = false;
+
+            var result = await Handler().Handle(BaseCommand(), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
+            _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         [Fact]
         public async Task Handle_InvalidUrl_ReturnsBadRequestWithoutCallingProxyService()
         {

@@ -39,6 +39,8 @@ namespace NordvikManager.Wasm.Hosting
                 ["ConnectionStrings:DBData"] = databasePath == null ? "nordvik-wasm-host" : $"Data Source={databasePath}",
                 // Central is the addon registry (CentralAddonRepository): a registry is set.
                 ["AddonsConfiguration:MainRepository"] = $"{centralServerUrl.TrimEnd('/')}/api/addons",
+                // A browser page may only connect to its own site: actions are told, not tried.
+                ["Security:OutsideConnections"] = "false",
             };
             foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
                 settings[key] = value;

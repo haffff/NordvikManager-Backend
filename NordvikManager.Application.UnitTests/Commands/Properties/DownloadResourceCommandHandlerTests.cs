@@ -159,6 +159,18 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
         }
 
         [Fact]
+        public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
+        {
+            _options.OutsideConnections = false;
+
+            var result = await Handler().Handle(Command(), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
+            _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
         public async Task Handle_PrivateHostNotListed_ReturnsBadRequestWithoutCalling()
         {
             var result = await Handler().Handle(Command("http://192.168.1.5/picture.png"), CancellationToken.None);

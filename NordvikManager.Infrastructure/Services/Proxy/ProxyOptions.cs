@@ -32,14 +32,27 @@ namespace NordvikManager.Infrastructure.Services.Proxy
 
         public IReadOnlyList<string> RuntimeEntries => runtime.Entries;
 
+        /// <summary>appsettings key: false on a host that can't connect outside its own site.</summary>
+        public const string OutsideConnectionsKey = "Security:OutsideConnections";
+
+        /// <summary>
+        /// Whether requests may go out at all. The browser host's page may only connect to the
+        /// site it came from, so it sets this false: actions are told so instead of trying.
+        /// </summary>
+        public bool OutsideConnections { get; set; } = true;
+
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
         public long MaxResponseBytes { get; set; } = 20 * 1024 * 1024;
 
         public int MaxRedirects { get; set; } = 5;
 
-        public static ProxyOptions FromConfiguration(IConfiguration configuration) =>
-            From(configuration.GetSection(ConfigKey).Get<string[]>() ?? Array.Empty<string>());
+        public static ProxyOptions FromConfiguration(IConfiguration configuration)
+        {
+            var options = From(configuration.GetSection(ConfigKey).Get<string[]>() ?? Array.Empty<string>());
+            options.OutsideConnections = configuration.GetValue(OutsideConnectionsKey, true);
+            return options;
+        }
 
         public static ProxyOptions From(IEnumerable<string?> entries)
         {
