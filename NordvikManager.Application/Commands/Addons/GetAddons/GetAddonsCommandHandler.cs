@@ -25,13 +25,17 @@ namespace NordvikManager.Application.Commands.Addons.GetAddons
                 return new List<AddonDto>();
             }
 
-            // Addons whose actions send outside requests (one query, ids only): those steps
-            // don't work on the browser version, whatever the addon declares.
+            // Addons whose actions send outside requests: those may not work on the browser
+            // version, whatever the addon declares. The text search only narrows it down; a
+            // step of that type (anywhere, e.g. in an If's branch) decides.
             var ids = addons.Select(a => a.Id).ToList();
-            var goOutside = dbContext.Addons
-                .Where(a => ids.Contains(a.Id) && a.Actions!.Any(x => x.Content.Contains("SendRequest") || x.Content.Contains("DownloadResource")))
-                .Select(a => a.Id)
-                .ToHashSet();
+            var maybe = await dbContext.Addons
+                .Where(a => ids.Contains(a.Id))
+                .SelectMany(a => a.Actions!
+                    .Where(x => x.Content.Contains("SendRequest") || x.Content.Contains("DownloadResource"))
+                    .Select(x => new { AddonId = a.Id, x.Content }))
+                .ToListAsync(token);
+            var goOutside = maybe.Where(m => HasOutsideStep(m.Content)).Select(m => m.AddonId).ToHashSet();
 
             List<AddonDto> dtos;
             if (request.Flat)
@@ -61,6 +65,25 @@ namespace NordvikManager.Application.Commands.Addons.GetAddons
             foreach (var dto in dtos)
                 dto.UsesOutsideConnections = dto.Id is Guid id && goOutside.Contains(id);
             return dtos;
+        }
+
+        private static readonly HashSet<string> OutsideSteps = new(StringComparer.OrdinalIgnoreCase) { "SendRequest", "DownloadResource" };
+
+        private static bool HasOutsideStep(string? content)
+        {
+            Newtonsoft.Json.Linq.JToken root;
+            try
+            {
+                root = Newtonsoft.Json.Linq.JToken.Parse(content ?? "");
+            }
+            catch (Newtonsoft.Json.JsonException)
+            {
+                return false;
+            }
+            return ((root as Newtonsoft.Json.Linq.JContainer)?.DescendantsAndSelf() ?? Enumerable.Empty<Newtonsoft.Json.Linq.JToken>())
+                .OfType<Newtonsoft.Json.Linq.JObject>()
+                .Any(o => o.GetValue("type", StringComparison.OrdinalIgnoreCase) is Newtonsoft.Json.Linq.JValue { Type: Newtonsoft.Json.Linq.JTokenType.String } type
+                    && OutsideSteps.Contains((string)type!));
         }
 
     }

@@ -119,5 +119,23 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Null(pollDto.Network);
             Assert.False(pollDto.UsesOutsideConnections);
         }
+
+        // Only a step of that type counts (anywhere, e.g. in an If's branch), not the word
+        // in a message or a variable name.
+        [Fact]
+        public async Task Handle_UsesOutsideConnections_OnlyForSuchSteps()
+        {
+            var game = BuildGame();
+            var chat = SeedAddon(game, "chat");
+            chat.Actions = new() { Action(game, "Say", "[{\"Type\":\"SendChat\",\"Data\":{\"Message\":\"SendRequest or DownloadResource\",\"Output\":\"lastSendRequest\"}}]") };
+            var nested = SeedAddon(game, "nested");
+            nested.Actions = new() { Action(game, "Maybe", "[{\"Type\":\"If\",\"Data\":{\"Then\":[{\"type\":\"DownloadResource\",\"Data\":{}}]}}]") };
+            Db.SaveChanges();
+
+            var result = await Handler().Handle(new GetAddonsCommand { GameId = game.Id, Player = Player(), Flat = true }, CancellationToken.None);
+
+            Assert.False(result.Single(a => a.Key == "chat").UsesOutsideConnections);
+            Assert.True(result.Single(a => a.Key == "nested").UsesOutsideConnections);
+        }
     }
 }

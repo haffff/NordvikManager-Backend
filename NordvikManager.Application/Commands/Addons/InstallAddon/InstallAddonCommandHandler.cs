@@ -226,11 +226,24 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
                 return;
 
             var oldIds = moves.Keys.ToList();
-            var cards = dbContext.Cards
+            // Which cards point at a replaced file, read without tracking and only the two
+            // columns (a game can hold thousands of cards with additional files); then only
+            // those are loaded to change.
+            var candidates = await dbContext.Cards
+                .AsNoTracking()
                 .Where(c => c.GameId == game.Id
                     && ((c.MainResource != null && oldIds.Contains(c.MainResource.Value))
                         || (c.AdditionalResources != null && c.AdditionalResources != "" && c.AdditionalResources != "[]")))
+                .Select(c => new { c.Id, c.MainResource, c.AdditionalResources })
+                .ToListAsync();
+            var affected = candidates
+                .Where(c => (c.MainResource is Guid m && moves.ContainsKey(m))
+                    || (ParseIds(c.AdditionalResources)?.Any(moves.ContainsKey) ?? false))
+                .Select(c => c.Id)
                 .ToList();
+            if (affected.Count == 0)
+                return;
+            var cards = await dbContext.Cards.Where(c => affected.Contains(c.Id)).ToListAsync();
 
             var changed = 0;
             foreach (var card in cards)
