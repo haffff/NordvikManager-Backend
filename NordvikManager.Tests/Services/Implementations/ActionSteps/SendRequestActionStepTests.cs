@@ -83,6 +83,19 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(playerSent);
         }
 
+        // A URL can carry credentials before the host: the notice shows the origin without them.
+        [Fact]
+        public async Task Execute_Refused_NeverTellsTheGmsTheUrlsCredentials()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ProxyCommandResult { Success = false, StatusCode = 403, Reason = ProxyReasons.UndeclaredHost });
+            var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out _);
+
+            await _step.Execute(_mediator.Object, Run(Guid.NewGuid()), lobby, MakeStep("https://user:apitoken@api.example.com/x"));
+
+            Assert.Equal("https://api.example.com", (string)Assert.Single(gmSent).Data["origin"]);
+        }
+
         // The handler holds the action to its addon's declared network, so it's told which action.
         [Fact]
         public async Task Execute_SendsTheActionsId()

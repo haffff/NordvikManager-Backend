@@ -1,3 +1,4 @@
+using NordvikManager.Application.Commands.Addons;
 using NordvikManager.Application.Commands.Addons.GetActionAddon;
 using NordvikManager.WebSockets;
 using NordvikManager.WebSockets.Core;
@@ -12,7 +13,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
     /// <summary>
     /// Tells the game's GMs that an action's outside request didn't go out, and why
     /// (<see cref="Application.Commands.Properties.Proxy.ProxyReasons"/>): which addon's action,
-    /// to which origin (never the path or query, which can carry tokens). Once per action,
+    /// to which origin (never credentials, the path or the query, which can carry tokens). Once per action,
     /// origin and reason while the game runs, so an action in a loop doesn't flood them.
     /// </summary>
     public static class AddonNetworkNotice
@@ -21,7 +22,8 @@ namespace NordvikManager.Services.Implementations.ActionSteps
         {
             var actionId = run.ActionId.ToString();
             var actionName = run.ActionName;
-            var origin = OriginOf(targetUrl);
+            // scheme://host[:port] only: never credentials, a path or a query.
+            var origin = AddonNetworkRules.OriginOf(targetUrl);
 
             if (!gameLobby.FirstNotice($"{actionId}|{origin}|{reason}"))
                 return;
@@ -42,11 +44,5 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 }),
             });
         }
-
-        /// <summary>scheme://host[:port] of an absolute URL; null for anything else.</summary>
-        public static string? OriginOf(string? url) =>
-            Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host)
-                ? uri.GetLeftPart(UriPartial.Authority)
-                : null;
     }
 }

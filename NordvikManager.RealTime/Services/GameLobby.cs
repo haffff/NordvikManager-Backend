@@ -102,11 +102,15 @@ namespace NordvikManager.Services.Implementations
 
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _notices = new();
 
+        /// <summary>How many notice keys a game remembers; past it, nothing new is announced.</summary>
+        public const int MaxNotices = 1000;
+
         /// <summary>
         /// True the first time a notice with this key is asked for while the game runs (e.g.
-        /// AddonNetworkNotice: an action's refused request), false after: tell GMs once.
+        /// AddonNetworkNotice: an action's refused request), false after: tell GMs once. Keys can
+        /// come from player input (a refused origin), so at most <see cref="MaxNotices"/> are kept.
         /// </summary>
-        public bool FirstNotice(string key) => _notices.TryAdd(key, 0);
+        public bool FirstNotice(string key) => _notices.Count < MaxNotices && _notices.TryAdd(key, 0);
 
         /// <summary>To the connected players who may edit the game (the owner and co-GMs).</summary>
         public async Task SendToGmsAsync(object message)
