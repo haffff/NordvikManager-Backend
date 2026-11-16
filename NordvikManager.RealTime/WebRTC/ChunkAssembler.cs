@@ -6,6 +6,9 @@ namespace NordvikManager.WebRTC
     /// Puts a data channel's chunked messages back together. Ids, positions and totals come
     /// from the player's client, so everything it can make this hold is limited. One per data
     /// channel; not thread-safe (the channel delivers its messages one at a time).
+    /// A message the client gave up on (a reconnect, a lost chunk) never completes: when the
+    /// limits are reached, the unfinished message that waited longest without a chunk is
+    /// dropped to make room, so abandoned ones can't block the channel for good.
     /// </summary>
     public class ChunkAssembler
     {
@@ -31,6 +34,7 @@ namespace NordvikManager.WebRTC
         private readonly long _maxPendingChars;
         private readonly Dictionary<string, PendingMessage> _pending = new();
         private long _heldChars;
+        private long _clock;
 
         public ChunkAssembler(
             int maxChunks = DefaultMaxChunks,
@@ -53,7 +57,7 @@ namespace NordvikManager.WebRTC
             if (!_pending.TryGetValue(id, out var pending))
             {
                 if (_pending.Count >= _maxPendingMessages)
-                    return Outcome.Rejected;
+                    DropStalest(except: id);
                 pending = new PendingMessage(total);
                 _pending[id] = pending;
             }
@@ -61,9 +65,13 @@ namespace NordvikManager.WebRTC
             {
                 return Reject(id);
             }
+            pending.LastTouched = ++_clock;
 
             var previous = pending.Parts[index];
             var growth = data.Length - (previous?.Length ?? 0);
+            while (_heldChars + growth > _maxPendingChars && DropStalest(except: id))
+            {
+            }
             if (_heldChars + growth > _maxPendingChars)
                 return Reject(id);
 
@@ -87,6 +95,23 @@ namespace NordvikManager.WebRTC
             return Outcome.Rejected;
         }
 
+        // Drops the unfinished message (other than `except`) that waited longest; false if none.
+        private bool DropStalest(string except)
+        {
+            string? stalest = null;
+            var oldest = long.MaxValue;
+            foreach (var (key, message) in _pending)
+                if (key != except && message.LastTouched < oldest)
+                {
+                    oldest = message.LastTouched;
+                    stalest = key;
+                }
+            if (stalest == null)
+                return false;
+            Forget(stalest);
+            return true;
+        }
+
         private void Forget(string id)
         {
             if (_pending.Remove(id, out var pending))
@@ -100,6 +125,7 @@ namespace NordvikManager.WebRTC
             public string?[] Parts { get; }
             public int Received { get; set; }
             public long Chars { get; set; }
+            public long LastTouched { get; set; }
         }
     }
 }
