@@ -14,7 +14,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
     // Covers dependency resolution. A nested InstallAddonCommand goes back through a real
     // handler, so chains, cycles and shared dependencies run as they do in a game; the
     // steps below an addon (files, cards, actions) stay mocked as in the base class.
-    public class InstallAddonDependencyCommandHandlerTests : InstallAddonCommandHandlerTests
+    public class InstallAddonDependencyCommandHandlerTests : InstallAddonTestBase
     {
         private const string InfoJsonWithDependency =
             "{\"name\":\"DnD 5e\",\"key\":\"dnd5e\",\"version\":\"1.0\",\"dependencies\":[{\"name\":\"Core\",\"key\":\"core\",\"version\":\"2.0\"}]}";
@@ -70,38 +70,17 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         private List<AddonModel> InstalledAddons(GameModel game)
             => SeedContext().Games.Include(g => g.Addons).Single(g => g.Id == game.Id).Addons.ToList();
 
-        [Fact]
-        public async Task Handle_DependencyAlreadyInstalledWithMatchingVersion_SkipsNestedInstall()
+        // An installed dependency that is new enough is used as it is: the required version is
+        // the lowest one that works, and no version at all matches anything.
+        [Theory]
+        [InlineData("2.0", "2.0")]
+        [InlineData("2.1", "2.0")]
+        [InlineData("9.9", null)]
+        public async Task Handle_DependencyInstalledNewEnough_SkipsNestedInstall(string installed, string? required)
         {
             var game = BuildGame();
-            SeedInstalledAddon(game, "core", "2.0");
-            var cmd = ValidCommand(game, Player(), BuildAddonZip(InfoJsonWithDependency));
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        [Fact]
-        public async Task Handle_DependencyRequiresNullVersion_MatchesAnyInstalledVersion()
-        {
-            var game = BuildGame();
-            SeedInstalledAddon(game, "core", "9.9");
-            var infoJson = "{\"name\":\"DnD 5e\",\"key\":\"dnd5e\",\"version\":\"1.0\",\"dependencies\":[{\"name\":\"Core\",\"key\":\"core\"}]}";
-            var cmd = ValidCommand(game, Player(), BuildAddonZip(infoJson));
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<InstallAddonCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-        }
-
-        // The version is the lowest one that works, so a newer installed one is fine.
-        [Fact]
-        public async Task Handle_InstalledDependencyNewerThanRequired_SkipsNestedInstall()
-        {
-            var game = BuildGame();
-            SeedInstalledAddon(game, "core", "2.1");
-            var cmd = ValidCommand(game, Player(), BuildAddonZip(InfoJsonWithDependency));
+            SeedInstalledAddon(game, "core", installed);
+            var cmd = ValidCommand(game, Player(), BuildAddonZip(Info("dnd5e", "1.0", ("core", required))));
 
             await Handler().Handle(cmd, CancellationToken.None);
 

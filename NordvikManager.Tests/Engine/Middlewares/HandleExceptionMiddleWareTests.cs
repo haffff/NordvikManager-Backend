@@ -4,6 +4,7 @@ using NordvikManager.Engine.Middlewares;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -29,50 +30,27 @@ namespace NordvikManager.Tests.Engine.Middlewares
             return await reader.ReadToEndAsync();
         }
 
-        [Fact]
-        public async Task InvokeAsync_ResourceNotFoundException_Returns404()
+        // Each exception becomes its status code, with an "error" in the JSON body.
+        private static readonly Dictionary<string, (Exception Thrown, int Status)> Exceptions = new()
         {
+            ["ResourceNotFound"] = (new ResourceNotFoundException("Game", Guid.NewGuid()), 404),
+            ["Permission"] = (new PermissionException(Permission.Edit), 403),
+            ["WrongArguments"] = (new WrongArgumentsException("Name"), 400),
+            ["Unknown"] = (new InvalidOperationException("boom"), 500),
+        };
+
+        public static TheoryData<string> ExceptionNames() => new(Exceptions.Keys);
+
+        [Theory]
+        [MemberData(nameof(ExceptionNames))]
+        public async Task InvokeAsync_Exception_ReturnsItsStatusWithAnError(string exception)
+        {
+            var (thrown, status) = Exceptions[exception];
             var context = CreateContext();
 
-            await _middleware.InvokeAsync(context, _ => throw new ResourceNotFoundException("Game", Guid.NewGuid()));
+            await _middleware.InvokeAsync(context, _ => throw thrown);
 
-            Assert.Equal(404, context.Response.StatusCode);
-            var body = JsonDocument.Parse(await ReadBody(context));
-            Assert.True(body.RootElement.TryGetProperty("error", out _));
-        }
-
-        [Fact]
-        public async Task InvokeAsync_PermissionException_Returns403()
-        {
-            var context = CreateContext();
-
-            await _middleware.InvokeAsync(context, _ => throw new PermissionException(Permission.Edit));
-
-            Assert.Equal(403, context.Response.StatusCode);
-            var body = JsonDocument.Parse(await ReadBody(context));
-            Assert.True(body.RootElement.TryGetProperty("error", out _));
-        }
-
-        [Fact]
-        public async Task InvokeAsync_WrongArgumentsException_Returns400()
-        {
-            var context = CreateContext();
-
-            await _middleware.InvokeAsync(context, _ => throw new WrongArgumentsException("Name"));
-
-            Assert.Equal(400, context.Response.StatusCode);
-            var body = JsonDocument.Parse(await ReadBody(context));
-            Assert.True(body.RootElement.TryGetProperty("error", out _));
-        }
-
-        [Fact]
-        public async Task InvokeAsync_UnknownException_Returns500()
-        {
-            var context = CreateContext();
-
-            await _middleware.InvokeAsync(context, _ => throw new InvalidOperationException("boom"));
-
-            Assert.Equal(500, context.Response.StatusCode);
+            Assert.Equal(status, context.Response.StatusCode);
             var body = JsonDocument.Parse(await ReadBody(context));
             Assert.True(body.RootElement.TryGetProperty("error", out _));
         }
