@@ -27,7 +27,7 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
             await base.Handle(request, cancellationToken);
 
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
-                return new DownloadResourceResult { Success = false, StatusCode = 400 };
+                return new DownloadResourceResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
 
             var resolvedProtected = ProxySupport.ResolveProtected(dbContext, request.ParentID, new[] { request.BearerTokenPropertyName });
             string? bearerToken = null;

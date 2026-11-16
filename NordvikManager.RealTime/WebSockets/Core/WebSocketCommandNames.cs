@@ -172,6 +172,10 @@
         public const string CmdFireClientMediator = "client_mediator_fire";
         public const string CmdRunClientCommand   = "run_client_command";
 
+        // An action's outside request was refused (Send Request, Download Resource): to GMs,
+        // { source: "action", addon, action, actionId, origin, reason }. The client logs it.
+        public const string AddonNetworkNotice = "addon_network_notice";
+
         // Debug / action engine
         public const string CmdDebugAction = "debug_action";
         public const string StepTypeExit = "Exit";

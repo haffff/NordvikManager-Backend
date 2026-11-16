@@ -38,5 +38,8 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public string? MimeType { get; set; }
 
         public long Size { get; set; }
+
+        /// <summary>Why it didn't go out (<see cref="ProxyReasons"/>); null when it did.</summary>
+        public string? Reason { get; set; }
     }
 }

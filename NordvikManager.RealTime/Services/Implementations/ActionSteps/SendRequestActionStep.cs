@@ -80,10 +80,14 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 // timeout) so downstream steps (e.g. an If branching on Output.Success) still
                 // run instead of the whole action silently faulting with no step ever observing
                 // the failure.
-                result = new ProxyCommandResult { Success = false, StatusCode = 0, ResponseBody = ex.Message };
+                result = new ProxyCommandResult { Success = false, StatusCode = 0, ResponseBody = ex.Message, Reason = ProxyReasons.NetworkError };
             }
 
             variables[stepData.Output] = result;
+
+            // Refused here (not answered with an error by the other side): GMs are told why.
+            if (result.Reason != null && result.Reason != ProxyReasons.NetworkError)
+                await AddonNetworkNotice.SendAsync(mediator, gameLobby, variables, stepData.TargetUrl, result.Reason);
         }
     }
 }

@@ -137,6 +137,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
+            Assert.Equal(ProxyReasons.BlockedHost, result.Reason);
             _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 

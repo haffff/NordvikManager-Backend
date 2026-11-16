@@ -46,6 +46,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
+            // Refused here, not by the other side: the action (and the GM) can tell why.
+            Assert.Equal(ProxyReasons.BlockedHost, result.Reason);
         }
 
         // The server's owner can allow a private host (e.g. a Trilium on the home network).
@@ -85,6 +87,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             Assert.True(result.Success);
             Assert.Equal(200, result.StatusCode);
             Assert.Equal("ok", result.ResponseBody);
+            Assert.Null(result.Reason);
         }
 
         [Fact]

@@ -43,5 +43,8 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public bool Success { get; set; }
         public int StatusCode { get; set; }
         public string? ResponseBody { get; set; }
+
+        /// <summary>Why it didn't go out (<see cref="ProxyReasons"/>); null when it did.</summary>
+        public string? Reason { get; set; }
     }
 }

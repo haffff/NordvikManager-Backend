@@ -22,7 +22,7 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
 
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
             {
-                return new ProxyCommandResult { Success = false, StatusCode = 400 };
+                return new ProxyCommandResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
             }
 
             // Resolve all needed protected properties (body properties + the bearer token

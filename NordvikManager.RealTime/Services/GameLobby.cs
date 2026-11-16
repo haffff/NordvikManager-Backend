@@ -100,6 +100,14 @@ namespace NordvikManager.Services.Implementations
             }
         }
 
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _notices = new();
+
+        /// <summary>
+        /// True the first time a notice with this key is asked for while the game runs (e.g.
+        /// AddonNetworkNotice: an action's refused request), false after: tell GMs once.
+        /// </summary>
+        public bool FirstNotice(string key) => _notices.TryAdd(key, 0);
+
         /// <summary>To the connected players who may edit the game (the owner and co-GMs).</summary>
         public async Task SendToGmsAsync(object message)
         {

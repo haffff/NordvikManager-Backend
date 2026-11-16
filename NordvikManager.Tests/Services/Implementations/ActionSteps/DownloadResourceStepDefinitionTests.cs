@@ -7,6 +7,7 @@ using NordvikManager.Services.Interfaces;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using NordvikManager.WebSockets;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,34 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, _lobby,
                 new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(data) });
             return variables;
+        }
+
+        [Fact]
+        public async Task Execute_Refused_TellsTheGmsOnce()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DownloadResourceResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost });
+            var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out _);
+            var step = new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(new { TargetUrl = "http://192.168.1.5/a.png", Key = "a.png", Output = "file" }) };
+            var variables = new Dictionary<string, object> { ["actionId"] = Guid.NewGuid().ToString(), ["actionName"] = "Fetch" };
+
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, lobby, step);
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, lobby, step);
+
+            var notice = Assert.Single(gmSent);
+            Assert.Equal("http://192.168.1.5", (string)notice.Data["origin"]);
+            Assert.Equal(ProxyReasons.BlockedHost, ((DownloadResourceResult)variables["file"]).Reason);
+        }
+
+        [Fact]
+        public async Task Execute_Throws_StoresANetworkError()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("refused"));
+
+            var vars = await Run(new { TargetUrl = "https://example.com/a.png", Key = "a.png", Output = "file" });
+
+            Assert.Equal(ProxyReasons.NetworkError, ((DownloadResourceResult)vars["file"]).Reason);
         }
 
         [Fact]

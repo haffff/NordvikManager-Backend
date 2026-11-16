@@ -61,11 +61,15 @@ namespace NordvikManager.Services.Implementations.ActionSteps
             catch (Exception)
             {
                 // Refused, blocked, timed out or too large: later steps (an If on success) still run.
-                result = new DownloadResourceResult { Success = false, StatusCode = 0 };
+                result = new DownloadResourceResult { Success = false, StatusCode = 0, Reason = ProxyReasons.NetworkError };
             }
 
             if (!string.IsNullOrWhiteSpace(data.Output))
                 variables[data.Output] = result;
+
+            // Refused here (not answered with an error by the other side): GMs are told why.
+            if (result.Reason != null && result.Reason != ProxyReasons.NetworkError)
+                await AddonNetworkNotice.SendAsync(mediator, gameLobby, variables, data.TargetUrl, result.Reason);
         }
     }
 }
