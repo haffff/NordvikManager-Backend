@@ -16,6 +16,13 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         /// <summary>This GM host can't connect outside its own site (the browser version).</summary>
         public const string NoOutsideConnections = "no-outside-connections";
 
+        /// <summary>
+        /// From the GM's browser (the browser version), the request couldn't be made: the site
+        /// doesn't allow requests from a browser (CORS), or didn't answer. A browser can't tell
+        /// which. The local server can reach it.
+        /// </summary>
+        public const string BrowserRefused = "browser-refused";
+
         /// <summary>It went out but failed on the way (DNS, refused, timed out).</summary>
         public const string NetworkError = "network-error";
     }

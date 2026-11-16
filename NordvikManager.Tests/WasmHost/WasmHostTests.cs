@@ -73,12 +73,13 @@ namespace NordvikManager.Tests.WasmHost
 
         // The host's log is what a GM reads in the host drawer (and pastes into bug reports): EF's
         // every SQL command at Information would push everything else out of it.
-        // A browser page may only connect to its own site: the browser host says so instead of
-        // trying (actions' requests come back with Reason no-outside-connections, GMs told).
+        // Actions' requests go out from the GM's browser: the worker's own CSP lets it reach
+        // https sites (Central's host-worker.js route), as far as each site's CORS allows.
         [Fact]
-        public void Build_MakesNoOutsideConnections()
+        public void Build_SendsActionsRequestsFromTheBrowser()
         {
-            Assert.False(_provider.GetRequiredService<NordvikManager.Infrastructure.Services.Proxy.ProxyOptions>().OutsideConnections);
+            Assert.Equal(NordvikManager.Infrastructure.Services.Proxy.ProxyMode.Browser,
+                _provider.GetRequiredService<NordvikManager.Infrastructure.Services.Proxy.ProxyOptions>().Mode);
         }
 
         [Fact]

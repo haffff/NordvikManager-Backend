@@ -33,6 +33,10 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         /// </summary>
         public static async Task<bool> IsUrlAllowedAsync(string? targetUrl, ProxyOptions options)
         {
+            // From a browser nothing can be resolved first: the address is judged as written.
+            if (options.Mode == ProxyMode.Browser)
+                return ProxyAddressRules.IsAllowedWithoutDns(targetUrl);
+
             if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri))
                 return false;
 

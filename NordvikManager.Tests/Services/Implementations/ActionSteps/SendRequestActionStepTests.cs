@@ -113,6 +113,19 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         private static Dictionary<string, object> Run(Guid actionId, string name = "Import") =>
             new() { [ActionRunContext.Key] = new ActionRunContext(actionId, name) };
 
+        // From the browser version: the site refused the browser's request or didn't answer.
+        [Fact]
+        public async Task Execute_BrowserRefused_TellsTheGms()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync(new ProxyCommandResult { Success = false, StatusCode = 0, Reason = ProxyReasons.BrowserRefused });
+            var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out _);
+
+            await _step.Execute(_mediator.Object, Run(Guid.NewGuid()), lobby, MakeStep("https://api.example.com/x"));
+
+            Assert.Equal(ProxyReasons.BrowserRefused, (string)Assert.Single(gmSent).Data["reason"]);
+        }
+
         [Fact]
         public async Task Execute_Succeeds_TellsNoOne()
         {

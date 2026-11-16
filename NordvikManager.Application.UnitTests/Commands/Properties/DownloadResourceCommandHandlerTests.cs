@@ -161,13 +161,27 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
         [Fact]
         public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
         {
-            _options.OutsideConnections = false;
+            _options.Mode = ProxyMode.None;
 
             var result = await Handler().Handle(Command(), CancellationToken.None);
 
             Assert.False(result.Success);
             Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
             _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_FromTheBrowser_ARequestItCantMake_IsBrowserRefused()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxy.Setup(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("TypeError: Failed to fetch"));
+
+            var result = await Handler().Handle(Command("https://img.example.com/a.png"), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.BrowserRefused, result.Reason);
+            Assert.Empty(_saved);
         }
 
         [Fact]

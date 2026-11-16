@@ -81,13 +81,46 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
         [Fact]
         public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
         {
-            _options.OutsideConnections = false;
+            _options.Mode = ProxyMode.None;
 
             var result = await Handler().Handle(BaseCommand(), CancellationToken.None);
 
             Assert.False(result.Success);
             Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
             _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+
+        // From the GM's browser (the browser version): no DNS, so the address is judged as
+        // written, and a request the browser can't make (CORS refused, or no answer: a
+        // browser can't tell them apart) comes back as browser-refused.
+        [Fact]
+        public async Task Handle_FromTheBrowser_ChecksTheAddressAsWritten()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "ok"));
+
+            // A name that doesn't resolve: the server would refuse it, the browser leaves it to fetch.
+            var named = await Handler().Handle(BaseCommand("https://api.example.invalid/x"), CancellationToken.None);
+            var local = await Handler().Handle(BaseCommand("https://localhost/x"), CancellationToken.None);
+
+            Assert.True(named.Success);
+            Assert.Equal(ProxyReasons.BlockedHost, local.Reason);
+        }
+
+        [Fact]
+        public async Task Handle_FromTheBrowser_ARequestItCantMake_IsBrowserRefused()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("TypeError: Failed to fetch"));
+
+            var result = await Handler().Handle(BaseCommand("https://api.example.com/x"), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(0, result.StatusCode);
+            Assert.Equal(ProxyReasons.BrowserRefused, result.Reason);
         }
 
         [Fact]

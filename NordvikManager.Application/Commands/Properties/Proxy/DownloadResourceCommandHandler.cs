@@ -26,7 +26,7 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         {
             await base.Handle(request, cancellationToken);
 
-            if (!proxyOptions.OutsideConnections)
+            if (proxyOptions.Mode == ProxyMode.None)
                 return new DownloadResourceResult { Success = false, StatusCode = 0, Reason = ProxyReasons.NoOutsideConnections };
 
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
@@ -40,7 +40,17 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
             if (request.BearerTokenPropertyName != null)
                 resolvedProtected.TryGetValue(request.BearerTokenPropertyName, out bearerToken);
 
-            var (success, statusCode, body, contentType) = await proxyHttpService.GetBytesAsync(request.TargetUrl, bearerToken, cancellationToken);
+            (bool Success, int StatusCode, byte[]? Body, string? ContentType) got;
+            try
+            {
+                got = await proxyHttpService.GetBytesAsync(request.TargetUrl, bearerToken, cancellationToken);
+            }
+            catch (HttpRequestException) when (proxyOptions.Mode == ProxyMode.Browser)
+            {
+                // The browser's fetch failed (CORS refused, or no answer): see ProxyReasons.BrowserRefused.
+                return new DownloadResourceResult { Success = false, StatusCode = 0, Reason = ProxyReasons.BrowserRefused };
+            }
+            var (success, statusCode, body, contentType) = got;
             if (!success || body == null)
                 return new DownloadResourceResult { Success = false, StatusCode = statusCode };
 
