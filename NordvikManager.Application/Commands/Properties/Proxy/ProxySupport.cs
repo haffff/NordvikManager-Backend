@@ -19,18 +19,24 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public static async Task<bool> IsAllowedByAddonAsync(IDbContext dbContext, Guid? actionId, IReadOnlyList<Guid>? callerActionIds,
             string? targetUrl, CancellationToken cancellationToken)
         {
-            var ids = (callerActionIds ?? Array.Empty<Guid>()).ToList();
+            var callers = (callerActionIds ?? Array.Empty<Guid>()).ToList();
+            var ids = callers.ToList();
             if (actionId is Guid id)
                 ids.Add(id);
             if (ids.Count == 0)
                 return true;
-            // The action's addon and every caller's: an action run by an addon's action may be
-            // carrying that addon's request.
-            var networks = await dbContext.Addons!
+            var addons = await dbContext.Addons!
                 .Where(a => a.Actions!.Any(x => ids.Contains(x.Id)))
-                .Select(a => a.Network)
+                .Select(a => new { a.Network, ActionIds = a.Actions!.Where(x => ids.Contains(x.Id)).Select(x => x.Id).ToList() })
                 .ToListAsync(cancellationToken);
-            return networks.All(network => AddonNetworkRules.Allows(network, targetUrl));
+            Domain.Entities.AddonNetwork? NetworkOf(Guid action) => addons.FirstOrDefault(a => a.ActionIds.Contains(action))?.Network;
+
+            // An action whose addon says where it connects keeps to that, whoever runs it.
+            if (actionId is Guid own && NetworkOf(own) is { } declared)
+                return AddonNetworkRules.Allows(declared, targetUrl);
+            // One that doesn't (GM-made, or an addon without "network") may be carrying a
+            // caller's request (Execute Action passes its variables): each caller's network holds.
+            return callers.All(caller => AddonNetworkRules.Allows(NetworkOf(caller), targetUrl));
         }
 
         /// <summary>

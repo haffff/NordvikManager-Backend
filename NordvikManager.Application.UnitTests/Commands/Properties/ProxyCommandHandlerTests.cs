@@ -25,9 +25,11 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
 
 
         // An action that came with an addon declaring this network (null: it doesn't say).
+        private GameModel? _game;
+
         private Guid AddonAction(NordvikManager.Domain.Entities.AddonNetwork? network)
         {
-            var game = BuildGame();
+            var game = _game ??= BuildGame();
             var action = new ActionModel { Id = Guid.NewGuid(), Name = "Fetch", Prefix = "notes", Content = "[]", Game = game };
             Db.Actions.Add(action);
             var addon = new NordvikManager.Domain.Entities.AddonModel { Id = Guid.NewGuid(), Name = "Notes", Key = "notes", Network = network, Actions = new() { action } };
@@ -64,6 +66,22 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             var result = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+        }
+
+        // An addon's action that says where it connects keeps to that, whoever runs it: one addon
+        // may run another's (dependencies) without the caller's hosts getting in the way.
+        [Fact]
+        public async Task Handle_ADeclaringActionRunByAnotherAddon_KeepsToItsOwnNetwork()
+        {
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "ok"));
+            var cmd = BaseCommand();
+            cmd.ActionId = AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://8.8.8.8" } });
+            cmd.CallerActionIds = new[] { AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://1.1.1.1" } }) };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.True(result.Success);
         }
 
         [Theory]
