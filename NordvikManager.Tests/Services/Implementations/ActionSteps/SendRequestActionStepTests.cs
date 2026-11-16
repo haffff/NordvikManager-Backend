@@ -44,7 +44,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             _mediator.Setup(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()))
                      .ThrowsAsync(new System.Net.Sockets.SocketException());
 
-            var variables = new Dictionary<string, object>();
+            var variables = Run(Guid.NewGuid());
 
             // Must not throw — a network failure should be captured as data, not an exception.
             await _step.Execute(_mediator.Object, variables, TestLobby.Create(), MakeStep());
@@ -68,7 +68,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             _mediator.Setup(m => m.Send(It.Is<GetActionAddonCommand>(c => c.ActionId == actionId), It.IsAny<CancellationToken>()))
                      .ReturnsAsync("trilium");
             var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out var playerSent);
-            var variables = new Dictionary<string, object> { ["actionId"] = actionId.ToString(), ["actionName"] = "Import" };
+            var variables = Run(actionId);
 
             await _step.Execute(_mediator.Object, variables, lobby, MakeStep("https://notes.example.com:8443/etapi/notes?secret=1"));
 
@@ -93,10 +93,25 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                      .ReturnsAsync(new ProxyCommandResult { Success = true, StatusCode = 200 });
             var actionId = Guid.NewGuid();
 
-            await _step.Execute(_mediator.Object, new Dictionary<string, object> { ["actionId"] = actionId.ToString() }, TestLobby.Create(), MakeStep());
+            await _step.Execute(_mediator.Object, Run(actionId), TestLobby.Create(), MakeStep());
 
             Assert.Equal(actionId, sent.ActionId);
         }
+
+        // Outside the engine (no context) the step can't tell whose request it is: refused.
+        [Fact]
+        public async Task Execute_WithoutTheEnginesContext_IsRefused()
+        {
+            var variables = new Dictionary<string, object> { ["actionId"] = Guid.NewGuid().ToString() };
+
+            await _step.Execute(_mediator.Object, variables, TestLobby.Create(), MakeStep());
+
+            Assert.Equal(ProxyReasons.UndeclaredHost, ((ProxyCommandResult)variables["output"]).Reason);
+            _mediator.Verify(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        private static Dictionary<string, object> Run(Guid actionId, string name = "Import") =>
+            new() { [ActionRunContext.Key] = new ActionRunContext(actionId, name) };
 
         [Fact]
         public async Task Execute_Succeeds_TellsNoOne()
@@ -105,7 +120,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                      .ReturnsAsync(new ProxyCommandResult { Success = true, StatusCode = 200 });
             var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out _);
 
-            await _step.Execute(_mediator.Object, new Dictionary<string, object>(), lobby, MakeStep());
+            await _step.Execute(_mediator.Object, Run(Guid.NewGuid()), lobby, MakeStep());
 
             Assert.Empty(gmSent);
         }
@@ -117,7 +132,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             _mediator.Setup(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(expected);
 
-            var variables = new Dictionary<string, object>();
+            var variables = Run(Guid.NewGuid());
 
             await _step.Execute(_mediator.Object, variables, TestLobby.Create(), MakeStep());
 

@@ -42,13 +42,22 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                     parentId = gameLobby.GameId;
             }
 
+            // Whose request this is decides which addon's network holds it (see Send Request).
+            var run = ActionRunContext.Of(variables);
+            if (run == null)
+            {
+                if (!string.IsNullOrWhiteSpace(data.Output))
+                    variables[data.Output] = new DownloadResourceResult { Success = false, StatusCode = 0, Reason = ProxyReasons.UndeclaredHost };
+                return;
+            }
+
             DownloadResourceResult result;
             try
             {
                 result = await mediator.Send(new DownloadResourceCommand
                 {
                     GameId = gameLobby.GameId,
-                    ActionId = variables.TryGetValue("actionId", out var actionId) && Guid.TryParse(actionId?.ToString(), out var actionGuid) ? actionGuid : null,
+                    ActionId = run.ActionId,
                     Player = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
                     TargetUrl = data.TargetUrl,
                     ParentID = parentId,
@@ -70,7 +79,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
 
             // Refused here (not answered with an error by the other side): GMs are told why.
             if (result.Reason != null && result.Reason != ProxyReasons.NetworkError)
-                await AddonNetworkNotice.SendAsync(mediator, gameLobby, variables, data.TargetUrl, result.Reason);
+                await AddonNetworkNotice.SendAsync(mediator, gameLobby, run, data.TargetUrl, result.Reason);
         }
     }
 }

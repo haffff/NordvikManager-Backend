@@ -42,6 +42,7 @@ namespace NordvikManager.Tests.Services.Implementations
             {
                 new SetVariableStepDefinition(), new IfStepDefinition(), new ForEachStepDefinition(), new LogStepDefinition(),
                 new ExitStepDefinition(), new RunScriptStepDefinition(), new ExecuteActionStepDefinition(), new TestFireCommandStep(),
+                new SendRequestActionStep(),
             };
 
             var games = new Mock<DbSet<GameModel>>();

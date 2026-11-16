@@ -17,18 +17,16 @@ namespace NordvikManager.Services.Implementations.ActionSteps
     /// </summary>
     public static class AddonNetworkNotice
     {
-        public static async Task SendAsync(IMediator mediator, GameLobby gameLobby, Dictionary<string, object> variables, string? targetUrl, string reason)
+        public static async Task SendAsync(IMediator mediator, GameLobby gameLobby, ActionRunContext run, string? targetUrl, string reason)
         {
-            var actionId = variables.TryGetValue("actionId", out var id) ? id?.ToString() : null;
-            var actionName = variables.TryGetValue("actionName", out var name) ? name?.ToString() : null;
+            var actionId = run.ActionId.ToString();
+            var actionName = run.ActionName;
             var origin = OriginOf(targetUrl);
 
             if (!gameLobby.FirstNotice($"{actionId}|{origin}|{reason}"))
                 return;
 
-            string? addon = null;
-            if (Guid.TryParse(actionId, out var actionGuid))
-                addon = await mediator.Send(new GetActionAddonCommand { ActionId = actionGuid });
+            var addon = await mediator.Send(new GetActionAddonCommand { ActionId = run.ActionId });
 
             await gameLobby.SendToGmsAsync(new WebSocketCommand
             {

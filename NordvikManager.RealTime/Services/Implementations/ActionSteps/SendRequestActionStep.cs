@@ -55,10 +55,19 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 extraBody = extraDict;
             }
 
+            // Whose request this is decides which addon's network holds it: without the engine's
+            // context (overwritten, or run outside an action) it can't be told, so it doesn't go out.
+            var run = ActionRunContext.Of(variables);
+            if (run == null)
+            {
+                variables[stepData.Output] = new ProxyCommandResult { Success = false, StatusCode = 0, Reason = ProxyReasons.UndeclaredHost };
+                return;
+            }
+
             var command = new ProxyCommand
             {
                 Player = gameLobby.SystemPlayer,
-                ActionId = variables.TryGetValue("actionId", out var actionId) && Guid.TryParse(actionId?.ToString(), out var actionGuid) ? actionGuid : null,
+                ActionId = run.ActionId,
                 TargetUrl = stepData.TargetUrl,
                 HttpMethod = stepData.HttpMethod ?? "POST",
                 ParentID = parentId,
@@ -88,7 +97,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
 
             // Refused here (not answered with an error by the other side): GMs are told why.
             if (result.Reason != null && result.Reason != ProxyReasons.NetworkError)
-                await AddonNetworkNotice.SendAsync(mediator, gameLobby, variables, stepData.TargetUrl, result.Reason);
+                await AddonNetworkNotice.SendAsync(mediator, gameLobby, run, stepData.TargetUrl, result.Reason);
         }
     }
 }
