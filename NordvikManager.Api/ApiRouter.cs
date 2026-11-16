@@ -50,7 +50,7 @@ namespace NordvikManager.Api
                 query[key] = value;
             query["gameId"] = gameId.ToString();
 
-            var (status, body) = await AnswerAsync(request.Method, request.Path, query, request.Body, player.Name,
+            var (status, body) = await AnswerAsync(request.Method, request.Path, query, request.Body, player.Name, gameId,
                 // A tunnelled request carries no cookies, and takes none back (as the native tunnel).
                 async services => new ApiContext(await CallerAsync(player, services), gameId));
             await connection.SendMessageToPlayer(new
@@ -73,11 +73,11 @@ namespace NordvikManager.Api
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var (key, value) in query ?? new Dictionary<string, string>())
                 values[key] = value;
-            return AnswerAsync(method, path, values, body, context.User?.UserName, _ => Task.FromResult(context));
+            return AnswerAsync(method, path, values, body, context.User?.UserName, null, _ => Task.FromResult(context));
         }
 
         private async Task<(int Status, JToken? Body)> AnswerAsync(string method, string requestPath, Dictionary<string, string> query,
-            JToken? requestBody, string? callerName, Func<IServiceProvider, Task<ApiContext>> makeContext)
+            JToken? requestBody, string? callerName, Guid? channelGame, Func<IServiceProvider, Task<ApiContext>> makeContext)
         {
             // As WebRTCInProcessDispatcher: the binary resource read goes to its base64 variant.
             var path = requestPath.Trim('/');
@@ -96,6 +96,11 @@ namespace NordvikManager.Api
             if (route.NativeOnly)
                 return (501, Json(new { error = NativeOnlyMessage }));
 
+            // A data channel is one game's: its requests can't be about another game.
+            if (channelGame is Guid game && routeValues.TryGetValue("gameId", out var inPath)
+                && !(Guid.TryParse(inPath, out var pathGame) && pathGame == game))
+                return (403, Json(new { error = "This connection is for another game." }));
+
             try
             {
                 using var scope = _scopes.CreateScope();
@@ -106,6 +111,10 @@ namespace NordvikManager.Api
                     query[key] = value;
 
                 var context = await makeContext(services);
+                // As [Authorize] natively: a tunnelled request without a caller isn't logged in.
+                // (The host's own calls are its GM's: HostGm answers 401 before login.)
+                if (channelGame != null && context.User == null && !route.Anonymous)
+                    return (401, Json(new { error = "Not logged in." }));
                 if (!TryBind(route.Handler, query, requestBody, context.User, context, services, out var arguments, out var bindingError))
                     return (400, Json(new { error = bindingError }));
 
@@ -195,19 +204,32 @@ namespace NordvikManager.Api
                 }
                 else
                 {
-                    if (!TryBindBody(body, type, out arguments[i], out error))
+                    if (!TryBindBody(body, type, AllowsEmptyBody(parameter), out arguments[i], out error))
                         return false;
                 }
             }
             return true;
         }
 
-        private static bool TryBindBody(JToken? body, Type type, out object? value, out string? error)
+        // As ASP.NET Core: an empty body binds to a parameter that is nullable or has a default.
+        private static bool AllowsEmptyBody(ParameterInfo parameter) =>
+            parameter.HasDefaultValue
+            || Nullable.GetUnderlyingType(parameter.ParameterType) != null
+            || (!parameter.ParameterType.IsValueType
+                && new NullabilityInfoContext().Create(parameter).WriteState == NullabilityState.Nullable);
+
+        private static bool TryBindBody(JToken? body, Type type, bool allowEmpty, out object? value, out string? error)
         {
             value = null;
             error = null;
+            // As [ApiController]: a body parameter needs a body.
             if (body == null || body.Type == JTokenType.Null)
-                return true;
+            {
+                if (allowEmpty)
+                    return true;
+                error = "A request body is required.";
+                return false;
+            }
             try
             {
                 value = JsonSerializer.Deserialize(body.ToString(Newtonsoft.Json.Formatting.None), type, ApiJson.Options);
@@ -218,7 +240,12 @@ namespace NordvikManager.Api
                 return false;
             }
             if (value == null)
-                return true;
+            {
+                if (allowEmpty)
+                    return true;
+                error = "A request body is required.";
+                return false;
+            }
 
             // As [ApiController] answers 400 for a body failing its data annotations.
             var results = new List<ValidationResult>();

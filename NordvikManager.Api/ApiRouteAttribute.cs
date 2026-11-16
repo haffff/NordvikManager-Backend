@@ -32,5 +32,12 @@ namespace NordvikManager.Api
         /// lists it for a browser host (ApiRouteCoverageTests requires it).
         /// </summary>
         public string? Reason { get; set; }
+
+        /// <summary>
+        /// Answers callers who aren't logged in, as its action's [AllowAnonymous] (or no
+        /// [Authorize]): otherwise a tunnelled request without a caller is 401, as natively.
+        /// ApiRouteCoverageTests checks the two agree.
+        /// </summary>
+        public bool Anonymous { get; set; }
     }
 }

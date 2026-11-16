@@ -38,7 +38,7 @@ namespace NordvikManager.Api.Endpoints
             _configuration = configuration;
         }
 
-        [ApiRoute("POST", "api/User/Login")]
+        [ApiRoute("POST", "api/User/Login", Anonymous = true)]
         public async Task<ApiResult> Login(ApiContext context, Models.LoginRequest loginData)
         {
             var centralResult = await _centralServer.LoginAsync(loginData.Username, loginData.Password);
@@ -126,7 +126,7 @@ namespace NordvikManager.Api.Endpoints
         }
 
 
-        [ApiRoute("POST", "api/User/Register")]
+        [ApiRoute("POST", "api/User/Register", Anonymous = true)]
         public async Task<ApiResult> Register(ApiContext context, Models.RegisterRequest registerRequest)
         {
             var (success, message) = await _centralServer.RegisterAsync(
@@ -139,7 +139,7 @@ namespace NordvikManager.Api.Endpoints
             return ApiResult.BadRequest(new { message });
         }
 
-        [ApiRoute("GET", "api/User/CheckRegistrationKey")]
+        [ApiRoute("GET", "api/User/CheckRegistrationKey", Anonymous = true)]
         public async Task<ApiResult> CheckRegistrationKey(ApiContext context, string key)
         {
             var valid = await _centralServer.CheckRegistrationKeyAsync(key);

@@ -24,7 +24,7 @@ namespace NordvikManager.Tests.Api
 
         private static string Name(Type controller) => controller.Name[..^"Controller".Length];
 
-        private static IEnumerable<(string Controller, string Method, string Path)> Actions()
+        private static IEnumerable<(string Controller, string Method, string Path, Type Type, MethodInfo Action)> Actions()
         {
             foreach (var controller in Controllers())
             {
@@ -42,7 +42,7 @@ namespace NordvikManager.Tests.Api
                         {
                             var path = template.StartsWith('/') || template.StartsWith("~/") ? template.TrimStart('~') : prefix + "/" + template;
                             foreach (var method in http.HttpMethods)
-                                yield return (Name(controller), method, path.Trim('/'));
+                                yield return (Name(controller), method, path.Trim('/'), controller, action);
                         }
                     }
                 }
@@ -72,6 +72,26 @@ namespace NordvikManager.Tests.Api
                 .ToList();
 
             Assert.True(orphans.Count == 0, "No controller action answers: " + string.Join(", ", orphans));
+        }
+
+        // A tunnelled request from a caller without a name gets 401 unless the route is
+        // Anonymous, as [Authorize] answers natively: the two must agree.
+        [Fact]
+        public void EverySharedEndpoint_AllowsAnonymousCallers_AsItsActionDoes()
+        {
+            var anonymous = Actions()
+                .Where(a => a.Action.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute>() != null
+                    || (a.Action.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>() == null
+                        && a.Type.GetCustomAttribute<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>() == null))
+                .Select(a => (a.Method, a.Path.ToLowerInvariant()))
+                .ToHashSet();
+
+            var wrong = ApiRoutes.Shared.All
+                .Where(r => r.Anonymous != anonymous.Contains((r.Method, r.Path.ToLowerInvariant())))
+                .Select(r => $"{r.Method} {r.Path} (Anonymous = {r.Anonymous})")
+                .ToList();
+
+            Assert.True(wrong.Count == 0, "Anonymous differs from the action's [Authorize]: " + string.Join(", ", wrong));
         }
 
         // GET api/Host/Info lists these for a browser host's GM, so each says why it's server-only.

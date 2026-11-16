@@ -41,11 +41,11 @@ namespace NordvikManager.Tests.Api
 
         private Recorder Recorded { get; }
 
-        private async Task<JObject> Send(string method, string path, Dictionary<string, string>? query = null, JToken? body = null)
+        private async Task<JObject> Send(string method, string path, Dictionary<string, string>? query = null, JToken? body = null, PlayerDTO? player = null)
         {
             var connection = new RecordingConnection();
             await _router.DispatchAsync(new WebRTCApiRequest { Id = "req-1", Method = method, Path = path, Query = query, Body = body },
-                _player, _sessionGame, connection);
+                player ?? _player, _sessionGame, connection);
             var response = JObject.FromObject(connection.Sent.Single());
             Assert.Equal("api-response", (string?)response["type"]);
             Assert.Equal("req-1", (string?)response["id"]);
@@ -211,13 +211,43 @@ namespace NordvikManager.Tests.Api
         [Fact]
         public async Task RouteTemplateValues_AreBound_BeforeTheQuery()
         {
-            var inPath = Guid.NewGuid();
-
-            var response = await Send("POST", $"api/sample/{inPath}/start", new() { ["mode"] = "fast" });
+            var response = await Send("POST", $"api/sample/{_sessionGame}/start", new() { ["mode"] = "fast", ["gameId"] = Guid.NewGuid().ToString() });
 
             Assert.Equal(200, (int)response["status"]!);
-            Assert.Equal(inPath, (Guid)response["body"]!["gameId"]!);
+            Assert.Equal(_sessionGame, (Guid)response["body"]!["gameId"]!);
             Assert.Equal("fast", (string?)response["body"]!["mode"]);
+        }
+
+        // The channel's game is the one its requests are about: another game in the path is refused.
+        [Fact]
+        public async Task AnotherGameInThePath_Is403()
+        {
+            var response = await Send("POST", $"api/sample/{Guid.NewGuid()}/start", new() { ["mode"] = "fast" });
+
+            Assert.Equal(403, (int)response["status"]!);
+        }
+
+        // As [Authorize] natively: a caller the tunnel can't name isn't logged in. Routes whose
+        // action allows anonymous callers still answer.
+        [Fact]
+        public async Task ANamelessCaller_Is401_UnlessTheRouteIsAnonymous()
+        {
+            var nameless = new PlayerDTO { Id = Guid.NewGuid() };
+
+            var guarded = await Send("GET", "api/sample/echo", player: nameless);
+            var open = await Send("GET", "api/sample/open", player: nameless);
+
+            Assert.Equal(401, (int)guarded["status"]!);
+            Assert.Equal(200, (int)open["status"]!);
+        }
+
+        // As [ApiController]: a complex body parameter with no body is a 400, not a null.
+        [Fact]
+        public async Task AMissingBody_Is400()
+        {
+            var response = await Send("POST", "api/sample/create");
+
+            Assert.Equal(400, (int)response["status"]!);
         }
 
         // Server-only routes (files on the server's own disk) are known, but not served here.
@@ -348,6 +378,9 @@ namespace NordvikManager.Tests.Api
 
             [ApiRoute("GET", "api/Sample/Raw")]
             public ApiResult Raw() => ApiResult.Content("{\"Kept\":\"As Written\"}", "application/json");
+
+            [ApiRoute("GET", "api/Sample/Open", Anonymous = true)]
+            public ApiResult Open() => ApiResult.Ok(new { open = true });
 
             [ApiRoute("GET", "api/Sample/Nothing")]
             public Task<ApiResult> Nothing() => Task.FromResult(ApiResult.Ok(null));

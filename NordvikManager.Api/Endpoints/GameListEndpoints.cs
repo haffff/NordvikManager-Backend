@@ -63,7 +63,7 @@ namespace NordvikManager.Api.Endpoints
         /// Exists to avoid CORS issues from browser clients.
         /// Does not require authentication — public games are visible to anyone.
         /// </summary>
-        [ApiRoute("GET", "api/GameList/publicgames")]
+        [ApiRoute("GET", "api/GameList/publicgames", Anonymous = true)]
         public async Task<ApiResult> GetPublicGames(ApiContext context, int page = 1, int count = 10, CancellationToken cancellationToken = default)
         {
             var centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
