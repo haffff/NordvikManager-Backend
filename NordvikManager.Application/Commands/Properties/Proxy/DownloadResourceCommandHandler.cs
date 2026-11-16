@@ -32,7 +32,7 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
                 return new DownloadResourceResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
 
-            if (!await ProxySupport.IsAllowedByAddonAsync(dbContext, request.ActionId, request.TargetUrl, cancellationToken))
+            if (!await ProxySupport.IsAllowedByAddonAsync(dbContext, request.ActionId, request.CallerActionIds, request.TargetUrl, cancellationToken))
                 return new DownloadResourceResult { Success = false, StatusCode = 403, Reason = ProxyReasons.UndeclaredHost };
 
             var resolvedProtected = ProxySupport.ResolveProtected(dbContext, request.ParentID, new[] { request.BearerTokenPropertyName });

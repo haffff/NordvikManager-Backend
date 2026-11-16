@@ -16,15 +16,21 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         /// (info.json "network") is held to it; an action the GM made, or an addon that doesn't
         /// say, isn't. One query, the addon's network only.
         /// </summary>
-        public static async Task<bool> IsAllowedByAddonAsync(IDbContext dbContext, Guid? actionId, string? targetUrl, CancellationToken cancellationToken)
+        public static async Task<bool> IsAllowedByAddonAsync(IDbContext dbContext, Guid? actionId, IReadOnlyList<Guid>? callerActionIds,
+            string? targetUrl, CancellationToken cancellationToken)
         {
-            if (actionId is not Guid id)
+            var ids = (callerActionIds ?? Array.Empty<Guid>()).ToList();
+            if (actionId is Guid id)
+                ids.Add(id);
+            if (ids.Count == 0)
                 return true;
-            var network = await dbContext.Addons!
-                .Where(a => a.Actions!.Any(x => x.Id == id))
+            // The action's addon and every caller's: an action run by an addon's action may be
+            // carrying that addon's request.
+            var networks = await dbContext.Addons!
+                .Where(a => a.Actions!.Any(x => ids.Contains(x.Id)))
                 .Select(a => a.Network)
-                .FirstOrDefaultAsync(cancellationToken);
-            return AddonNetworkRules.Allows(network, targetUrl);
+                .ToListAsync(cancellationToken);
+            return networks.All(network => AddonNetworkRules.Allows(network, targetUrl));
         }
 
         /// <summary>

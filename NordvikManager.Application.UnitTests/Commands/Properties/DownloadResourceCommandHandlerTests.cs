@@ -145,6 +145,18 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
         }
 
         [Fact]
+        public async Task Handle_CalledByAnAddonActionToAnUndeclaredHost_IsRefused()
+        {
+            var cmd = Command();
+            cmd.ActionId = Guid.NewGuid();
+            cmd.CallerActionIds = new[] { AddonAction(new NordvikManager.Domain.Entities.AddonNetwork()) };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+        }
+
+        [Fact]
         public async Task Handle_AddonActionToAnUndeclaredHost_IsRefused()
         {
             var cmd = Command();

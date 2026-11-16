@@ -53,6 +53,19 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 
+        // Run by an addon's action (Execute Action), a GM-made action is held to that addon's network.
+        [Fact]
+        public async Task Handle_CalledByAnAddonActionToAnUndeclaredHost_IsRefused()
+        {
+            var cmd = BaseCommand();
+            cmd.ActionId = Guid.NewGuid();
+            cmd.CallerActionIds = new[] { AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://1.1.1.1" } }) };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+        }
+
         [Theory]
         [InlineData("declared")]
         [InlineData("userHosts")]

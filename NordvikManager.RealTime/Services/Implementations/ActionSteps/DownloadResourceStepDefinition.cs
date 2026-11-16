@@ -58,6 +58,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 {
                     GameId = gameLobby.GameId,
                     ActionId = run.ActionId,
+                    CallerActionIds = run.CallerActionIds,
                     Player = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
                     TargetUrl = data.TargetUrl,
                     ParentID = parentId,

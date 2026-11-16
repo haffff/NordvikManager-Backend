@@ -42,6 +42,12 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         /// network may only reach those hosts (AddonNetworkRules).
         /// </summary>
         public Guid? ActionId { get; set; }
+
+        /// <summary>
+        /// The actions whose run led to <see cref="ActionId"/>'s (Execute Action): each one's
+        /// addon network must allow the request too.
+        /// </summary>
+        public IReadOnlyList<Guid>? CallerActionIds { get; set; }
     }
 
     public class ProxyCommandResult

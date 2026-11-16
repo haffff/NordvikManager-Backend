@@ -68,6 +68,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
             {
                 Player = gameLobby.SystemPlayer,
                 ActionId = run.ActionId,
+                CallerActionIds = run.CallerActionIds,
                 TargetUrl = stepData.TargetUrl,
                 HttpMethod = stepData.HttpMethod ?? "POST",
                 ParentID = parentId,
