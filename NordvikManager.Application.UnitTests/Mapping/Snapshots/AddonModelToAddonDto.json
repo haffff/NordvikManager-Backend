@@ -10,12 +10,17 @@
     "Key": "text4",
     "License": "text11",
     "Name": "text3",
+    "Network": {
+      "Hosts": [],
+      "UserHosts": "text17"
+    },
     "Permission": null,
     "ReleaseUrl": "text9",
     "RepositoryUrl": "text10",
     "RequiredBy": null,
     "Resources": [],
     "Templates": [],
+    "UsesOutsideConnections": false,
     "Version": "text6",
     "Views": [],
     "Website": "text8"
@@ -23,18 +28,18 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text58",
-        "Description": "text55",
+        "Content": "text62",
+        "Description": "text59",
         "GenericPermission": null,
         "GmPermission": null,
         "Hook": 1,
-        "HookFilter": "text57",
-        "Id": "00000000-0000-0000-0000-000000000052",
+        "HookFilter": "text61",
+        "Id": "00000000-0000-0000-0000-000000000056",
         "IsEnabled": true,
-        "Name": "text53",
-        "Path": "text54",
+        "Name": "text57",
+        "Path": "text58",
         "Permission": null,
-        "Prefix": "text59"
+        "Prefix": "text63"
       }
     ],
     "Author": "text7",
@@ -51,6 +56,12 @@
     "Key": "text4",
     "License": "text11",
     "Name": "text3",
+    "Network": {
+      "Hosts": [
+        "text20"
+      ],
+      "UserHosts": "text21"
+    },
     "Permission": null,
     "ReleaseUrl": "text9",
     "RepositoryUrl": "text10",
@@ -58,12 +69,12 @@
     "Resources": [
       {
         "Data": "AQID",
-        "Id": "00000000-0000-0000-0000-000000000064",
-        "Key": "text73",
+        "Id": "00000000-0000-0000-0000-000000000068",
+        "Key": "text77",
         "MimeType": "image/jpeg",
-        "Name": "text72",
-        "Path": "text75",
-        "PlayerId": "00000000-0000-0000-0000-000000000076",
+        "Name": "text76",
+        "Path": "text79",
+        "PlayerId": "00000000-0000-0000-0000-000000000080",
         "PlayerName": null,
         "Storage": 1,
         "Volume": 0.5
@@ -74,36 +85,37 @@
         "AdditionalResources": [
           "00000000-0000-0000-0000-000000000901"
         ],
-        "Description": "text38",
+        "Description": "text42",
         "FirstOpen": true,
         "GenericPermission": null,
         "GmPermission": null,
-        "Id": "00000000-0000-0000-0000-000000000036",
+        "Id": "00000000-0000-0000-0000-000000000040",
         "IsHidden": true,
-        "Key": "text46",
-        "MainResource": "00000000-0000-0000-0000-000000000039",
-        "Name": "text37",
+        "Key": "text50",
+        "MainResource": "00000000-0000-0000-0000-000000000043",
+        "Name": "text41",
         "Owner": null,
         "Permission": null,
         "Properties": [],
         "TemplateId": null
       }
     ],
+    "UsesOutsideConnections": false,
     "Version": "text6",
     "Views": [
       {
         "AdditionalResources": [
           "00000000-0000-0000-0000-000000000901"
         ],
-        "Description": "text22",
+        "Description": "text26",
         "FirstOpen": true,
         "GenericPermission": null,
         "GmPermission": null,
-        "Id": "00000000-0000-0000-0000-000000000020",
+        "Id": "00000000-0000-0000-0000-000000000024",
         "IsHidden": true,
-        "Key": "text30",
-        "MainResource": "00000000-0000-0000-0000-000000000023",
-        "Name": "text21",
+        "Key": "text34",
+        "MainResource": "00000000-0000-0000-0000-000000000027",
+        "Name": "text25",
         "Owner": null,
         "Permission": null,
         "Properties": [],
@@ -123,12 +135,14 @@
     "Key": null,
     "License": null,
     "Name": null,
+    "Network": null,
     "Permission": null,
     "ReleaseUrl": null,
     "RepositoryUrl": null,
     "RequiredBy": null,
     "Resources": [],
     "Templates": [],
+    "UsesOutsideConnections": false,
     "Version": null,
     "Views": [],
     "Website": null

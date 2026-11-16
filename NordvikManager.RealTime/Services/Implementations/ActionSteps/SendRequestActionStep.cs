@@ -58,6 +58,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
             var command = new ProxyCommand
             {
                 Player = gameLobby.SystemPlayer,
+                ActionId = variables.TryGetValue("actionId", out var actionId) && Guid.TryParse(actionId?.ToString(), out var actionGuid) ? actionGuid : null,
                 TargetUrl = stepData.TargetUrl,
                 HttpMethod = stepData.HttpMethod ?? "POST",
                 ParentID = parentId,

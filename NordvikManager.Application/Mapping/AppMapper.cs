@@ -171,9 +171,11 @@ namespace NordvikManager.Application.Mapping
         [MapperIgnoreTarget(nameof(AddonDto.Permission))]
         [MapperIgnoreTarget(nameof(AddonDto.Installed))]
         [MapperIgnoreTarget(nameof(AddonDto.RequiredBy))]
+        [MapperIgnoreTarget(nameof(AddonDto.UsesOutsideConnections))]
         private partial AddonDto ToDto(AddonModel source);
 
         [MapperIgnoreTarget(nameof(AddonModel.InstallHookFired))]
+        [MapperIgnoreSource(nameof(AddonDto.UsesOutsideConnections))]
         private partial AddonModel ToModel(AddonDto source);
 
         // Resource: the MIME type travels as its text ("image/png"), stored as the enum.

@@ -1,4 +1,6 @@
+using NordvikManager.Application.Commands.Addons;
 using NordvikManager.Infrastructure.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using NordvikManager.Infrastructure.Services.Proxy;
 
 namespace NordvikManager.Application.Commands.Properties.Proxy
@@ -8,6 +10,22 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
     {
         private static readonly HashSet<string> AllowedSchemes =
             new(StringComparer.OrdinalIgnoreCase) { "http", "https" };
+
+        /// <summary>
+        /// Whether the action's addon lets it reach this address: an addon declaring its network
+        /// (info.json "network") is held to it; an action the GM made, or an addon that doesn't
+        /// say, isn't. One query, the addon's network only.
+        /// </summary>
+        public static async Task<bool> IsAllowedByAddonAsync(IDbContext dbContext, Guid? actionId, string? targetUrl, CancellationToken cancellationToken)
+        {
+            if (actionId is not Guid id)
+                return true;
+            var network = await dbContext.Addons!
+                .Where(a => a.Actions!.Any(x => x.Id == id))
+                .Select(a => a.Network)
+                .FirstOrDefaultAsync(cancellationToken);
+            return AddonNetworkRules.Allows(network, targetUrl);
+        }
 
         /// <summary>
         /// False for an invalid URL, a scheme other than http(s), or a host whose addresses

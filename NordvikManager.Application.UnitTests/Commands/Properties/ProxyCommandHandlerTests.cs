@@ -23,6 +23,60 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             ParentID = Guid.NewGuid(),
         };
 
+
+        // An action that came with an addon declaring this network (null: it doesn't say).
+        private Guid AddonAction(NordvikManager.Domain.Entities.AddonNetwork? network)
+        {
+            var game = BuildGame();
+            var action = new ActionModel { Id = Guid.NewGuid(), Name = "Fetch", Prefix = "notes", Content = "[]", Game = game };
+            Db.Actions.Add(action);
+            var addon = new NordvikManager.Domain.Entities.AddonModel { Id = Guid.NewGuid(), Name = "Notes", Key = "notes", Network = network, Actions = new() { action } };
+            Db.Addons.Add(addon);
+            Db.Entry(addon).Property("GameModelId").CurrentValue = game.Id;
+            Db.SaveChanges();
+            return action.Id;
+        }
+
+        // An addon that says where it connects is held to it: its action can't reach another host.
+        [Fact]
+        public async Task Handle_AddonActionToAnUndeclaredHost_IsRefused()
+        {
+            var actionId = AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://1.1.1.1" } });
+            var cmd = BaseCommand();
+            cmd.ActionId = actionId;
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(403, result.StatusCode);
+            Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+            _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("declared")]
+        [InlineData("userHosts")]
+        [InlineData("undeclared")]
+        [InlineData("gm action")]
+        public async Task Handle_AllowedByTheAddonsNetwork_GoesOut(string kind)
+        {
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "ok"));
+            var cmd = BaseCommand();
+            cmd.ActionId = kind switch
+            {
+                "declared" => AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://8.8.8.8" } }),
+                "userHosts" => AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { UserHosts = "Your server" }),
+                "undeclared" => AddonAction(null),
+                _ => Guid.NewGuid(),
+            };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Null(result.Reason);
+        }
+
         [Fact]
         public async Task Handle_InvalidUrl_ReturnsBadRequestWithoutCallingProxyService()
         {

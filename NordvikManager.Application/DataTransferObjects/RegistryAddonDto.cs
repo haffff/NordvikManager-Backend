@@ -20,6 +20,8 @@ namespace NordvikManager.Application.DataTransferObjects
         /// <summary>Raw URL of its markdown readme; read through addon/readme, never fetched by the client.</summary>
         public string? Readme { get; set; }
         public List<RegistryDependencyDto>? Dependencies { get; set; }
+        /// <summary>Where its code connects (the release's info.json "network"); null: it doesn't say.</summary>
+        public AddonNetworkDto? Network { get; set; }
     }
 
     public class RegistryDependencyDto

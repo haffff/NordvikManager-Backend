@@ -418,6 +418,23 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
         }
 
+        // Where the addon's code connects outside NordvikManager (info.json "network"): kept as
+        // origins only; an addon that doesn't say has none (null), not an empty one.
+        [Fact]
+        public async Task Handle_Network_IsKeptAsOrigins_AndNullWhenTheAddonDoesntSay()
+        {
+            var game = BuildGame();
+            var declared = BuildAddonZip("{\"name\":\"Notes\",\"key\":\"notes\",\"version\":\"1.0\",\"network\":{\"hosts\":[\"https://API.example.com\",\"https://x.example.com/path\"],\"userHosts\":\"Your notes server\"}}");
+
+            var (_, result) = await Handler().Handle(ValidCommand(game, Player(), declared), CancellationToken.None);
+            var (_, plain) = await Handler().Handle(ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson)), CancellationToken.None);
+
+            var network = Db.Addons.First(a => a.Id == result.AddonId).Network;
+            Assert.Equal(new[] { "https://api.example.com" }, network!.Hosts);
+            Assert.Equal("Your notes server", network.UserHosts);
+            Assert.Null(Db.Addons.First(a => a.Id == plain.AddonId).Network);
+        }
+
         // An addon's action is added with the addon's key as its prefix, its hook filter as
         // written, and enabled.
         // Enabled is a regression: ActionDto.IsEnabled has no explicit default (unlike

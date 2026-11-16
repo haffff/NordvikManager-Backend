@@ -83,6 +83,21 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             Assert.Empty(playerSent);
         }
 
+        // The handler holds the action to its addon's declared network, so it's told which action.
+        [Fact]
+        public async Task Execute_SendsTheActionsId()
+        {
+            ProxyCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<ProxyCommand>(), It.IsAny<CancellationToken>()))
+                     .Callback<IRequest<ProxyCommandResult>, CancellationToken>((c, _) => sent = (ProxyCommand)c)
+                     .ReturnsAsync(new ProxyCommandResult { Success = true, StatusCode = 200 });
+            var actionId = Guid.NewGuid();
+
+            await _step.Execute(_mediator.Object, new Dictionary<string, object> { ["actionId"] = actionId.ToString() }, TestLobby.Create(), MakeStep());
+
+            Assert.Equal(actionId, sent.ActionId);
+        }
+
         [Fact]
         public async Task Execute_Succeeds_TellsNoOne()
         {

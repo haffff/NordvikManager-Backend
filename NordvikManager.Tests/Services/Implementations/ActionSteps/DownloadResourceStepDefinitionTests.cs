@@ -51,6 +51,22 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         }
 
         [Fact]
+        public async Task Execute_SendsTheActionsId()
+        {
+            DownloadResourceCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .Callback<IRequest<DownloadResourceResult>, CancellationToken>((c, _) => sent = (DownloadResourceCommand)c)
+                .ReturnsAsync(new DownloadResourceResult { Success = true, StatusCode = 200 });
+            var actionId = Guid.NewGuid();
+            var variables = new Dictionary<string, object> { ["actionId"] = actionId.ToString() };
+
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, _lobby,
+                new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(new { TargetUrl = "https://example.com/a.png", Key = "a.png" }) });
+
+            Assert.Equal(actionId, sent.ActionId);
+        }
+
+        [Fact]
         public async Task Execute_Throws_StoresANetworkError()
         {
             _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))

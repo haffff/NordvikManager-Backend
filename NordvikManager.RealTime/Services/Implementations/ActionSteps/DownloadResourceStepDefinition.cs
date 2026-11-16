@@ -48,6 +48,7 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 result = await mediator.Send(new DownloadResourceCommand
                 {
                     GameId = gameLobby.GameId,
+                    ActionId = variables.TryGetValue("actionId", out var actionId) && Guid.TryParse(actionId?.ToString(), out var actionGuid) ? actionGuid : null,
                     Player = new PlayerDTO { Id = gameLobby.SystemPlayer.Id, Name = gameLobby.SystemPlayer.Name },
                     TargetUrl = data.TargetUrl,
                     ParentID = parentId,

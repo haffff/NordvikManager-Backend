@@ -10,6 +10,10 @@
     "Key": "text4",
     "License": "text11",
     "Name": "text3",
+    "Network": {
+      "Hosts": [],
+      "UserHosts": "text16"
+    },
     "ReleaseUrl": "text9",
     "RepositoryUrl": "text10",
     "Resources": [],
@@ -21,16 +25,16 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text63",
-        "Description": "text58",
+        "Content": "text68",
+        "Description": "text63",
         "Game": null,
         "Hook": 1,
-        "HookFilter": "text60",
-        "Id": "00000000-0000-0000-0000-000000000055",
+        "HookFilter": "text65",
+        "Id": "00000000-0000-0000-0000-000000000060",
         "IsEnabled": true,
-        "Name": "text56",
-        "Path": "text57",
-        "Prefix": "text61"
+        "Name": "text61",
+        "Path": "text62",
+        "Prefix": "text66"
       }
     ],
     "Author": "text7",
@@ -47,6 +51,12 @@
     "Key": "text4",
     "License": "text11",
     "Name": "text3",
+    "Network": {
+      "Hosts": [
+        "text19"
+      ],
+      "UserHosts": "text20"
+    },
     "ReleaseUrl": "text9",
     "RepositoryUrl": "text10",
     "Resources": [
@@ -55,13 +65,13 @@
         "Data": "AQID",
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000073",
-        "Key": "text70",
+        "Id": "00000000-0000-0000-0000-000000000078",
+        "Key": "text75",
         "MimeType": 4,
-        "Name": "text69",
-        "Path": "text71",
+        "Name": "text74",
+        "Path": "text76",
         "Player": null,
-        "PlayerId": "00000000-0000-0000-0000-000000000077",
+        "PlayerId": "00000000-0000-0000-0000-000000000082",
         "Playlists": [],
         "Storage": 1,
         "ThumbnailData": null,
@@ -71,38 +81,38 @@
     ],
     "Templates": [
       {
-        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000048\"]",
-        "Description": "text40",
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000053\"]",
+        "Description": "text45",
         "FirstOpen": true,
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000038",
+        "Id": "00000000-0000-0000-0000-000000000043",
         "IsCustomUi": false,
         "IsHidden": true,
         "IsR20Card": false,
         "IsTemplate": false,
-        "Key": "text41",
-        "MainResource": "00000000-0000-0000-0000-000000000046",
-        "Name": "text39",
+        "Key": "text46",
+        "MainResource": "00000000-0000-0000-0000-000000000051",
+        "Name": "text44",
         "Properties": []
       }
     ],
     "Version": "text6",
     "Views": [
       {
-        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000031\"]",
-        "Description": "text23",
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000036\"]",
+        "Description": "text28",
         "FirstOpen": true,
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000021",
+        "Id": "00000000-0000-0000-0000-000000000026",
         "IsCustomUi": false,
         "IsHidden": true,
         "IsR20Card": false,
         "IsTemplate": false,
-        "Key": "text24",
-        "MainResource": "00000000-0000-0000-0000-000000000029",
-        "Name": "text22",
+        "Key": "text29",
+        "MainResource": "00000000-0000-0000-0000-000000000034",
+        "Name": "text27",
         "Properties": []
       }
     ],
@@ -119,6 +129,7 @@
     "Key": null,
     "License": null,
     "Name": null,
+    "Network": null,
     "ReleaseUrl": null,
     "RepositoryUrl": null,
     "Resources": [],

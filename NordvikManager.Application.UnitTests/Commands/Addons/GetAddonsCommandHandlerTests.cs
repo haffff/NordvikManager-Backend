@@ -86,5 +86,38 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Equal("core", dependency.Key);
             Assert.Equal("2.0", dependency.Version);
         }
+
+        private NordvikManager.Domain.Entities.BattleMap.ActionModel Action(NordvikManager.Domain.Entities.BattleMap.GameModel game, string name, string content)
+        {
+            var action = new NordvikManager.Domain.Entities.BattleMap.ActionModel { Id = Guid.NewGuid(), Name = name, Prefix = "addon", Game = game, Content = content };
+            Db.Actions.Add(action);
+            return action;
+        }
+
+        // Where an addon connects (info.json "network"), and whether its actions make outside
+        // requests at all (those don't work on the browser version), in both list shapes.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Handle_IncludesNetwork_AndWhetherItsActionsGoOutside(bool flat)
+        {
+            var game = BuildGame();
+            var notes = SeedAddon(game, "notes");
+            notes.Network = new AddonNetwork { Hosts = new() { "https://api.example.com" }, UserHosts = "Your server" };
+            notes.Actions = new() { Action(game, "Fetch", "[{\"Type\":\"SendRequest\",\"Data\":{}}]") };
+            var poll = SeedAddon(game, "poll");
+            poll.Actions = new() { Action(game, "Vote", "[{\"Type\":\"SendChat\",\"Data\":{}}]") };
+            Db.SaveChanges();
+
+            var result = await Handler().Handle(new GetAddonsCommand { GameId = game.Id, Player = Player(), Flat = flat }, CancellationToken.None);
+
+            var notesDto = result.Single(a => a.Key == "notes");
+            Assert.Equal(new[] { "https://api.example.com" }, notesDto.Network!.Hosts);
+            Assert.Equal("Your server", notesDto.Network.UserHosts);
+            Assert.True(notesDto.UsesOutsideConnections);
+            var pollDto = result.Single(a => a.Key == "poll");
+            Assert.Null(pollDto.Network);
+            Assert.False(pollDto.UsesOutsideConnections);
+        }
     }
 }

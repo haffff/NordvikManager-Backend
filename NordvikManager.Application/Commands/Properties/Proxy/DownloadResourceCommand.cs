@@ -26,6 +26,12 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public string? MimeType { get; set; }
 
         public Guid? ParentFolder { get; set; }
+
+        /// <summary>
+        /// The action sending it, if any: an action that came with an addon declaring its
+        /// network may only reach those hosts (AddonNetworkRules).
+        /// </summary>
+        public Guid? ActionId { get; set; }
     }
 
     public class DownloadResourceResult

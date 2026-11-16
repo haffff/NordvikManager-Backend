@@ -25,6 +25,9 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
                 return new ProxyCommandResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
             }
 
+            if (!await ProxySupport.IsAllowedByAddonAsync(dbContext, request.ActionId, request.TargetUrl, cancellationToken))
+                return new ProxyCommandResult { Success = false, StatusCode = 403, Reason = ProxyReasons.UndeclaredHost };
+
             // Resolve all needed protected properties (body properties + the bearer token
             // property) in a single query
             var resolvedProtected = ProxySupport.ResolveProtected(dbContext, request.ParentID,
