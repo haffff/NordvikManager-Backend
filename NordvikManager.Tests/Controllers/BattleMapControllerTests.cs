@@ -61,69 +61,59 @@ namespace NordvikManager.Tests.Controllers
             mediator.Setup(m => m.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(WithPlayer(player));
 
-        // =========================================================================
-        // GetPlayer
-        // =========================================================================
-
-        [Fact]
-        public async Task GetPlayer_ReturnsUnauthorized_WhenPlayerIsNull()
+        // Every action needs the caller to be a player of the game.
+        private static readonly Dictionary<string, Func<BattleMapController, Task<IActionResult>>> Actions = new()
         {
-            // Arrange
+            ["GetPlayer"] = c => c.GetPlayer(Guid.NewGuid()),
+            ["GetFullGame"] = c => c.GetFullGame(Guid.NewGuid()),
+            ["GetChat"] = c => c.GetChat(Guid.NewGuid()),
+            ["GetLayout"] = c => c.GetLayout(Guid.NewGuid(), Guid.NewGuid()),
+            ["GetBattlemap"] = c => c.GetBattlemap(Guid.NewGuid(), Guid.NewGuid()),
+            ["GetBattlemaps"] = c => c.GetBattlemaps(Guid.NewGuid()),
+            ["GetLayouts"] = c => c.GetLayouts(Guid.NewGuid()),
+            ["GetCards"] = c => c.GetCards(Guid.NewGuid()),
+            ["GetTree"] = c => c.GetTree(Guid.NewGuid(), "element"),
+        };
+
+        public static TheoryData<string> ActionNames() => new(Actions.Keys);
+
+        [Theory]
+        [MemberData(nameof(ActionNames))]
+        public async Task Action_ReturnsUnauthorized_WhenPlayerIsNull(string action)
+        {
             SetupPlayer(_mediator, null);
 
-            // Act
-            var result = await _controller.GetPlayer(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
+            Assert.IsType<UnauthorizedObjectResult>(await Actions[action](_controller));
         }
 
-        [Fact]
-        public async Task GetPlayer_ReturnsOk_WhenPlayerExists()
+        // What the command answers is what the action answers. Each setup returns that value.
+        private static readonly Dictionary<string, Func<Mock<IMediator>, object>> Answers = new()
         {
-            // Arrange
-            var player = SomePlayer();
-            SetupPlayer(_mediator, player);
+            ["GetPlayer"] = m => { var p = SomePlayer(); m.Setup(x => x.Send(It.IsAny<GetPlayerCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(WithPlayer(p)); return p; },
+            ["GetFullGame"] = m => Answer<GetGameCommand, NordvikManager.Application.Commands.BattleMap.GetGame.GetGameCommandResponse>(m, new()),
+            ["GetChat"] = m => Answer<GetMessagesCommand, List<NordvikManager.Application.DataTransferObjects.Chat.MessageDTO>>(m, new()),
+            ["GetLayout"] = m => Answer<GetLayoutCommand, LayoutDTO>(m, new LayoutDTO { Id = Guid.NewGuid(), Name = "layout" }),
+            ["GetBattlemap"] = m => Answer<GetBattleMapCommand, BattleMapDto>(m, new BattleMapDto { Id = Guid.NewGuid() }),
+            ["GetBattlemaps"] = m => Answer<GetBattleMapsCommand, List<BattleMapDto>>(m, new()),
+            ["GetLayouts"] = m => Answer<GetLayoutsCommand, List<LayoutDTO>>(m, new()),
+            ["GetCards"] = m => { var cards = new List<CardDto>(); m.Setup(x => x.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, cards)); return cards; },
+            ["GetTree"] = m => Answer<GetTreeEntriesCommand, List<TreeEntryDto>>(m, new()),
+        };
 
-            // Act
-            var result = await _controller.GetPlayer(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(player, ok.Value);
+        private static TResult Answer<TCommand, TResult>(Mock<IMediator> m, TResult value) where TCommand : IRequest<TResult>
+        {
+            m.Setup(x => x.Send(It.IsAny<TCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(value);
+            return value;
         }
 
-        // =========================================================================
-        // GetFullGame
-        // =========================================================================
-
-        [Fact]
-        public async Task GetFullGame_ReturnsUnauthorized_WhenPlayerIsNull()
+        [Theory]
+        [MemberData(nameof(ActionNames))]
+        public async Task Action_ReturnsOk_WithTheCommandsAnswer(string action)
         {
-            // Arrange
-            SetupPlayer(_mediator, null);
+            var expected = Answers[action](_mediator);
 
-            // Act
-            var result = await _controller.GetFullGame(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetFullGame_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var gameResponse = new NordvikManager.Application.Commands.BattleMap.GetGame.GetGameCommandResponse();
-            _mediator.Setup(m => m.Send(It.IsAny<GetGameCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(gameResponse);
-
-            // Act
-            var result = await _controller.GetFullGame(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(gameResponse, ok.Value);
+            var ok = Assert.IsType<OkObjectResult>(await Actions[action](_controller));
+            Assert.Same(expected, ok.Value);
         }
 
         [Theory]
@@ -140,234 +130,6 @@ namespace NordvikManager.Tests.Controllers
 
             var ok = Assert.IsType<OkObjectResult>(result);
             Assert.Equal(isLocalAdmin, ((NordvikManager.Application.Commands.BattleMap.GetGame.GetGameCommandResponse)ok.Value!).IsLocalAdmin);
-        }
-
-        // =========================================================================
-        // GetChat
-        // =========================================================================
-
-        [Fact]
-        public async Task GetChat_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetChat(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetChat_ReturnsOk_WithMessages()
-        {
-            // Arrange
-            var messages = new List<NordvikManager.Application.DataTransferObjects.Chat.MessageDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetMessagesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(messages);
-
-            // Act
-            var result = await _controller.GetChat(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(messages, ok.Value);
-        }
-
-        // =========================================================================
-        // GetLayout
-        // =========================================================================
-
-        [Fact]
-        public async Task GetLayout_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetLayout(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetLayout_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var layoutDto = new LayoutDTO { Id = Guid.NewGuid(), Name = "layout" };
-            _mediator.Setup(m => m.Send(It.IsAny<GetLayoutCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(layoutDto);
-
-            // Act
-            var result = await _controller.GetLayout(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(layoutDto, ok.Value);
-        }
-
-        // =========================================================================
-        // GetBattlemap
-        // =========================================================================
-
-        [Fact]
-        public async Task GetBattlemap_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetBattlemap(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetBattlemap_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var bmDto = new BattleMapDto { Id = Guid.NewGuid() };
-            _mediator.Setup(m => m.Send(It.IsAny<GetBattleMapCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(bmDto);
-
-            // Act
-            var result = await _controller.GetBattlemap(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(bmDto, ok.Value);
-        }
-
-        // =========================================================================
-        // GetBattlemaps
-        // =========================================================================
-
-        [Fact]
-        public async Task GetBattlemaps_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetBattlemaps(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetBattlemaps_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var bmList = new List<BattleMapDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetBattleMapsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(bmList);
-
-            // Act
-            var result = await _controller.GetBattlemaps(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetLayouts
-        // =========================================================================
-
-        [Fact]
-        public async Task GetLayouts_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetLayouts(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetLayouts_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var layouts = new List<LayoutDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetLayoutsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(layouts);
-
-            // Act
-            var result = await _controller.GetLayouts(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetCards
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCards_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetCards(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetCards_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var cards = new List<CardDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, cards));
-
-            // Act
-            var result = await _controller.GetCards(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetTree
-        // =========================================================================
-
-        [Fact]
-        public async Task GetTree_ReturnsUnauthorized_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetTree(Guid.NewGuid(), "element");
-
-            // Assert
-            Assert.IsType<UnauthorizedObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task GetTree_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var tree = new List<TreeEntryDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetTreeEntriesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(tree);
-
-            // Act
-            var result = await _controller.GetTree(Guid.NewGuid(), "element");
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(tree, ok.Value);
         }
     }
 }

@@ -69,49 +69,84 @@ namespace NordvikManager.Tests.Controllers
                     .ReturnsAsync(WithPlayer(player));
 
         // =========================================================================
+        // Without a player in the game, reads are refused
+        // =========================================================================
+
+        private static readonly Dictionary<string, Func<MaterialsController, Task<IActionResult>>> PlayerReads = new()
+        {
+            ["GetResource"] = c => c.GetResource(Guid.NewGuid(), null, Guid.NewGuid()),
+            ["GetTemplates"] = c => c.GetTemplates(Guid.NewGuid()),
+            ["GetTemplatesFull"] = c => c.GetTemplatesFull(Guid.NewGuid()),
+            ["GetCards"] = c => c.GetCards(Guid.NewGuid()),
+            ["GetCard"] = c => c.GetCard(Guid.NewGuid(), Guid.NewGuid()),
+        };
+
+        public static TheoryData<string> PlayerReadNames() => new(PlayerReads.Keys);
+
+        [Theory]
+        [MemberData(nameof(PlayerReadNames))]
+        public async Task Read_ReturnsBadRequest_WhenPlayerIsNull(string action)
+        {
+            SetupPlayer(_mediator, null);
+
+            Assert.IsType<BadRequestResult>(await PlayerReads[action](_controller));
+        }
+
+        // =========================================================================
+        // What the command answers is what the action answers
+        // =========================================================================
+
+        private static TResult Answer<TCommand, TResult>(Mock<IMediator> m, TResult value) where TCommand : IRequest<TResult>
+        {
+            m.Setup(x => x.Send(It.IsAny<TCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(value);
+            return value;
+        }
+
+        private static List<CardDto> Cards(Mock<IMediator> m)
+        {
+            var cards = new List<CardDto>();
+            m.Setup(x => x.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, cards));
+            return cards;
+        }
+
+        private static readonly Dictionary<string, (Func<Mock<IMediator>, object> Setup, Func<MaterialsController, Task<IActionResult>> Call)> Reads = new()
+        {
+            ["GetResourceMetadata"] = (m => Answer<GetResourceCommand, ResourceDTO>(m, new ResourceDTO { Id = Guid.NewGuid() }), c => c.GetResourceMetadata(Guid.NewGuid(), Guid.NewGuid())),
+            ["GetTemplates"] = (Cards, c => c.GetTemplates(Guid.NewGuid())),
+            ["GetTemplatesFull"] = (Cards, c => c.GetTemplatesFull(Guid.NewGuid())),
+            ["GetCards"] = (Cards, c => c.GetCards(Guid.NewGuid())),
+            ["GetCard"] = (m => Answer<GetCardCommand, CardDto>(m, new CardDto { Id = Guid.NewGuid(), Name = "card" }), c => c.GetCard(Guid.NewGuid(), Guid.NewGuid())),
+            ["GetResources"] = (m => { var r = new List<ResourceDTO>(); m.Setup(x => x.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, r)); return r; },
+                c => c.GetResources(Guid.NewGuid())),
+            ["RemoveResource"] = (m => Answer<RemoveResourceCommand, CommandResponse>(m, CommandResponse.Ok), c => c.RemoveResource(Guid.NewGuid(), Guid.NewGuid())),
+        };
+
+        public static TheoryData<string> ReadNames() => new(Reads.Keys);
+
+        [Theory]
+        [MemberData(nameof(ReadNames))]
+        public async Task Action_ReturnsOk_WithTheCommandsAnswer(string action)
+        {
+            var expected = Reads[action].Setup(_mediator);
+
+            var ok = Assert.IsType<OkObjectResult>(await Reads[action].Call(_controller));
+            Assert.Equal(expected, ok.Value);
+        }
+
+        // =========================================================================
         // GetResource
         // =========================================================================
 
         [Fact]
-        public async Task GetResource_ReturnsBadRequest_WhenPlayerIsNull()
+        public async Task GetResource_ReturnsTheFile_OrBadRequestWithoutData()
         {
-            // Arrange
-            SetupPlayer(_mediator, null);
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((new byte[] { 1, 2, 3 }, MimeType.JPEG));
+            Assert.IsType<FileContentResult>(await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid()));
 
-            // Act
-            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetResource_ReturnsBadRequest_WhenResourceDataIsNull()
-        {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(((byte[]?)null, MimeType.JPEG));
-
-            // Act
-            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetResource_ReturnsFile_WhenResourceExists()
-        {
-            // Arrange
-            var bytes = new byte[] { 1, 2, 3 };
-            _mediator.Setup(m => m.Send(It.IsAny<GetResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((bytes, MimeType.JPEG));
-
-            // Act
-            var result = await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<FileContentResult>(result);
+            Assert.IsType<BadRequestResult>(await _controller.GetResource(Guid.NewGuid(), null, Guid.NewGuid()));
         }
 
         // =========================================================================
@@ -122,7 +157,7 @@ namespace NordvikManager.Tests.Controllers
         private static JObject Body(IActionResult result) => JObject.FromObject(Assert.IsType<OkObjectResult>(result).Value!);
 
         [Fact]
-        public async Task GetResourceWebRTC_ReturnsDataWithItsVersion()
+        public async Task GetResourceWebRTC_ReturnsDataWithItsVersion_OrNotFound()
         {
             _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new ResourceContent(new byte[] { 1, 2 }, MimeType.MP3, "v1", false));
@@ -132,6 +167,10 @@ namespace NordvikManager.Tests.Controllers
             Assert.Equal(Convert.ToBase64String(new byte[] { 1, 2 }), body["data"]!.Value<string>());
             Assert.Equal("audio/mpeg", body["mimeType"]!.Value<string>());
             Assert.Equal("v1", body["version"]!.Value<string>());
+
+            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
+                     .ReturnsAsync((ResourceContent?)null);
+            Assert.IsType<NotFoundResult>(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
         }
 
         [Fact]
@@ -240,375 +279,79 @@ namespace NordvikManager.Tests.Controllers
             Assert.IsType<BadRequestObjectResult>(await _controller.UploadFinish(Guid.NewGuid(), new UploadFinishRequest { UploadId = Guid.NewGuid() }));
         }
 
-        [Fact]
-        public async Task GetResourceWebRTC_Missing_ReturnsNotFound()
+        // =========================================================================
+        // Writes: Ok when the command succeeds; its exceptions go through (the exception
+        // middleware turns them into 403/404/400)
+        // =========================================================================
+
+        private static readonly Dictionary<string, (Action<Mock<IMediator>> Setup, Func<MaterialsController, Task<IActionResult>> Call, Type Expected)> Writes = new()
         {
-            _mediator.Setup(m => m.Send(It.IsAny<GetResourceContentCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((ResourceContent?)null);
+            ["AddResource"] = (m => m.Setup(x => x.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, (Guid?)Guid.NewGuid())),
+                c => c.AddResource(Guid.NewGuid(), new AddResourceRequest { Name = "image", MimeType = "image/jpeg", Key = null, Data = "aGVsbG8=" }), typeof(OkObjectResult)),
+            ["CreateResource"] = (m => m.Setup(x => x.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, (Guid?)Guid.NewGuid())),
+                CreateBgMusic, typeof(OkObjectResult)),
+            ["UpdateResourceData"] = (m => m.Setup(x => x.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, (Guid?)Guid.NewGuid())),
+                UpdateContent, typeof(OkObjectResult)),
+            ["DeleteResourceData"] = (m => m.Setup(x => x.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok),
+                DeleteData, typeof(OkResult)),
+        };
 
-            Assert.IsType<NotFoundResult>(await _controller.GetResourceWebRTC(Guid.NewGuid(), null, Guid.NewGuid()));
-        }
+        private static Task<IActionResult> CreateBgMusic(MaterialsController c) => c.CreateResource(Guid.NewGuid(), new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
+        private static Task<IActionResult> UpdateContent(MaterialsController c) => c.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" });
+        private static Task<IActionResult> DeleteData(MaterialsController c) => c.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid());
 
-        // =========================================================================
-        // GetResourceMetadata
-        // =========================================================================
+        public static TheoryData<string> WriteNames() => new(Writes.Keys);
 
-        [Fact]
-        public async Task GetResourceMetadata_ReturnsOk_WhenPlayerExists()
+        [Theory]
+        [MemberData(nameof(WriteNames))]
+        public async Task Write_ReturnsOk_WhenTheCommandSucceeds(string action)
         {
-            // Arrange
-            var resourceDto = new ResourceDTO { Id = Guid.NewGuid() };
-            _mediator.Setup(m => m.Send(It.IsAny<GetResourceCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(resourceDto);
+            Writes[action].Setup(_mediator);
 
-            // Act
-            var result = await _controller.GetResourceMetadata(Guid.NewGuid(), Guid.NewGuid());
+            var result = await Writes[action].Call(_controller);
 
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(resourceDto, ok.Value);
-        }
-
-        // =========================================================================
-        // GetTemplates
-        // =========================================================================
-
-        [Fact]
-        public async Task GetTemplates_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetTemplates(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetTemplates_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var cards = new List<CardDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, cards));
-
-            // Act
-            var result = await _controller.GetTemplates(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetTemplatesFull
-        // =========================================================================
-
-        [Fact]
-        public async Task GetTemplatesFull_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetTemplatesFull(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetTemplatesFull_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var cards = new List<CardDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, cards));
-
-            // Act
-            var result = await _controller.GetTemplatesFull(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetCards
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCards_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetCards(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetCards_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var cards = new List<CardDto>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetAllCardsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, cards));
-
-            // Act
-            var result = await _controller.GetCards(Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        // =========================================================================
-        // GetCard
-        // =========================================================================
-
-        [Fact]
-        public async Task GetCard_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            // Arrange
-            SetupPlayer(_mediator, null);
-
-            // Act
-            var result = await _controller.GetCard(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task GetCard_ReturnsOk_WhenPlayerExists()
-        {
-            // Arrange
-            var card = new CardDto { Id = Guid.NewGuid(), Name = "card" };
-            _mediator.Setup(m => m.Send(It.IsAny<GetCardCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(card);
-
-            // Act
-            var result = await _controller.GetCard(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(card, ok.Value);
-        }
-
-        // =========================================================================
-        // GetResources
-        // =========================================================================
-
-        [Fact]
-        public async Task GetResources_ReturnsOk_WithResourceList()
-        {
-            // Arrange
-            var resources = new List<ResourceDTO>();
-            _mediator.Setup(m => m.Send(It.IsAny<GetResourcesCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, resources));
-
-            // Act
-            var result = await _controller.GetResources(Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(resources, ok.Value);
-        }
-
-        // =========================================================================
-        // AddResource
-        // =========================================================================
-
-        [Fact]
-        public async Task AddResource_ReturnsOk_WithNewResourceId()
-        {
-            // Arrange
-            var newId = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, (Guid?)newId));
-            var request = new AddResourceRequest
-            {
-                Name = "image",
-                MimeType = "image/jpeg",
-                Key = null,
-                Data = "aGVsbG8=" // plain base64, no data: prefix
-            };
-
-            // Act
-            var result = await _controller.AddResource(Guid.NewGuid(), request);
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
-        }
-
-        // =========================================================================
-        // RemoveResource
-        // =========================================================================
-
-        [Fact]
-        public async Task RemoveResource_ReturnsOk_WithCommandResponse()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<RemoveResourceCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            // Act
-            var result = await _controller.RemoveResource(Guid.NewGuid(), Guid.NewGuid());
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(CommandResponse.Ok, ok.Value);
-        }
-
-        // =========================================================================
-        // CreateResource
-        // =========================================================================
-
-        [Fact]
-        public async Task CreateResource_ReturnsOk_WithNewResourceId()
-        {
-            // Arrange
-            var newId = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, (Guid?)newId));
-
-            // Act
-            var result = await _controller.CreateResource(Guid.NewGuid(),
-                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
-
-            // Assert
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
+            Assert.IsType(Writes[action].Expected, result);
+            if (result is OkObjectResult ok) Assert.NotNull(ok.Value);
         }
 
         [Fact]
         public async Task CreateResource_ReturnsConflict_WhenKeyAlreadyExists()
         {
-            // Arrange
             _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync((CommandResponse.AlreadyExists, (Guid?)null));
 
-            // Act
-            var result = await _controller.CreateResource(Guid.NewGuid(),
-                new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" });
-
-            // Assert
-            Assert.IsType<ConflictObjectResult>(result);
+            Assert.IsType<ConflictObjectResult>(await CreateBgMusic(_controller));
         }
 
-        [Fact]
-        public async Task CreateResource_ThrowsPermissionException_WhenPlayerMissingInDb()
+        public static TheoryData<string, string> Refusals() => new()
         {
-            // Arrange — CreateResourceCommandHandler throws PermissionException (403) when
-            // the player row backing the request can no longer be found.
-            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new PermissionException(Permission.Read));
+            { "CreateResource", "player missing in the database" },
+            { "UpdateResourceData", "resource missing" },
+            { "UpdateResourceData", "not the owner" },
+            { "UpdateResourceData", "content not base64" },
+            { "DeleteResourceData", "resource missing" },
+            { "DeleteResourceData", "not the owner" },
+        };
 
-            // Act & Assert
-            await Assert.ThrowsAsync<PermissionException>(() =>
-                _controller.CreateResource(Guid.NewGuid(), new CreateResourceRequest { Key = "bg-music", Content = "aGVsbG8=" }));
-        }
-
-        // =========================================================================
-        // UpdateResourceData
-        // =========================================================================
-
-        [Fact]
-        public async Task UpdateResourceData_ReturnsOk_WhenResourceExists()
+        private static Exception RefusalFor(string why) => why switch
         {
-            // Arrange
-            var id = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, (Guid?)id));
+            "player missing in the database" => new PermissionException(Permission.Read),
+            "resource missing" => new ResourceNotFoundException("Resource", Guid.NewGuid()),
+            "not the owner" => new PermissionException(Permission.Edit),
+            _ => new WrongArgumentsException(nameof(UpdateResourceDataRequest.Content)),
+        };
 
-            // Act
-            var result = await _controller.UpdateResourceData(Guid.NewGuid(),
-                new UpdateResourceDataRequest { Id = id, Content = "aGVsbG8=" });
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
-
-        [Fact]
-        public async Task UpdateResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
+        [Theory]
+        [MemberData(nameof(Refusals))]
+        public async Task Write_LetsTheCommandsRefusalThrough(string action, string why)
         {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
+            var refusal = RefusalFor(why);
+            _mediator.Setup(m => m.Send(It.IsAny<CreateResourceCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(refusal);
+            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(refusal);
+            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(refusal);
 
-            // Act & Assert
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
-                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
-        }
-
-        [Fact]
-        public async Task UpdateResourceData_ThrowsPermissionException_WhenNotOwner()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new PermissionException(Permission.Edit));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<PermissionException>(() =>
-                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "aGVsbG8=" }));
-        }
-
-        [Fact]
-        public async Task UpdateResourceData_ThrowsWrongArgumentsException_WhenContentNotBase64()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<UpdateResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new WrongArgumentsException(nameof(UpdateResourceDataRequest.Content)));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<WrongArgumentsException>(() =>
-                _controller.UpdateResourceData(Guid.NewGuid(), new UpdateResourceDataRequest { Id = Guid.NewGuid(), Content = "not-base64!!!" }));
-        }
-
-        // =========================================================================
-        // DeleteResourceData
-        // =========================================================================
-
-        [Fact]
-        public async Task DeleteResourceData_ReturnsOk_WhenResourceExists()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            // Act
-            var result = await _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid());
-
-            // Assert
-            Assert.IsType<OkResult>(result);
-        }
-
-        [Fact]
-        public async Task DeleteResourceData_ThrowsResourceNotFoundException_WhenResourceMissing()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new ResourceNotFoundException("Resource", Guid.NewGuid()));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
-                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
-        }
-
-        [Fact]
-        public async Task DeleteResourceData_ThrowsPermissionException_WhenNotOwner()
-        {
-            // Arrange
-            _mediator.Setup(m => m.Send(It.IsAny<DeleteResourceDataCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new PermissionException(Permission.Edit));
-
-            // Act & Assert
-            await Assert.ThrowsAsync<PermissionException>(() =>
-                _controller.DeleteResourceData(Guid.NewGuid(), null, Guid.NewGuid()));
+            var thrown = await Assert.ThrowsAnyAsync<Exception>(() => Writes[action].Call(_controller));
+            Assert.Same(refusal, thrown);
         }
 
         // =========================================================================

@@ -107,57 +107,46 @@ namespace NordvikManager.Tests.Controllers
                     .ReturnsAsync(WithPlayer(player));
 
         // =========================================================================
-        // GetPlaylists
+        // Playlist CRUD
         // =========================================================================
 
-        [Fact]
-        public async Task GetPlaylists_ReturnsBadRequest_WhenPlayerIsNull()
+        private static readonly Dictionary<string, Func<PlaylistController, Task<IActionResult>>> Crud = new()
+        {
+            ["GetPlaylists"] = c => c.GetPlaylists(Guid.NewGuid()),
+            ["AddPlaylist"] = c => c.AddPlaylist(Guid.NewGuid(), new AddPlaylistRequest { Name = "Battle Music", Description = "Loud" }),
+            ["UpdatePlaylist"] = c => c.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = Guid.NewGuid(), Name = "New", Description = "New desc" }),
+            ["RemovePlaylist"] = c => c.RemovePlaylist(Guid.NewGuid(), Guid.NewGuid()),
+        };
+
+        public static TheoryData<string> CrudNames() => new(Crud.Keys);
+
+        [Theory]
+        [MemberData(nameof(CrudNames))]
+        public async Task Crud_ReturnsBadRequest_WhenPlayerIsNull(string action)
         {
             SetupPlayer(_mediator, null);
 
-            var result = await _controller.GetPlaylists(Guid.NewGuid());
-
-            Assert.IsType<BadRequestResult>(result);
+            Assert.IsType<BadRequestResult>(await Crud[action](_controller));
         }
 
-        [Fact]
-        public async Task GetPlaylists_ReturnsOk_WithPlaylistList()
+        [Theory]
+        [MemberData(nameof(CrudNames))]
+        public async Task Crud_ReturnsOk_WithTheCommandsAnswer(string action)
         {
             var playlists = new List<PlaylistDTO> { new PlaylistDTO { Id = Guid.NewGuid(), Name = "Battle Music" } };
-            _mediator.Setup(m => m.Send(It.IsAny<GetPlaylistsCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(playlists);
+            _mediator.Setup(m => m.Send(It.IsAny<GetPlaylistsCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(playlists);
+            _mediator.Setup(m => m.Send(It.IsAny<AddPlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((CommandResponse.Ok, Guid.NewGuid()));
+            _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
+            _mediator.Setup(m => m.Send(It.IsAny<DeletePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
 
-            var result = await _controller.GetPlaylists(Guid.NewGuid());
+            var ok = Assert.IsType<OkObjectResult>(await Crud[action](_controller));
 
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(playlists, ok.Value);
-        }
-
-        // =========================================================================
-        // AddPlaylist
-        // =========================================================================
-
-        [Fact]
-        public async Task AddPlaylist_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            SetupPlayer(_mediator, null);
-
-            var result = await _controller.AddPlaylist(Guid.NewGuid(), new AddPlaylistRequest { Name = "Battle Music", Description = "Loud" });
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task AddPlaylist_ReturnsOk_WithNewPlaylistId()
-        {
-            var newId = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<AddPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync((CommandResponse.Ok, newId));
-
-            var result = await _controller.AddPlaylist(Guid.NewGuid(), new AddPlaylistRequest { Name = "Battle Music", Description = "Loud" });
-
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.NotNull(ok.Value);
+            switch (action)
+            {
+                case "GetPlaylists": Assert.Same(playlists, ok.Value); break;
+                case "AddPlaylist": Assert.NotNull(ok.Value); break;
+                default: Assert.Equal(CommandResponse.Ok, ok.Value); break;
+            }
         }
 
         [Fact]
@@ -171,59 +160,6 @@ namespace NordvikManager.Tests.Controllers
 
             _mediator.Verify(m => m.Send(It.Is<AddPlaylistCommand>(c => c.TreeParentId == folder), It.IsAny<CancellationToken>()), Times.Once);
         }
-
-        // =========================================================================
-        // UpdatePlaylist
-        // =========================================================================
-
-        [Fact]
-        public async Task UpdatePlaylist_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            SetupPlayer(_mediator, null);
-
-            var result = await _controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = Guid.NewGuid(), Name = "New", Description = "New desc" });
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task UpdatePlaylist_ReturnsOk_WithCommandResponse()
-        {
-            _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            var result = await _controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = Guid.NewGuid(), Name = "New", Description = "New desc" });
-
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(CommandResponse.Ok, ok.Value);
-        }
-
-        // =========================================================================
-        // RemovePlaylist
-        // =========================================================================
-
-        [Fact]
-        public async Task RemovePlaylist_ReturnsBadRequest_WhenPlayerIsNull()
-        {
-            SetupPlayer(_mediator, null);
-
-            var result = await _controller.RemovePlaylist(Guid.NewGuid(), Guid.NewGuid());
-
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task RemovePlaylist_ReturnsOk_WithCommandResponse()
-        {
-            _mediator.Setup(m => m.Send(It.IsAny<DeletePlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
-
-            var result = await _controller.RemovePlaylist(Guid.NewGuid(), Guid.NewGuid());
-
-            var ok = Assert.IsType<OkObjectResult>(result);
-            Assert.Equal(CommandResponse.Ok, ok.Value);
-        }
-
         // =========================================================================
         // PlayPlaylist
         // =========================================================================
