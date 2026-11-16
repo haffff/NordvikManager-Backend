@@ -247,6 +247,20 @@ namespace NordvikManager.Wasm.Host.SelfCheck
                     return $"version {body["version"]}, {unavailable} unavailable, {limitations} limitations";
                 });
 
+                // Actions' outside requests go out from this worker (ProxyMode.Browser): the browser's
+                // fetch, held to the worker's own CSP (Central gives host-worker.js connect-src https:).
+                // Needs the network; a page served without that CSP (vite dev) has none to check.
+                await Check("an action's outside request goes out from the worker (needs the network)", async () =>
+                {
+                    using var scope = provider.CreateScope();
+                    var proxy = scope.ServiceProvider.GetRequiredService<NordvikManager.Infrastructure.Interfaces.IProxyHttpService>();
+                    var (success, status, body, _) = await proxy.GetBytesAsync(
+                        "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/main/addons.json");
+                    if (!success || body == null || body.Length == 0)
+                        throw new Exception($"{status}, {body?.Length ?? 0} bytes");
+                    return $"{status}, {body.Length} bytes from raw.githubusercontent.com";
+                });
+
                 await Check("built-in addons in the bundle (Basics installed in a new game)", async () =>
                 {
                     var builtIns = provider.GetRequiredService<NordvikManager.Application.Services.IBuiltInAddons>().GetAll();

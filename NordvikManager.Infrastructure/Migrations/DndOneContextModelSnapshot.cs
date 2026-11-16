@@ -52,6 +52,9 @@ namespace NordvikManager.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Network")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReleaseUrl")
                         .HasColumnType("TEXT");
 

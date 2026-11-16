@@ -60,7 +60,10 @@ namespace NordvikManager.Engine.Middlewares
                 "img-src 'self' data: blob:" + allow,
                 "media-src 'self' data: blob:",
                 "connect-src 'self'" + allow,
-                "frame-src 'self' blob: data:",
+                // No frames in a card: one would be a fresh window. A frame of this page would
+                // run without the card's own policy, and any frame gets back what the card's
+                // window had taken away.
+                "frame-src 'none'",
                 "form-action 'none'",
                 "base-uri 'none'",
                 "frame-ancestors 'self'",

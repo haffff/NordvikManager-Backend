@@ -55,9 +55,19 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 extraBody = extraDict;
             }
 
+            // Whose request this is decides which addon's network holds it: without the engine's
+            // context (overwritten, or run outside an action) it can't be told, so it doesn't go out.
+            var run = ActionRunContext.Of(variables);
+            if (run == null)
+            {
+                variables[stepData.Output] = new ProxyCommandResult { Success = false, StatusCode = 0, Reason = ProxyReasons.UndeclaredHost };
+                return;
+            }
+
             var command = new ProxyCommand
             {
                 Player = gameLobby.SystemPlayer,
+                ActionId = run.ActionId,
                 TargetUrl = stepData.TargetUrl,
                 HttpMethod = stepData.HttpMethod ?? "POST",
                 ParentID = parentId,
@@ -80,10 +90,14 @@ namespace NordvikManager.Services.Implementations.ActionSteps
                 // timeout) so downstream steps (e.g. an If branching on Output.Success) still
                 // run instead of the whole action silently faulting with no step ever observing
                 // the failure.
-                result = new ProxyCommandResult { Success = false, StatusCode = 0, ResponseBody = ex.Message };
+                result = new ProxyCommandResult { Success = false, StatusCode = 0, ResponseBody = ex.Message, Reason = ProxyReasons.NetworkError };
             }
 
             variables[stepData.Output] = result;
+
+            // Refused here (not answered with an error by the other side): GMs are told why.
+            if (result.Reason != null && result.Reason != ProxyReasons.NetworkError)
+                await AddonNetworkNotice.SendAsync(mediator, gameLobby, run, stepData.TargetUrl, result.Reason);
         }
     }
 }

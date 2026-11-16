@@ -130,6 +130,60 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             Assert.Empty(_saved);
         }
 
+
+        // An action that came with an addon declaring this network (null: it doesn't say).
+        private Guid AddonAction(NordvikManager.Domain.Entities.AddonNetwork? network)
+        {
+            var game = BuildGame();
+            var action = new ActionModel { Id = Guid.NewGuid(), Name = "Fetch", Prefix = "notes", Content = "[]", Game = game };
+            Db.Actions.Add(action);
+            var addon = new NordvikManager.Domain.Entities.AddonModel { Id = Guid.NewGuid(), Name = "Notes", Key = "notes", Network = network, Actions = new() { action } };
+            Db.Addons.Add(addon);
+            Db.Entry(addon).Property("GameModelId").CurrentValue = game.Id;
+            Db.SaveChanges();
+            return action.Id;
+        }
+
+        [Fact]
+        public async Task Handle_AddonActionToAnUndeclaredHost_IsRefused()
+        {
+            var cmd = Command();
+            cmd.ActionId = AddonAction(new NordvikManager.Domain.Entities.AddonNetwork());
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(403, result.StatusCode);
+            Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+            _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
+        {
+            _options.Mode = ProxyMode.None;
+
+            var result = await Handler().Handle(Command(), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
+            _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Handle_FromTheBrowser_ARequestItCantMake_IsBrowserRefused()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxy.Setup(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("TypeError: Failed to fetch"));
+
+            var result = await Handler().Handle(Command("https://img.example.com/a.png"), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.BrowserRefused, result.Reason);
+            Assert.Empty(_saved);
+        }
+
         [Fact]
         public async Task Handle_PrivateHostNotListed_ReturnsBadRequestWithoutCalling()
         {
@@ -137,6 +191,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
+            Assert.Equal(ProxyReasons.BlockedHost, result.Reason);
             _proxy.Verify(p => p.GetBytesAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         }
 

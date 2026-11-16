@@ -612,6 +612,7 @@ namespace NordvikManager.Application.Commands.Addons.InstallAddon
             if (addon.Key == null)
                 throw new InvalidOperationException("Addon 'info.json' is missing the required 'key' field.");
 
+            addon.Network = AddonNetworkRules.Normalize(addon.Network);
             return addon;
         }
 

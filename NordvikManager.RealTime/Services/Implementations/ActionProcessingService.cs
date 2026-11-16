@@ -298,6 +298,8 @@ namespace NordvikManager.Services.Implementations
                 variables["actionId"]     = action.Id.ToString();
                 variables["actionName"]   = action.Name ?? string.Empty;
                 variables["actionPrefix"] = action.Prefix ?? string.Empty;
+                // Which action this is, in a form steps can't forge (ActionRunContext).
+                variables[ActionRunContext.Key] = new ActionRunContext(action.Id ?? Guid.Empty, action.Name);
 
                 if (variables.TryGetValue("Player", out var pObj) && pObj is PlayerDTO pd)
                 {

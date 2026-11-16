@@ -73,6 +73,15 @@ namespace NordvikManager.Tests.WasmHost
 
         // The host's log is what a GM reads in the host drawer (and pastes into bug reports): EF's
         // every SQL command at Information would push everything else out of it.
+        // Actions' requests go out from the GM's browser: the worker's own CSP lets it reach
+        // https sites (Central's host-worker.js route), as far as each site's CORS allows.
+        [Fact]
+        public void Build_SendsActionsRequestsFromTheBrowser()
+        {
+            Assert.Equal(NordvikManager.Infrastructure.Services.Proxy.ProxyMode.Browser,
+                _provider.GetRequiredService<NordvikManager.Infrastructure.Services.Proxy.ProxyOptions>().Mode);
+        }
+
         [Fact]
         public void Logging_LeavesOutEfsSqlCommands_AndHttpClientChatter_ButKeepsTheRest()
         {

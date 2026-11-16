@@ -142,6 +142,8 @@ namespace NordvikManager.Application.Mapping
         [MapperIgnoreTarget(nameof(CardDto.Permission))]
         [MapperIgnoreTarget(nameof(CardDto.GenericPermission))]
         [MapperIgnoreTarget(nameof(CardDto.GmPermission))]
+        [MapperIgnoreTarget(nameof(CardDto.AddonKey))]
+        [MapperIgnoreTarget(nameof(CardDto.AddonNetwork))]
         private partial CardDto ToDto(CardModel source);
 
         [MapProperty(nameof(CardDto.AdditionalResources), nameof(CardModel.AdditionalResources), Use = nameof(ResourceIdsJson))]
@@ -151,6 +153,8 @@ namespace NordvikManager.Application.Mapping
         [MapperIgnoreTarget(nameof(CardModel.IsR20Card))]
         [MapperIgnoreTarget(nameof(CardModel.GameId))]
         [MapperIgnoreTarget(nameof(CardModel.Game))]
+        [MapperIgnoreSource(nameof(CardDto.AddonKey))]
+        [MapperIgnoreSource(nameof(CardDto.AddonNetwork))]
         private partial CardModel ToModel(CardDto source);
 
         private static List<Guid> ResourceIdsOf(string? json) =>
@@ -171,9 +175,11 @@ namespace NordvikManager.Application.Mapping
         [MapperIgnoreTarget(nameof(AddonDto.Permission))]
         [MapperIgnoreTarget(nameof(AddonDto.Installed))]
         [MapperIgnoreTarget(nameof(AddonDto.RequiredBy))]
+        [MapperIgnoreTarget(nameof(AddonDto.UsesOutsideConnections))]
         private partial AddonDto ToDto(AddonModel source);
 
         [MapperIgnoreTarget(nameof(AddonModel.InstallHookFired))]
+        [MapperIgnoreSource(nameof(AddonDto.UsesOutsideConnections))]
         private partial AddonModel ToModel(AddonDto source);
 
         // Resource: the MIME type travels as its text ("image/png"), stored as the enum.

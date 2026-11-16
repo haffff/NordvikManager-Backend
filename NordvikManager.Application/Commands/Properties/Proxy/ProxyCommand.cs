@@ -36,6 +36,12 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         /// Optional additional body data to merge into the outgoing request alongside the properties.
         /// </summary>
         public Dictionary<string, object?>? ExtraBody { get; set; }
+
+        /// <summary>
+        /// The action sending it, if any: an action that came with an addon declaring its
+        /// network may only reach those hosts (AddonNetworkRules).
+        /// </summary>
+        public Guid? ActionId { get; set; }
     }
 
     public class ProxyCommandResult
@@ -43,5 +49,8 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public bool Success { get; set; }
         public int StatusCode { get; set; }
         public string? ResponseBody { get; set; }
+
+        /// <summary>Why it didn't go out (<see cref="ProxyReasons"/>); null when it did.</summary>
+        public string? Reason { get; set; }
     }
 }

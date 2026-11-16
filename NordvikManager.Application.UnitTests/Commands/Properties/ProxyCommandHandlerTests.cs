@@ -23,6 +23,106 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             ParentID = Guid.NewGuid(),
         };
 
+
+        // An action that came with an addon declaring this network (null: it doesn't say).
+        private Guid AddonAction(NordvikManager.Domain.Entities.AddonNetwork? network)
+        {
+            var game = BuildGame();
+            var action = new ActionModel { Id = Guid.NewGuid(), Name = "Fetch", Prefix = "notes", Content = "[]", Game = game };
+            Db.Actions.Add(action);
+            var addon = new NordvikManager.Domain.Entities.AddonModel { Id = Guid.NewGuid(), Name = "Notes", Key = "notes", Network = network, Actions = new() { action } };
+            Db.Addons.Add(addon);
+            Db.Entry(addon).Property("GameModelId").CurrentValue = game.Id;
+            Db.SaveChanges();
+            return action.Id;
+        }
+
+        // An addon that says where it connects is held to it: its action can't reach another host.
+        [Fact]
+        public async Task Handle_AddonActionToAnUndeclaredHost_IsRefused()
+        {
+            var actionId = AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://1.1.1.1" } });
+            var cmd = BaseCommand();
+            cmd.ActionId = actionId;
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(403, result.StatusCode);
+            Assert.Equal(ProxyReasons.UndeclaredHost, result.Reason);
+            _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Theory]
+        [InlineData("declared")]
+        [InlineData("userHosts")]
+        [InlineData("undeclared")]
+        [InlineData("gm action")]
+        public async Task Handle_AllowedByTheAddonsNetwork_GoesOut(string kind)
+        {
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "ok"));
+            var cmd = BaseCommand();
+            cmd.ActionId = kind switch
+            {
+                "declared" => AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { Hosts = new() { "http://8.8.8.8" } }),
+                "userHosts" => AddonAction(new NordvikManager.Domain.Entities.AddonNetwork { UserHosts = "Your server" }),
+                "undeclared" => AddonAction(null),
+                _ => Guid.NewGuid(),
+            };
+
+            var result = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Null(result.Reason);
+        }
+
+        // A host that can't connect outside (the browser version) says so instead of trying.
+        [Fact]
+        public async Task Handle_HostWithoutOutsideConnections_SaysSoWithoutTrying()
+        {
+            _options.Mode = ProxyMode.None;
+
+            var result = await Handler().Handle(BaseCommand(), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(ProxyReasons.NoOutsideConnections, result.Reason);
+            _proxyService.Verify(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+
+        // From the GM's browser (the browser version): no DNS, so the address is judged as
+        // written, and a request the browser can't make (CORS refused, or no answer: a
+        // browser can't tell them apart) comes back as browser-refused.
+        [Fact]
+        public async Task Handle_FromTheBrowser_ChecksTheAddressAsWritten()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((true, 200, "ok"));
+
+            // A name that doesn't resolve: the server would refuse it, the browser leaves it to fetch.
+            var named = await Handler().Handle(BaseCommand("https://api.example.invalid/x"), CancellationToken.None);
+            var local = await Handler().Handle(BaseCommand("https://localhost/x"), CancellationToken.None);
+
+            Assert.True(named.Success);
+            Assert.Equal(ProxyReasons.BlockedHost, local.Reason);
+        }
+
+        [Fact]
+        public async Task Handle_FromTheBrowser_ARequestItCantMake_IsBrowserRefused()
+        {
+            _options.Mode = ProxyMode.Browser;
+            _proxyService.Setup(p => p.SendJsonAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("TypeError: Failed to fetch"));
+
+            var result = await Handler().Handle(BaseCommand("https://api.example.com/x"), CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal(0, result.StatusCode);
+            Assert.Equal(ProxyReasons.BrowserRefused, result.Reason);
+        }
+
         [Fact]
         public async Task Handle_InvalidUrl_ReturnsBadRequestWithoutCallingProxyService()
         {
@@ -46,6 +146,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
 
             Assert.False(result.Success);
             Assert.Equal(400, result.StatusCode);
+            // Refused here, not by the other side: the action (and the GM) can tell why.
+            Assert.Equal(ProxyReasons.BlockedHost, result.Reason);
         }
 
         // The server's owner can allow a private host (e.g. a Trilium on the home network).
@@ -85,6 +187,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties
             Assert.True(result.Success);
             Assert.Equal(200, result.StatusCode);
             Assert.Equal("ok", result.ResponseBody);
+            Assert.Null(result.Reason);
         }
 
         [Fact]

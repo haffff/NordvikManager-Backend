@@ -20,10 +20,16 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         {
             await base.Handle(request, cancellationToken);
 
+            if (proxyOptions.Mode == ProxyMode.None)
+                return new ProxyCommandResult { Success = false, StatusCode = 0, Reason = ProxyReasons.NoOutsideConnections };
+
             if (!await ProxySupport.IsUrlAllowedAsync(request.TargetUrl, proxyOptions))
             {
-                return new ProxyCommandResult { Success = false, StatusCode = 400 };
+                return new ProxyCommandResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost };
             }
+
+            if (!await ProxySupport.IsAllowedByAddonAsync(dbContext, request.ActionId, request.TargetUrl, cancellationToken))
+                return new ProxyCommandResult { Success = false, StatusCode = 403, Reason = ProxyReasons.UndeclaredHost };
 
             // Resolve all needed protected properties (body properties + the bearer token
             // property) in a single query
@@ -55,8 +61,18 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
             if (request.BearerTokenPropertyName != null)
                 resolvedProtected.TryGetValue(request.BearerTokenPropertyName, out bearerToken);
 
-            var (success, statusCode, responseBody) = await proxyHttpService.SendJsonAsync(
-                request.HttpMethod, request.TargetUrl, body, bearerToken, cancellationToken);
+            (bool Success, int StatusCode, string? Body) sent;
+            try
+            {
+                sent = await proxyHttpService.SendJsonAsync(request.HttpMethod, request.TargetUrl, body, bearerToken, cancellationToken);
+            }
+            catch (HttpRequestException) when (proxyOptions.Mode == ProxyMode.Browser)
+            {
+                // The browser's fetch failed: the site refused a browser's request (CORS) or
+                // didn't answer. Nothing more to tell; the local server could reach it.
+                return new ProxyCommandResult { Success = false, StatusCode = 0, Reason = ProxyReasons.BrowserRefused };
+            }
+            var (success, statusCode, responseBody) = sent;
 
             // Redact all resolved protected values from the response regardless of structure
             return new ProxyCommandResult

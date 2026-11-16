@@ -43,6 +43,16 @@ namespace NordvikManager.Tests.Engine.Middlewares
             Assert.DoesNotContain("https:", csp["style-src"].Replace("https://", ""));
         }
 
+        // A frame in a card would be a fresh window: one of this page would run without the
+        // card's own policy, and any frame gets back what the card's window had taken away.
+        [Fact]
+        public async Task SandboxPage_AllowsNoFrames()
+        {
+            var csp = Directives(await Run(Create("https://cdn.example.com"), "/sandbox.html"));
+
+            Assert.Equal("frame-src 'none'", csp["frame-src"]);
+        }
+
         [Fact]
         public async Task SandboxPage_FollowsOriginsSavedAfterStart()
         {

@@ -29,6 +29,8 @@ namespace NordvikManager.Domain.Entities
         // ActionProcessingService.RunPendingAddonInstallHooksAsync.
         public bool InstallHookFired { get; set; }
         public List<AddonDependency>? Dependencies { get; set; }
+        /// <summary>Where its code connects outside NordvikManager (info.json "network"); null: it doesn't say.</summary>
+        public AddonNetwork? Network { get; set; }
         public List<CardModel>? Views { get; set; }
         public List<CardModel>? Templates { get; set; }
         public List<ActionModel>? Actions { get; set; }
