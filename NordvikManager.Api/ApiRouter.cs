@@ -204,7 +204,7 @@ namespace NordvikManager.Api
                 }
                 else
                 {
-                    if (!TryBindBody(body, type, AllowsEmptyBody(parameter), out arguments[i], out error))
+                    if (!TryBindBody(body, type, parameter, out arguments[i], out error))
                         return false;
                 }
             }
@@ -218,14 +218,14 @@ namespace NordvikManager.Api
             || (!parameter.ParameterType.IsValueType
                 && new NullabilityInfoContext().Create(parameter).WriteState == NullabilityState.Nullable);
 
-        private static bool TryBindBody(JToken? body, Type type, bool allowEmpty, out object? value, out string? error)
+        private static bool TryBindBody(JToken? body, Type type, ParameterInfo parameter, out object? value, out string? error)
         {
             value = null;
             error = null;
             // As [ApiController]: a body parameter needs a body.
             if (body == null || body.Type == JTokenType.Null)
             {
-                if (allowEmpty)
+                if (AllowsEmptyBody(parameter))
                     return true;
                 error = "A request body is required.";
                 return false;
@@ -241,7 +241,7 @@ namespace NordvikManager.Api
             }
             if (value == null)
             {
-                if (allowEmpty)
+                if (AllowsEmptyBody(parameter))
                     return true;
                 error = "A request body is required.";
                 return false;
