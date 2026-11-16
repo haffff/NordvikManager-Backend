@@ -63,7 +63,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
                 .ReturnsAsync((AddCardCommand cmd, CancellationToken _) =>
                 {
                     var id = Guid.NewGuid();
-                    Db.Cards.Add(new CardModel { Id = id, Name = cmd.Dto.Name, GameId = cmd.GameID, IsTemplate = cmd.IsTemplate, IsCustomUi = cmd.IsCustomUi, Properties = new List<PropertyModel>() });
+                    Db.Cards.Add(new CardModel { Id = id, Name = cmd.Dto.Name, Key = cmd.Dto.Key, GameId = cmd.GameID, IsTemplate = cmd.IsTemplate, IsCustomUi = cmd.IsCustomUi, Properties = new List<PropertyModel>() });
                     Db.SaveChanges();
                     return (CommandResponse.Ok, id);
                 });
@@ -252,6 +252,78 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             var stored = SeedContext().Cards.Single(c => c.Id == card.Id);
             Assert.Equal(newSheet, stored.MainResource);
             Assert.Equal(new[] { newLogo, unrelated }, System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(stored.AdditionalResources!));
+        }
+
+        // An update removes and re-creates the addon's templates with new ids. Cards made from
+        // them (also before template keys were kept) remember the old template's key first,
+        // so they link to the new one with that key (TemplateLinks, see TemplateLinkTests).
+        [Fact]
+        public async Task Handle_Reinstall_CardsRememberTheirTemplatesKey()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"monster\"}"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var template = Db.Cards.Single(c => c.IsTemplate);
+            template.Key = "monster"; // the mocked AddCard leaves keys out
+            var card = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Goblin", GameId = game.Id,
+                Properties = new List<PropertyModel>(),
+            };
+            card.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = card.Id, Name = "template_id", Value = template.Id.ToString(), EntityName = "CardModel", Card = card });
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Templates).First(a => a.Id == cmd.AddonId);
+                    Db.Cards.RemoveRange(addon.Templates!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var reinstall = ValidCommand(game, Player(), archive);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            Assert.Equal("monster", SeedContext().Properties.Single(p => p.ParentID == card.Id && p.Name == "template_key").Value);
+        }
+
+        // Addon template keys now start with the addon's key ("monster" became "dnd5e_monster").
+        // Cards made from the old, unprefixed template follow it to the prefixed one on update.
+        [Fact]
+        public async Task Handle_Reinstall_TemplateKeyGainedTheAddonPrefix_CardsFollowIt()
+        {
+            var game = BuildGame();
+            var v1 = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"monster\"}"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), v1), CancellationToken.None);
+            var oldTemplate = Db.Cards.Single(c => c.IsTemplate);
+            var card = new CardModel { Id = Guid.NewGuid(), Name = "Goblin", GameId = game.Id, Properties = new List<PropertyModel>() };
+            card.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = card.Id, Name = "template_id", Value = oldTemplate.Id.ToString(), EntityName = "CardModel", Card = card });
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Templates).First(a => a.Id == cmd.AddonId);
+                    Db.Cards.RemoveRange(addon.Templates!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var v2 = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"dnd5e_monster\"}"));
+            var reinstall = ValidCommand(game, Player(), v2);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            var stored = SeedContext();
+            var newTemplate = stored.Cards.Single(c => c.IsTemplate);
+            Assert.Equal(newTemplate.Id.ToString(), stored.Properties.Single(p => p.ParentID == card.Id && p.Name == "template_id").Value);
+            Assert.Equal("dnd5e_monster", stored.Properties.Single(p => p.ParentID == card.Id && p.Name == "template_key").Value);
         }
 
         // ---- Archive / info.json parsing ----

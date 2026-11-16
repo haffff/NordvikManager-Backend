@@ -1,3 +1,4 @@
+using NordvikManager.Application.Commands.Card;
 using NordvikManager.Application.Commands.Card.AddCard;
 using NordvikManager.Application.Commands.Map.AddMap;
 using NordvikManager.Application.Commands.Playlist.AddPlaylist;
@@ -69,7 +70,7 @@ namespace NordvikManager.Application.Commands.Transfer
             var entry = await PlaceInTree(import, entryType, id, cancellationToken);
 
             var missing = import.Files.Missing.Concat(import.Cards.SelectMany(c => c.Missing)).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
-            return new ImportEntityResult(id, export.Kind, entry, missing, newFolders, import.Cards);
+            return new ImportEntityResult(id, export.Kind, entry, missing, newFolders, import.Cards, import.LinkedTemplate, import.LinkedCards);
         }
 
         // ── Maps ─────────────────────────────────────────────────────────────────
@@ -239,7 +240,7 @@ namespace NordvikManager.Application.Commands.Transfer
                 property.Permission = null;
                 properties.Add(property);
             }
-            dto.Properties = properties;
+            dto.Properties = LinkToTemplate(import, kind, properties);
 
             var (_, id) = await mediator.Send(new AddCardCommand
             {
@@ -253,7 +254,33 @@ namespace NordvikManager.Application.Commands.Transfer
 
             if (oldId is Guid old)
                 import.Ids[old] = id;
+            // Cards made from a template with its key (one imported earlier) now link to it.
+            if (kind == EntityTransferKinds.Template)
+                import.LinkedCards = await dbContext.Properties.CountAsync(p => p.Name == TemplateLinks.IdProperty && p.Value == id.ToString() && p.ParentID != id, cancellationToken);
             return id;
+        }
+
+        /// <summary>
+        /// A card's link to its template: kept when the template is in this game, else found
+        /// by the template's key, else dropped (the key stays, for a template imported later).
+        /// A template's own link is its new id, set when it's added.
+        /// </summary>
+        private List<PropertyDTO> LinkToTemplate(Import import, string kind, List<PropertyDTO> properties)
+        {
+            var link = properties.FirstOrDefault(p => p.Name == TemplateLinks.IdProperty);
+            if (kind != EntityTransferKinds.Card)
+                return properties.Where(p => p.Name != TemplateLinks.IdProperty && p.Name != TemplateLinks.KeyProperty).ToList();
+
+            var key = properties.FirstOrDefault(p => p.Name == TemplateLinks.KeyProperty)?.Value;
+            var template = TemplateLinks.Resolve(dbContext, import.Request.GameId, link?.Value, key);
+            if (template == null)
+                return properties.Where(p => p != link).ToList();
+
+            if (link == null)
+                properties.Add(link = new PropertyDTO { Name = TemplateLinks.IdProperty, EntityName = "CardModel" });
+            link.Value = template.Id.ToString();
+            import.LinkedTemplate ??= template.Name;
+            return properties;
         }
 
         /// <summary>
@@ -433,6 +460,10 @@ namespace NordvikManager.Application.Commands.Transfer
             public Guid? TreeParentId { get; }
             public FileResolver Files { get; }
             public HashSet<Guid> Players { get; }
+            /// <summary>The imported card's template here, found by its link.</summary>
+            public string? LinkedTemplate { get; set; }
+            /// <summary>The imported template's: the cards it linked.</summary>
+            public int? LinkedCards { get; set; }
 
             /// <summary>Exported id → the copy's id.</summary>
             public Dictionary<Guid, Guid> Ids { get; } = new();

@@ -1,9 +1,11 @@
+using NordvikManager.Application.Commands.Card;
 using NordvikManager.Application.Commands.Resources.GetResourceContent;
 using NordvikManager.Application.DataTransferObjects.Game;
 using NordvikManager.Application.DataTransferObjects.Transfer;
 using NordvikManager.Application.Extension;
 using NordvikManager.Application.Guards;
 using NordvikManager.Application.Mapping;
+using NordvikManager.Domain.Entities.BattleMap;
 using NordvikManager.Domain.Enums;
 using NordvikManager.Infrastructure.Interfaces;
 using MediatR;
@@ -113,6 +115,7 @@ namespace NordvikManager.Application.Commands.Transfer
                 return (null, new());
 
             var dto = mapper.Map<CardDto>(card);
+            RememberTemplateKey(dto, card.GameId);
             refs.AddId(dto.MainResource);
             foreach (var id in dto.AdditionalResources ?? new())
                 refs.AddId(id);
@@ -122,6 +125,27 @@ namespace NordvikManager.Application.Commands.Transfer
                 refs.AddCandidate(property.Value);
 
             return (Export(EntityTransferKinds.Of(card), card.Name, dto), new List<Guid> { card.Id });
+        }
+
+        // A card goes with its template's key, by which another game finds its own template
+        // (cards made before keys were kept have only the id).
+        private void RememberTemplateKey(CardDto dto, Guid gameId)
+        {
+            var properties = dto.Properties?.ToList() ?? new List<PropertyDTO>();
+            var link = properties.FirstOrDefault(p => p.Name == TemplateLinks.IdProperty)?.Value;
+            var template = FindTemplate(link);
+            if (template?.Key == null)
+                return;
+            var key = properties.FirstOrDefault(p => p.Name == TemplateLinks.KeyProperty);
+            if (key != null)
+                key.Value = template.Key;
+            else
+                properties.Add(new PropertyDTO { Name = TemplateLinks.KeyProperty, Value = template.Key, EntityName = "CardModel", ParentID = dto.Id });
+            dto.Properties = properties;
+
+            CardModel? FindTemplate(string? id) => Guid.TryParse(id, out var templateId)
+                ? dbContext.Cards.FirstOrDefault(c => c.Id == templateId && c.GameId == gameId && c.IsTemplate)
+                : null;
         }
 
         private async Task<(EntityExportDto?, List<Guid>)> ExportPlaylist(ExportEntityCommand request, FileRefs refs, CancellationToken cancellationToken)
