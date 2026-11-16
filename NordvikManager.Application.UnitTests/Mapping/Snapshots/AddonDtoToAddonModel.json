@@ -25,16 +25,16 @@
   "filled": {
     "Actions": [
       {
-        "Content": "text68",
-        "Description": "text63",
+        "Content": "text72",
+        "Description": "text67",
         "Game": null,
         "Hook": 1,
-        "HookFilter": "text65",
-        "Id": "00000000-0000-0000-0000-000000000060",
+        "HookFilter": "text69",
+        "Id": "00000000-0000-0000-0000-000000000064",
         "IsEnabled": true,
-        "Name": "text61",
-        "Path": "text62",
-        "Prefix": "text66"
+        "Name": "text65",
+        "Path": "text66",
+        "Prefix": "text70"
       }
     ],
     "Author": "text7",
@@ -65,13 +65,13 @@
         "Data": "AQID",
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000078",
-        "Key": "text75",
+        "Id": "00000000-0000-0000-0000-000000000082",
+        "Key": "text79",
         "MimeType": 4,
-        "Name": "text74",
-        "Path": "text76",
+        "Name": "text78",
+        "Path": "text80",
         "Player": null,
-        "PlayerId": "00000000-0000-0000-0000-000000000082",
+        "PlayerId": "00000000-0000-0000-0000-000000000086",
         "Playlists": [],
         "Storage": 1,
         "ThumbnailData": null,
@@ -81,19 +81,19 @@
     ],
     "Templates": [
       {
-        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000053\"]",
-        "Description": "text45",
+        "AdditionalResources": "[\"00000000-0000-0000-0000-000000000055\"]",
+        "Description": "text47",
         "FirstOpen": true,
         "Game": null,
         "GameId": "00000000-0000-0000-0000-000000000000",
-        "Id": "00000000-0000-0000-0000-000000000043",
+        "Id": "00000000-0000-0000-0000-000000000045",
         "IsCustomUi": false,
         "IsHidden": true,
         "IsR20Card": false,
         "IsTemplate": false,
-        "Key": "text46",
-        "MainResource": "00000000-0000-0000-0000-000000000051",
-        "Name": "text44",
+        "Key": "text48",
+        "MainResource": "00000000-0000-0000-0000-000000000053",
+        "Name": "text46",
         "Properties": []
       }
     ],

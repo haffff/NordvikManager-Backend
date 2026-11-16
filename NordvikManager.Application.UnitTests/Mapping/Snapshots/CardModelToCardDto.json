@@ -3,6 +3,8 @@
     "AdditionalResources": [
       "00000000-0000-0000-0000-000000000901"
     ],
+    "AddonKey": null,
+    "AddonNetwork": null,
     "Description": "text4",
     "FirstOpen": true,
     "GenericPermission": null,
@@ -21,6 +23,8 @@
     "AdditionalResources": [
       "00000000-0000-0000-0000-000000000901"
     ],
+    "AddonKey": null,
+    "AddonNetwork": null,
     "Description": "text4",
     "FirstOpen": true,
     "GenericPermission": null,
@@ -47,6 +51,8 @@
   },
   "fresh": {
     "AdditionalResources": [],
+    "AddonKey": null,
+    "AddonNetwork": null,
     "Description": null,
     "FirstOpen": null,
     "GenericPermission": null,

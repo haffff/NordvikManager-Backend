@@ -85,6 +85,8 @@
         "AdditionalResources": [
           "00000000-0000-0000-0000-000000000901"
         ],
+        "AddonKey": null,
+        "AddonNetwork": null,
         "Description": "text42",
         "FirstOpen": true,
         "GenericPermission": null,
@@ -107,6 +109,8 @@
         "AdditionalResources": [
           "00000000-0000-0000-0000-000000000901"
         ],
+        "AddonKey": null,
+        "AddonNetwork": null,
         "Description": "text26",
         "FirstOpen": true,
         "GenericPermission": null,

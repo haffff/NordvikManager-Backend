@@ -19,5 +19,11 @@ namespace NordvikManager.Application.DataTransferObjects.Game
         public Permission? GenericPermission { get; set; }
         public Permission? GmPermission { get; set; }
         public IEnumerable<PropertyDTO> Properties { get; set; }
+
+        /// <summary>The addon whose code the card runs (its page is that addon's); null for none (filled by GetCard).</summary>
+        public string? AddonKey { get; set; }
+
+        /// <summary>Where that addon may connect (its info.json "network"); null when it doesn't say (filled by GetCard).</summary>
+        public AddonNetworkDto? AddonNetwork { get; set; }
     }
 }
