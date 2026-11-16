@@ -17,6 +17,39 @@ using Moq;
 
 namespace NordvikManager.Application.UnitTests.Commands.Map
 {
+    // The map seeding the Get, Update and Remove tests share.
+    public abstract class MapHandlerTestBase : HandlerTestBase
+    {
+        protected MapModel SeedMap(GameModel game, string name = "Test Map", int width = 1200, int height = 700)
+        {
+            var mapId = Guid.NewGuid();
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
+            Db.Maps.Add(NewMap(g, mapId, name, width, height));
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+            return Db.Maps.Find(mapId)!;
+        }
+
+        protected void SeedMaps(GameModel game, int count)
+        {
+            Db.ChangeTracker.Clear();
+            var g = Db.Games.Find(game.Id)!;
+            for (int i = 0; i < count; i++)
+                Db.Maps.Add(NewMap(g, Guid.NewGuid(), $"Map {i}", 1200, 700));
+            Db.SaveChanges();
+            Db.ChangeTracker.Clear();
+        }
+
+        private static MapModel NewMap(GameModel game, Guid id, string name, int width, int height) => new()
+        {
+            Id = id, Name = name, GridSize = 50, GridVisible = true,
+            Width = width, Height = height, Game = game,
+            Elements = new List<ElementModel>(),
+            Properties = new List<NordvikManager.Domain.Entities.BattleMap.PropertyModel>()
+        };
+    }
+
     // =========================================================================
     // AddMapCommandHandler
     // =========================================================================
@@ -31,40 +64,22 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
                      .Returns(Task.FromResult<(CommandResponse, List<NordvikManager.Application.DataTransferObjects.TreeEntryDto>)>((CommandResponse.Ok, new List<NordvikManager.Application.DataTransferObjects.TreeEntryDto>())));
         }
 
-        private AddMapCommandHandler Handler() =>
-            new AddMapCommandHandler(Db, Mapper, _mediator.Object);
+        private Task<(CommandResponse, Guid)> Add(Guid gameId, MapDTO? dto = null) =>
+            new AddMapCommandHandler(Db, Mapper, _mediator.Object).Handle(new AddMapCommand { GameID = gameId, Player = Player(), Dto = dto }, CancellationToken.None);
 
         [Fact]
-        public async Task Handle_ValidRequest_ReturnsOkAndNewMapId()
+        public async Task Handle_ValidRequest_PersistsTheMapAndAddsItsTreeEntry()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new AddMapCommand
-            {
-                GameID = game.Id,
-                Player = Player()
-            };
 
-            // Act
-            var (response, mapId) = await Handler().Handle(cmd, CancellationToken.None);
+            var (response, mapId) = await Add(game.Id);
 
-            // Assert
             Assert.Equal(CommandResponse.Ok, response);
             Assert.NotEqual(Guid.Empty, mapId);
-        }
-
-        [Fact]
-        public async Task Handle_ValidRequest_MapIsPersistedInDatabase()
-        {
-            // Arrange
-            var game = BuildGame();
-            var cmd = new AddMapCommand { GameID = game.Id, Player = Player() };
-
-            // Act
-            var (_, mapId) = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
             Assert.True(Db.Maps.Any(m => m.Id == mapId));
+            _mediator.Verify(
+                m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()),
+                Times.Once);
         }
 
         // A solid grid was too harsh over real battle map images.
@@ -73,7 +88,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         {
             var game = BuildGame();
 
-            var (_, mapId) = await Handler().Handle(new AddMapCommand { GameID = game.Id, Player = Player() }, CancellationToken.None);
+            var (_, mapId) = await Add(game.Id);
 
             Assert.Equal("rgba(170, 170, 170, 0.35)", Db.Maps.Find(mapId)!.GridColor);
         }
@@ -81,14 +96,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_ValidRequest_UsesDefaultMapValues_WhenDtoIsNull()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new AddMapCommand { GameID = game.Id, Player = Player(), Dto = null };
 
-            // Act
-            var (response, mapId) = await Handler().Handle(cmd, CancellationToken.None);
+            var (response, mapId) = await Add(game.Id, null);
 
-            // Assert
             Assert.Equal(CommandResponse.Ok, response);
             var map = Db.Maps.Find(mapId);
             Assert.NotNull(map);
@@ -102,100 +113,39 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_WithExplicitDto_PersistsProvidedName()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new AddMapCommand
-            {
-                GameID = game.Id,
-                Player = Player(),
-                Dto = new MapDTO { Name = "Custom Map", GridSize = 100, Width = 800, Height = 600, Elements = new List<ElementDTO>() }
-            };
 
-            // Act
-            var (response, mapId) = await Handler().Handle(cmd, CancellationToken.None);
+            var (response, mapId) = await Add(game.Id, new MapDTO { Name = "Custom Map", GridSize = 100, Width = 800, Height = 600, Elements = new List<ElementDTO>() });
 
-            // Assert
             Assert.Equal(CommandResponse.Ok, response);
-            var map = Db.Maps.Find(mapId);
-            Assert.Equal("Custom Map", map!.Name);
+            Assert.Equal("Custom Map", Db.Maps.Find(mapId)!.Name);
         }
 
         [Fact]
         public async Task Handle_UnknownGameId_ThrowsWrongArgumentsException()
         {
-            // Arrange
-            var cmd = new AddMapCommand
-            {
-                GameID = Guid.NewGuid(), // no such game
-                Player = Player()
-            };
-
-            // Act & Assert
-            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
-        }
-
-        [Fact]
-        public async Task Handle_SendsAddTreeEntryCommand_AfterMapIsCreated()
-        {
-            // Arrange
-            var game = BuildGame();
-            var cmd = new AddMapCommand { GameID = game.Id, Player = Player() };
-
-            // Act
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
-            _mediator.Verify(
-                m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()),
-                Times.Once);
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Add(Guid.NewGuid()));
         }
     }
 
     // =========================================================================
     // GetMapCommandHandler
     // =========================================================================
-    public class GetMapCommandHandlerTests : HandlerTestBase
+    public class GetMapCommandHandlerTests : MapHandlerTestBase
     {
-        private readonly Mock<IPermissionService> _permSvc;
-
-        public GetMapCommandHandlerTests()
-        {
-            _permSvc = PermissionsMock; // already configured to grant all
-        }
-
-        private GetMapCommandHandler Handler() =>
-            new GetMapCommandHandler(Db, Mapper, _permSvc.Object);
-
-        private MapModel SeedMap(GameModel game, string name = "Test Map")
-        {
-            var mapId = Guid.NewGuid();
-            Db.ChangeTracker.Clear();
-            var g = Db.Games.Find(game.Id)!;
-            var map = new MapModel
-            {
-                Id = mapId, Name = name, GridSize = 50, GridVisible = true,
-                Width = 1200, Height = 700, Game = g,
-                Elements = new List<ElementModel>(),
-                Properties = new List<NordvikManager.Domain.Entities.BattleMap.PropertyModel>()
-            };
-            Db.Maps.Add(map);
-            Db.SaveChanges();
-            Db.ChangeTracker.Clear();
-            return Db.Maps.Find(mapId)!;
-        }
+        // PermissionsMock is already configured to grant all.
+        private Task<MapDTO?> Get(GameModel game, Guid mapId) =>
+            new GetMapCommandHandler(Db, Mapper, PermissionsMock.Object)
+                .Handle(new GetMapCommand { Id = mapId, GameID = game.Id, Player = Player() }, CancellationToken.None);
 
         [Fact]
         public async Task Handle_ExistingMap_ReturnsMapDTO()
         {
-            // Arrange
             var game = BuildGame();
             var map = SeedMap(game, "My Map");
-            var cmd = new GetMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await Get(game, map.Id);
 
-            // Assert
             Assert.NotNull(result);
             Assert.Equal(map.Id, result!.Id);
             Assert.Equal("My Map", result.Name);
@@ -204,21 +154,14 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_NonExistingMap_ReturnsNull()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new GetMapCommand { Id = Guid.NewGuid(), GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
-            Assert.Null(result);
+            Assert.Null(await Get(game, Guid.NewGuid()));
         }
 
         [Fact]
         public async Task Handle_WhenPermissionDenied_ReturnsNull()
         {
-            // Arrange
             var game = BuildGame();
             var map = SeedMap(game);
 
@@ -229,30 +172,20 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
                 .Returns(false);
             PermissionsExtension.ServiceProvider = TestServiceProvider;
 
-            var cmd = new GetMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
-
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
-            Assert.Null(result);
+            Assert.Null(await Get(game, map.Id));
         }
 
         [Fact]
         public async Task Handle_ReturnsCorrectDimensions()
         {
-            // Arrange
             var game = BuildGame();
             var map = SeedMap(game);
             map.Width = 2000;
             map.Height = 1000;
             Db.SaveChanges();
-            var cmd = new GetMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await Get(game, map.Id);
 
-            // Assert
             Assert.Equal(2000, result!.Width);
             Assert.Equal(1000, result.Height);
         }
@@ -261,40 +194,19 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // GetFlatMapsCommandHandler
     // =========================================================================
-    public class GetFlatMapsCommandHandlerTests : HandlerTestBase
+    public class GetFlatMapsCommandHandlerTests : MapHandlerTestBase
     {
-        private GetFlatMapsCommandHandler Handler() =>
-            new GetFlatMapsCommandHandler(Db, Mapper);
-
-        private void SeedMaps(GameModel game, int count)
-        {
-            Db.ChangeTracker.Clear();
-            var g = Db.Games.Find(game.Id)!;
-            for (int i = 0; i < count; i++)
-            {
-                Db.Maps.Add(new MapModel
-                {
-                    Id = Guid.NewGuid(), Name = $"Map {i}", GridSize = 50, Game = g,
-                    Elements = new List<ElementModel>(),
-                    Properties = new List<NordvikManager.Domain.Entities.BattleMap.PropertyModel>()
-                });
-            }
-            Db.SaveChanges();
-            Db.ChangeTracker.Clear();
-        }
+        private Task<List<MapDTO>?> GetFlat(Guid gameId) =>
+            new GetFlatMapsCommandHandler(Db, Mapper).Handle(new GetFlatMapsCommand { GameID = gameId, Player = Player() }, CancellationToken.None);
 
         [Fact]
         public async Task Handle_ReturnsAllMapsForGame()
         {
-            // Arrange
             var game = BuildGame();
             SeedMaps(game, 3);
-            var cmd = new GetFlatMapsCommand { GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await GetFlat(game.Id);
 
-            // Assert
             Assert.NotNull(result);
             Assert.Equal(3, result!.Count);
         }
@@ -302,15 +214,12 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_ReturnsFlatDtos_WithoutElements()
         {
-            // Arrange
             var game = BuildGame();
             SeedMaps(game, 2);
-            var cmd = new GetFlatMapsCommand { GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await GetFlat(game.Id);
 
-            // Assert — ModifyOutput strips everything except Name and Id
+            // ModifyOutput strips everything except Name and Id
             Assert.All(result!, dto =>
             {
                 Assert.NotNull(dto.Name);
@@ -324,13 +233,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_UnknownGame_ReturnsEmptyList()
         {
-            // Arrange
-            var cmd = new GetFlatMapsCommand { GameID = Guid.NewGuid(), Player = Player() };
+            var result = await GetFlat(Guid.NewGuid());
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
             Assert.NotNull(result);
             Assert.Empty(result!);
         }
@@ -338,14 +242,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_GameWithNoMaps_ReturnsEmptyList()
         {
-            // Arrange
             var game = BuildGame(); // no maps added
-            var cmd = new GetFlatMapsCommand { GameID = game.Id, Player = Player() };
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await GetFlat(game.Id);
 
-            // Assert
             Assert.NotNull(result);
             Assert.Empty(result!);
         }
@@ -354,66 +254,20 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
     // =========================================================================
     // UpdateMapCommandHandler
     // =========================================================================
-    public class UpdateMapCommandHandlerTests : HandlerTestBase
+    public class UpdateMapCommandHandlerTests : MapHandlerTestBase
     {
-        private UpdateMapCommandHandler Handler() =>
-            new UpdateMapCommandHandler(Db, Mapper);
-
-        private MapModel SeedMap(GameModel game)
-        {
-            var mapId = Guid.NewGuid();
-            Db.ChangeTracker.Clear();
-            var g = Db.Games.Find(game.Id)!;
-            var map = new MapModel
-            {
-                Id = mapId, Name = "Original", GridSize = 50, GridVisible = true,
-                Width = 800, Height = 600, Game = g,
-                Elements = new List<ElementModel>(),
-                Properties = new List<NordvikManager.Domain.Entities.BattleMap.PropertyModel>()
-            };
-            Db.Maps.Add(map);
-            Db.SaveChanges();
-            Db.ChangeTracker.Clear();
-            return Db.Maps.Find(mapId)!;
-        }
+        private Task<CommandResponse> Update(Guid gameId, MapDTO map) =>
+            new UpdateMapCommandHandler(Db, Mapper).Handle(new UpdateMapCommand { GameId = gameId, Player = Player(), Map = map }, CancellationToken.None);
 
         [Fact]
-        public async Task Handle_ValidUpdate_ReturnsOk()
+        public async Task Handle_ValidUpdate_ReturnsOkAndPersistsChanges()
         {
-            // Arrange
             var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new UpdateMapCommand
-            {
-                GameId = game.Id,
-                Player = Player(),
-                Map = new MapDTO { Id = map.Id, Name = "Updated", GridSize = 100, Width = 1920, Height = 1080 }
-            };
+            var map = SeedMap(game, "Original", 800, 600);
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await Update(game.Id, new MapDTO { Id = map.Id, Name = "Renamed Map", GridSize = 100, Width = 1600, Height = 900 });
 
-            // Assert
             Assert.Equal(CommandResponse.Ok, result);
-        }
-
-        [Fact]
-        public async Task Handle_ValidUpdate_PersistsChanges()
-        {
-            // Arrange
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new UpdateMapCommand
-            {
-                GameId = game.Id,
-                Player = Player(),
-                Map = new MapDTO { Id = map.Id, Name = "Renamed Map", Width = 1600, Height = 900 }
-            };
-
-            // Act
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
             var updated = Db.Maps.Find(map.Id);
             Assert.Equal("Renamed Map", updated!.Name);
             Assert.Equal(1600, updated.Width);
@@ -423,62 +277,36 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_UnknownGame_ThrowsResourceNotFoundException()
         {
-            // Arrange
-            var cmd = new UpdateMapCommand
-            {
-                GameId = Guid.NewGuid(),
-                Player = Player(),
-                Map = new MapDTO { Id = Guid.NewGuid(), Name = "X" }
-            };
-
-            // Act & Assert
             await Assert.ThrowsAsync<NordvikManager.Application.Exceptions.ResourceNotFoundException>(
-                () => Handler().Handle(cmd, CancellationToken.None));
+                () => Update(Guid.NewGuid(), new MapDTO { Id = Guid.NewGuid(), Name = "X" }));
         }
 
         [Fact]
         public async Task Handle_UnknownMap_ThrowsResourceNotFoundException()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new UpdateMapCommand
-            {
-                GameId = game.Id,
-                Player = Player(),
-                Map = new MapDTO { Id = Guid.NewGuid(), Name = "Ghost" }
-            };
 
-            // Act & Assert
             await Assert.ThrowsAsync<NordvikManager.Application.Exceptions.ResourceNotFoundException>(
-                () => Handler().Handle(cmd, CancellationToken.None));
+                () => Update(game.Id, new MapDTO { Id = Guid.NewGuid(), Name = "Ghost" }));
         }
 
         [Fact]
         public async Task Handle_NullNameInDto_KeepsOriginalName()
         {
-            // Arrange
             var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new UpdateMapCommand
-            {
-                GameId = game.Id,
-                Player = Player(),
-                Map = new MapDTO { Id = map.Id, Name = null, Width = 500, Height = 400 }
-            };
+            var map = SeedMap(game, "Original", 800, 600);
 
-            // Act
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Update(game.Id, new MapDTO { Id = map.Id, Name = null, Width = 500, Height = 400 });
 
-            // Assert — null Name should fall back to the original
-            var updated = Db.Maps.Find(map.Id);
-            Assert.Equal("Original", updated!.Name);
+            // null Name should fall back to the original
+            Assert.Equal("Original", Db.Maps.Find(map.Id)!.Name);
         }
     }
 
     // =========================================================================
     // RemoveMapCommandHandler
     // =========================================================================
-    public class RemoveMapCommandHandlerTests : HandlerTestBase
+    public class RemoveMapCommandHandlerTests : MapHandlerTestBase
     {
         private readonly Mock<IMediator> _mediator = new();
 
@@ -489,68 +317,19 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
                      .ReturnsAsync(CommandResponse.Ok);
         }
 
-        private RemoveMapCommandHandler Handler() =>
-            new RemoveMapCommandHandler(Db, Mapper, _mediator.Object);
-
-        private MapModel SeedMap(GameModel game)
-        {
-            var mapId = Guid.NewGuid();
-            Db.ChangeTracker.Clear();
-            var g = Db.Games.Find(game.Id)!;
-            var map = new MapModel
-            {
-                Id = mapId, Name = "To Delete", GridSize = 50, Game = g,
-                Elements = new List<ElementModel>(),
-                Properties = new List<NordvikManager.Domain.Entities.BattleMap.PropertyModel>()
-            };
-            Db.Maps.Add(map);
-            Db.SaveChanges();
-            Db.ChangeTracker.Clear();
-            return Db.Maps.Find(mapId)!;
-        }
+        private Task<CommandResponse> Remove(GameModel game, Guid mapId) =>
+            new RemoveMapCommandHandler(Db, Mapper, _mediator.Object).Handle(new RemoveMapCommand { Id = mapId, GameID = game.Id, Player = Player() }, CancellationToken.None);
 
         [Fact]
-        public async Task Handle_ExistingMap_ReturnsOk()
+        public async Task Handle_ExistingMap_IsRemovedWithItsTreeEntry()
         {
-            // Arrange
             var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new RemoveMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
+            var map = SeedMap(game, "To Delete");
 
-            // Act
-            var result = await Handler().Handle(cmd, CancellationToken.None);
+            var result = await Remove(game, map.Id);
 
-            // Assert
             Assert.Equal(CommandResponse.Ok, result);
-        }
-
-        [Fact]
-        public async Task Handle_ExistingMap_IsRemovedFromDatabase()
-        {
-            // Arrange
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new RemoveMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
-
-            // Act
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
             Assert.Null(Db.Maps.Find(map.Id));
-        }
-
-        [Fact]
-        public async Task Handle_ExistingMap_SendsRemoveTreeEntryCommand()
-        {
-            // Arrange
-            var game = BuildGame();
-            var map = SeedMap(game);
-            var cmd = new RemoveMapCommand { Id = map.Id, GameID = game.Id, Player = Player() };
-
-            // Act
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            // Assert
             _mediator.Verify(
                 m => m.Send(It.IsAny<RemoveTreeEntryCommand>(), It.IsAny<CancellationToken>()),
                 Times.Once);
@@ -559,13 +338,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Map
         [Fact]
         public async Task Handle_NonExistingMap_ThrowsResourceNotFoundException()
         {
-            // Arrange
             var game = BuildGame();
-            var cmd = new RemoveMapCommand { Id = Guid.NewGuid(), GameID = game.Id, Player = Player() };
 
-            // Act & Assert
             await Assert.ThrowsAsync<NordvikManager.Application.Exceptions.ResourceNotFoundException>(
-                () => Handler().Handle(cmd, CancellationToken.None));
+                () => Remove(game, Guid.NewGuid()));
         }
     }
 }

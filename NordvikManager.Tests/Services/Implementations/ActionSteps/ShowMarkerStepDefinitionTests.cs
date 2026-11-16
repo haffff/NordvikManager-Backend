@@ -40,15 +40,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                 .ReturnsAsync(new List<JObject> { new JObject { ["id"] = _map.ToString(), ["gridSize"] = 50 } });
             _service.Setup(s => s.AtActionEnd(It.IsAny<Func<Task>>())).Callback<Func<Task>>(f => _atEnd = f);
 
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(_service.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            _lobby = new GameLobby(factory.Object) { GameId = Guid.NewGuid(), SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" } };
+            _lobby = TestLobby.Create(actions: _service.Object);
 
             var connection = new Mock<IPlayerConnection>();
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))

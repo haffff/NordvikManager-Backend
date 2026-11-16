@@ -55,21 +55,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             var aps = new Mock<IActionProcessingService>();
             aps.SetupGet(s => s.InputHandler).Returns(inputHandler);
 
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(aps.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
+            return TestLobby.Create(actions: aps.Object);
         }
 
         // Execute runs synchronously up to `await tcs.Task`, so `lastSent()` is populated

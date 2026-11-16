@@ -1,6 +1,8 @@
 using NordvikManager.Application.Commands.Folder.AddFolder;
 using NordvikManager.Application.Commands.TreeEntry.RemoveTreeEntry;
 using NordvikManager.Application.DataTransferObjects;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Domain.Entities.BattleMap;
 using MediatR;
 using NordvikManager.Application.Commands.Playlist.DeletePlaylist;
 using NordvikManager.Application.Exceptions;
@@ -17,73 +19,58 @@ namespace NordvikManager.Application.UnitTests.Commands.Playlist
         private readonly Mock<IMediator> _mediator = new();
         private DeletePlaylistCommandHandler Handler() => new(Db, Mapper, PermissionsMock.Object, _mediator.Object);
 
-        [Fact]
-        public async Task Handle_ExistingPlaylist_RemovesItsTreeEntry()
+        private PlaylistModel SeedPlaylist(GameModel game)
         {
-            var game = BuildGame();
-            var playlist = new PlaylistModel { GameId = game.Id, Name = "Tavern", Description = "" };
+            var playlist = new PlaylistModel { GameId = game.Id, Name = "Old", Description = "Old desc" };
             Db.Playlists.Add(playlist);
             Db.SaveChanges();
+            return playlist;
+        }
 
-            await Handler().Handle(new DeletePlaylistCommand { GameId = game.Id, Player = Player(), PlaylistId = playlist.Id }, CancellationToken.None);
+        private Task<CommandResponse> Delete(GameModel game, Guid playlistId, PlayerDTO? player = null)
+            => Handler().Handle(new DeletePlaylistCommand { GameId = game.Id, Player = player ?? Player(), PlaylistId = playlistId }, CancellationToken.None);
 
+        [Fact]
+        public async Task Handle_ValidRequest_RemovesPlaylistAndItsTreeEntry()
+        {
+            var game = BuildGame();
+            var playlist = SeedPlaylist(game);
+
+            var result = await Delete(game, playlist.Id);
+
+            Assert.Equal(CommandResponse.Ok, result);
+            Assert.False(Db.Playlists.Any(p => p.Id == playlist.Id));
             _mediator.Verify(m => m.Send(
                 It.Is<RemoveTreeEntryCommand>(c => c.TargetId == playlist.Id && c.GameId == game.Id),
                 It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]
-        public async Task Handle_ValidRequest_RemovesPlaylistAndReturnsOk()
-        {
-            var game = BuildGame();
-            var playlist = new PlaylistModel { GameId = game.Id, Name = "Old", Description = "Old desc" };
-            Db.Playlists.Add(playlist);
-            Db.SaveChanges();
-
-            var cmd = new DeletePlaylistCommand { GameId = game.Id, Player = Player(), PlaylistId = playlist.Id };
-
-            var result = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, result);
-            Assert.False(Db.Playlists.Any(p => p.Id == playlist.Id));
-        }
-
-        [Fact]
         public async Task Handle_PlaylistNotFound_ThrowsResourceNotFoundException()
         {
             var game = BuildGame();
-            var cmd = new DeletePlaylistCommand { GameId = game.Id, Player = Player(), PlaylistId = Guid.NewGuid() };
 
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Delete(game, Guid.NewGuid()));
         }
 
         [Fact]
         public async Task Handle_PlayerNotInGame_ThrowsResourceNotFoundException()
         {
             var game = BuildGame();
-            var playlist = new PlaylistModel { GameId = game.Id, Name = "Old", Description = "Old desc" };
-            Db.Playlists.Add(playlist);
-            Db.SaveChanges();
-            var outsider = NonOwnerPlayer();
+            var playlist = SeedPlaylist(game);
 
-            var cmd = new DeletePlaylistCommand { GameId = game.Id, Player = outsider, PlaylistId = playlist.Id };
-
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Delete(game, playlist.Id, NonOwnerPlayer()));
         }
 
         [Fact]
         public async Task Handle_PlayerLacksEditPermission_ThrowsPermissionException()
         {
             var game = BuildGame();
-            var playlist = new PlaylistModel { GameId = game.Id, Name = "Old", Description = "Old desc" };
-            Db.Playlists.Add(playlist);
-            Db.SaveChanges();
+            var playlist = SeedPlaylist(game);
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(It.IsAny<Guid>(), It.IsAny<IEntity>(), It.IsAny<Permission>()))
                 .Returns(false);
 
-            var cmd = new DeletePlaylistCommand { GameId = game.Id, Player = Player(), PlaylistId = playlist.Id };
-
-            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<PermissionException>(() => Delete(game, playlist.Id));
         }
     }
 }

@@ -38,26 +38,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         private static ActionStep MakeStep(string type, string playlistId) =>
             new ActionStep { Type = type, Data = JObject.FromObject(new { PlaylistId = playlistId }) };
 
-        private static GameLobby MakeLobby()
-        {
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         [Theory]
         [InlineData("")]
         [InlineData("nope")]
@@ -65,13 +45,13 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         public async Task Play_InvalidPlaylistId_Throws(string? playlistId)
         {
             await Assert.ThrowsAsync<ActionProcessException>(() =>
-                _play.Execute(_mediator.Object, new(), MakeLobby(), MakeStep("PlayPlaylist", playlistId)));
+                _play.Execute(_mediator.Object, new(), TestLobby.Create(), MakeStep("PlayPlaylist", playlistId)));
         }
 
         [Fact]
         public async Task Play_ValidId_DelegatesToPlaybackServiceWithSystemPlayer()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var playlistId = Guid.NewGuid();
             _playback.Setup(p => p.PlayPlaylistAsync(_mediator.Object, lobby, lobby.SystemPlayer, playlistId))
                      .ReturnsAsync(CommandResponse.Ok);
@@ -84,7 +64,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task Play_PlaybackReturnsNoResource_Throws()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             _playback.Setup(p => p.PlayPlaylistAsync(It.IsAny<IMediator>(), It.IsAny<GameLobby>(), It.IsAny<PlayerDTO>(), It.IsAny<Guid>()))
                      .ReturnsAsync(CommandResponse.NoResource);
 
@@ -95,7 +75,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task Pause_ValidId_Delegates()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var playlistId = Guid.NewGuid();
             _playback.Setup(p => p.PausePlaylistAsync(It.IsAny<IMediator>(), It.IsAny<GameLobby>(), It.IsAny<PlayerDTO>(), It.IsAny<Guid>()))
                      .ReturnsAsync(CommandResponse.NoChange);
@@ -108,7 +88,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task Stop_ValidId_Delegates()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var playlistId = Guid.NewGuid();
             _playback.Setup(p => p.StopPlaylistAsync(It.IsAny<IMediator>(), It.IsAny<GameLobby>(), It.IsAny<PlayerDTO>(), It.IsAny<Guid>()))
                      .ReturnsAsync(CommandResponse.Ok);
@@ -124,9 +104,9 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         public async Task PauseAndStop_InvalidPlaylistId_Throw(string playlistId)
         {
             await Assert.ThrowsAsync<ActionProcessException>(() =>
-                _pause.Execute(_mediator.Object, new(), MakeLobby(), MakeStep("PausePlaylist", playlistId)));
+                _pause.Execute(_mediator.Object, new(), TestLobby.Create(), MakeStep("PausePlaylist", playlistId)));
             await Assert.ThrowsAsync<ActionProcessException>(() =>
-                _stop.Execute(_mediator.Object, new(), MakeLobby(), MakeStep("StopPlaylist", playlistId)));
+                _stop.Execute(_mediator.Object, new(), TestLobby.Create(), MakeStep("StopPlaylist", playlistId)));
         }
 
         [Fact]

@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -28,30 +29,18 @@ namespace NordvikManager.Tests.Services.Implementations
 
         public PlaybackServiceTests()
         {
-            _lobby = MakeLobby(_mediator);
+            _lobby = TestLobby.Create(mediator: _mediator.Object);
         }
 
-        // Same construction as PlaylistControllerTests.MakeLobby — HandlePostCommand
-        // resolves its own scoped IMediator internally, so the provider must supply one.
-        private static GameLobby MakeLobby(Mock<IMediator> mediatorMock)
+        private void Answer<TCommand, TResult>(TResult value) where TCommand : IRequest<TResult>
+            => _mediator.Setup(m => m.Send(It.IsAny<TCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(value);
+
+        // A playlist that is already playing (or paused) in the lobby.
+        private Guid Playing(bool paused = false, params Guid[] tracks)
         {
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            provider.Setup(p => p.GetService(typeof(IMediator))).Returns(mediatorMock.Object);
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
+            var playlistId = Guid.NewGuid();
+            _lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, IsPaused = paused, TrackOrder = tracks.ToList() };
+            return playlistId;
         }
 
         // ── PlayPlaylist ────────────────────────────────────────────────────────
@@ -77,13 +66,7 @@ namespace NordvikManager.Tests.Services.Implementations
         [Fact]
         public async Task PlayPlaylistAsync_ResumesInPlace_WithoutCallingMediator_WhenPausedEntryExists()
         {
-            var playlistId = Guid.NewGuid();
-            _lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState
-            {
-                PlaylistId = playlistId,
-                IsPaused = true,
-                TrackOrder = new List<Guid> { Guid.NewGuid() },
-            };
+            var playlistId = Playing(paused: true, Guid.NewGuid());
 
             var response = await _service.PlayPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -96,8 +79,7 @@ namespace NordvikManager.Tests.Services.Implementations
         public async Task PlayPlaylistAsync_DoesNotCreateState_WhenResultIsNoResource()
         {
             var playlistId = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<PlayPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new PlayPlaylistResult { Response = CommandResponse.NoResource });
+            Answer<PlayPlaylistCommand, PlayPlaylistResult>(new PlayPlaylistResult { Response = CommandResponse.NoResource });
 
             var response = await _service.PlayPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -109,8 +91,7 @@ namespace NordvikManager.Tests.Services.Implementations
         public async Task PlayPlaylistAsync_DoesNotCreateState_WhenTrackOrderEmpty()
         {
             var playlistId = Guid.NewGuid();
-            _mediator.Setup(m => m.Send(It.IsAny<PlayPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new PlayPlaylistResult { Response = CommandResponse.Ok, TrackOrder = new List<Guid>() });
+            Answer<PlayPlaylistCommand, PlayPlaylistResult>(new PlayPlaylistResult { Response = CommandResponse.Ok, TrackOrder = new List<Guid>() });
 
             var response = await _service.PlayPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -123,10 +104,8 @@ namespace NordvikManager.Tests.Services.Implementations
         [Fact]
         public async Task PausePlaylistAsync_SetsIsPaused_WhenOkAndEntryExists()
         {
-            var playlistId = Guid.NewGuid();
-            _lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId };
-            _mediator.Setup(m => m.Send(It.IsAny<PausePlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
+            var playlistId = Playing();
+            Answer<PausePlaylistCommand, CommandResponse>(CommandResponse.Ok);
 
             var response = await _service.PausePlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -137,8 +116,7 @@ namespace NordvikManager.Tests.Services.Implementations
         [Fact]
         public async Task PausePlaylistAsync_ReturnsResponse_WhenNoActiveEntry()
         {
-            _mediator.Setup(m => m.Send(It.IsAny<PausePlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
+            Answer<PausePlaylistCommand, CommandResponse>(CommandResponse.Ok);
 
             var response = await _service.PausePlaylistAsync(_mediator.Object, _lobby, _player, Guid.NewGuid());
 
@@ -150,10 +128,8 @@ namespace NordvikManager.Tests.Services.Implementations
         [Fact]
         public async Task StopPlaylistAsync_RemovesEntry_WhenOk()
         {
-            var playlistId = Guid.NewGuid();
-            _lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId };
-            _mediator.Setup(m => m.Send(It.IsAny<StopPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.Ok);
+            var playlistId = Playing();
+            Answer<StopPlaylistCommand, CommandResponse>(CommandResponse.Ok);
 
             var response = await _service.StopPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -164,10 +140,8 @@ namespace NordvikManager.Tests.Services.Implementations
         [Fact]
         public async Task StopPlaylistAsync_KeepsEntry_WhenCommandNotOk()
         {
-            var playlistId = Guid.NewGuid();
-            _lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId };
-            _mediator.Setup(m => m.Send(It.IsAny<StopPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(CommandResponse.NoPermission);
+            var playlistId = Playing();
+            Answer<StopPlaylistCommand, CommandResponse>(CommandResponse.NoPermission);
 
             var response = await _service.StopPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 
@@ -194,12 +168,11 @@ namespace NordvikManager.Tests.Services.Implementations
             var loudTrack = Guid.NewGuid();
             var everyone = new RecordingConnection();
             _lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Someone" }] = new List<NordvikManager.WebRTC.IPlayerConnection> { everyone };
-            _mediator.Setup(m => m.Send(It.IsAny<PlayPlaylistCommand>(), It.IsAny<CancellationToken>()))
-                     .ReturnsAsync(new PlayPlaylistResult
-                     {
-                         Response = CommandResponse.Ok, TrackOrder = new List<Guid> { loudTrack }, Volume = 0.8,
-                         TrackVolumes = new Dictionary<Guid, double> { [loudTrack] = 0.5 },
-                     });
+            Answer<PlayPlaylistCommand, PlayPlaylistResult>(new PlayPlaylistResult
+            {
+                Response = CommandResponse.Ok, TrackOrder = new List<Guid> { loudTrack }, Volume = 0.8,
+                TrackVolumes = new Dictionary<Guid, double> { [loudTrack] = 0.5 },
+            });
 
             await _service.PlayPlaylistAsync(_mediator.Object, _lobby, _player, playlistId);
 

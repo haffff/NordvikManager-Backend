@@ -32,44 +32,48 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
             Hook = Hook.Install,
         };
 
+        // A game with one seeded action, and the update request for it.
+        private (NordvikManager.Domain.Entities.BattleMap.GameModel Game, ActionModel Action, NordvikManager.Application.DataTransferObjects.Game.ActionDto Dto) Seeded()
+        {
+            var game = BuildGame();
+            var action = SeedAction(game.Id);
+            return (game, action, UpdateDto(action.Id));
+        }
+
+        private Task<CommandResponse> Update(Guid gameId, NordvikManager.Application.DataTransferObjects.Game.ActionDto dto, PlayerDTO? player = null) =>
+            Handler().Handle(new UpdateActionCommand { GameId = gameId, Player = player ?? Player(), Action = dto }, CancellationToken.None);
+
         [Fact]
         public async Task Handle_GameNotFound_ThrowsResourceNotFoundException()
         {
-            var cmd = new UpdateActionCommand { GameId = Guid.NewGuid(), Player = Player(), Action = UpdateDto(Guid.NewGuid()) };
-
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Update(Guid.NewGuid(), UpdateDto(Guid.NewGuid())));
         }
 
         [Fact]
         public async Task Handle_ActionNotFound_ThrowsResourceNotFoundException()
         {
             var game = BuildGame();
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = UpdateDto(Guid.NewGuid()) };
 
-            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() => Update(game.Id, UpdateDto(Guid.NewGuid())));
         }
 
         [Fact]
         public async Task Handle_NoPermission_ThrowsPermissionException()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
+            var (game, _, dto) = Seeded();
             var strangerId = Guid.NewGuid();
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(strangerId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.Edit))
                 .Returns(false);
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = new PlayerDTO { Id = strangerId }, Action = UpdateDto(action.Id) };
 
-            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<PermissionException>(() => Update(game.Id, dto, new PlayerDTO { Id = strangerId }));
         }
 
         [Fact]
         public async Task Handle_ValidUpdate_UpdatesFieldsAndReturnsOk()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = UpdateDto(action.Id) };
+            var (game, action, dto) = Seeded();
 
-            var response = await Handler().Handle(cmd, CancellationToken.None);
+            var response = await Update(game.Id, dto);
 
             Assert.Equal(CommandResponse.Ok, response);
             var updated = Db.Actions.Find(action.Id);
@@ -84,13 +88,10 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
         [Fact]
         public async Task Handle_GenericPermissionSet_ClearsAndSetsGlobalPermission()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
-            var dto = UpdateDto(action.Id);
+            var (game, _, dto) = Seeded();
             dto.GenericPermission = Permission.Read;
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto };
 
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Update(game.Id, dto);
 
             PermissionsMock.Verify(p => p.SetPermissions(Guid.Empty, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), null), Times.Once);
             PermissionsMock.Verify(p => p.SetGenericPermissions(It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.Read), Times.Once);
@@ -99,43 +100,36 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
         [Fact]
         public async Task Handle_GmPermissionSet_LeavesTheOwnersRowAlone()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
-            var dto = UpdateDto(action.Id);
+            var (game, _, dto) = Seeded();
             dto.GmPermission = Permission.Control;
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto };
 
-            await Handler().Handle(cmd, CancellationToken.None);
+            await Update(game.Id, dto);
 
             PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), It.IsAny<Permission?>()), Times.Never);
         }
+
         [Fact]
         public async Task Handle_ChatCommandWithoutCommands_ThrowsWrongArgumentsException_AndKeepsTheAction()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
-            var dto = UpdateDto(action.Id);
+            var (game, action, dto) = Seeded();
             dto.Hook = Hook.ChatCommand;
-            var cmd = new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto };
 
-            await Assert.ThrowsAsync<WrongArgumentsException>(() => Handler().Handle(cmd, CancellationToken.None));
+            await Assert.ThrowsAsync<WrongArgumentsException>(() => Update(game.Id, dto));
             Assert.Equal("Greet", Db.Actions.Find(action.Id)!.Name);
         }
 
         [Fact]
         public async Task Handle_ChatCommand_StoresTheTidiedCommandList_AndOtherHooksClearIt()
         {
-            var game = BuildGame();
-            var action = SeedAction(game.Id);
-            var dto = UpdateDto(action.Id);
+            var (game, action, dto) = Seeded();
             dto.Hook = Hook.ChatCommand;
             dto.HookFilter = "VOTE,/poll";
-            await Handler().Handle(new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto }, CancellationToken.None);
+            await Update(game.Id, dto);
             Assert.Equal("vote, poll", Db.Actions.Find(action.Id)!.HookFilter);
 
             dto.Hook = Hook.Install;
             dto.HookFilter = null;
-            await Handler().Handle(new UpdateActionCommand { GameId = game.Id, Player = Player(), Action = dto }, CancellationToken.None);
+            await Update(game.Id, dto);
             Assert.Null(Db.Actions.Find(action.Id)!.HookFilter);
         }
     }

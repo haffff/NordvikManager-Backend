@@ -60,43 +60,28 @@ namespace NordvikManager.Tests.Controllers
         private static User AnyUser() => new User { Id = "user-id", UserName = "user" };
         private static PlayerDTO SomePlayer() => new PlayerDTO { Id = Guid.NewGuid(), Name = "Player" };
 
-        /// <summary>
-        /// Playback endpoints (Play/Pause/Stop/AdvanceTrack) broadcast over
-        /// lobby.HandlePostCommand, which needs a real GameLobby — not just a mocked
-        /// ILobbyService — so ActivePlaylistPlaybacks is actually mutated. Same
-        /// construction as CreateCardStepDefinitionTests.MakeLobby(), plus an IMediator
-        /// registration (HandlePostCommand resolves its own scoped IMediator internally).
-        /// </summary>
-        private static GameLobby MakeLobby(Mock<IMediator> mediatorMock)
-        {
-            var actionProcessingService = new Mock<IActionProcessingService>();
-
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(actionProcessingService.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            provider.Setup(p => p.GetService(typeof(IMediator)))
-                    .Returns(mediatorMock.Object);
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         private static ILobbyService LobbyServiceReturning(GameLobby lobby)
         {
             var lobbyService = new Mock<ILobbyService>();
             lobbyService.Setup(l => l.GetLobby(It.IsAny<Guid>())).Returns(lobby);
             return lobbyService.Object;
+        }
+
+        // A controller whose game has a real lobby: playback state lives there.
+        private (GameLobby Lobby, PlaylistController Controller) WithLobby()
+        {
+            var lobby = TestLobby.Create(mediator: _mediator.Object);
+            return (lobby, CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby)));
+        }
+
+        // A player connected to the lobby; the list fills with what they're sent.
+        private static List<WebSocketCommand> Listener(GameLobby lobby)
+        {
+            var sent = new List<WebSocketCommand>();
+            var connection = new Mock<IPlayerConnection>();
+            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => { if (m is WebSocketCommand c) sent.Add(c); }).ReturnsAsync(true);
+            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            return sent;
         }
 
         private static GetPlayerCommandResponse WithPlayer(PlayerDTO? player) =>
@@ -167,8 +152,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task PlayPlaylist_CreatesActivePlaybackState_WhenNoneExists()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             var trackOrder = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
             _mediator.Setup(m => m.Send(It.Is<PlayPlaylistCommand>(c => c.PlaylistId == playlistId), It.IsAny<CancellationToken>()))
@@ -185,8 +169,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task PlayPlaylist_ResumesInPlace_WithoutReinvokingMediator_WhenPausedEntryExists()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState
             {
@@ -223,8 +206,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task PausePlaylist_SetsIsPaused_WhenCommandSucceeds()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId };
             _mediator.Setup(m => m.Send(It.IsAny<PausePlaylistCommand>(), It.IsAny<CancellationToken>()))
@@ -255,8 +237,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task StopPlaylist_RemovesActiveEntry_WhenCommandSucceeds()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId };
             _mediator.Setup(m => m.Send(It.IsAny<StopPlaylistCommand>(), It.IsAny<CancellationToken>()))
@@ -277,8 +258,7 @@ namespace NordvikManager.Tests.Controllers
         {
             // Idempotency guard: a second caller (e.g. a duplicate GM tab) racing to advance
             // the same playlist should no-op instead of double-skipping a track.
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, CurrentTrackIndex = 2 };
 
@@ -292,8 +272,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task AdvanceTrack_ReturnsEnded_WithoutThrowing_WhenNoActiveEntry()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
 
             var result = await controller.AdvanceTrack(Guid.NewGuid(), new PlaylistIdRequest { PlaylistId = Guid.NewGuid() });
 
@@ -303,8 +282,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task AdvanceTrack_RemovesActiveEntry_WhenPlaylistEnded()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, CurrentTrackIndex = 0 };
             _mediator.Setup(m => m.Send(It.IsAny<AdvancePlaylistTrackCommand>(), It.IsAny<CancellationToken>()))
@@ -319,8 +297,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task AdvanceTrack_UpdatesActiveEntry_WhenPlaylistContinues()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             var nextOrder = new List<Guid> { Guid.NewGuid(), Guid.NewGuid() };
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, CurrentTrackIndex = 0 };
@@ -352,8 +329,7 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task GetCurrentPlayback_ReturnsActiveStates_WhenLobbyHasEntries()
         {
-            var lobby = MakeLobby(_mediator);
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, IsPaused = true };
 
@@ -371,14 +347,10 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task UpdatePlaylist_PassesTheVolume_AndTellsEveryoneWhileItPlays()
         {
-            var connection = new Mock<IPlayerConnection>();
-            var sent = new List<WebSocketCommand>();
-            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => { if (m is WebSocketCommand c) sent.Add(c); }).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
-            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
+            var (lobby, controller) = WithLobby();
+            var sent = Listener(lobby);
             var playlistId = Guid.NewGuid();
             lobby.ActivePlaylistPlaybacks[playlistId] = new PlaylistPlaybackState { PlaylistId = playlistId, Volume = 1 };
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
             _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
 
             await controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = playlistId, Name = "Tavern", Description = "", Volume = 0.4 });
@@ -392,12 +364,8 @@ namespace NordvikManager.Tests.Controllers
         [Fact]
         public async Task UpdatePlaylist_NotPlaying_SendsNoVolumeChange()
         {
-            var connection = new Mock<IPlayerConnection>();
-            var sent = new List<WebSocketCommand>();
-            connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>())).Callback<object>(m => { if (m is WebSocketCommand c) sent.Add(c); }).ReturnsAsync(true);
-            var lobby = MakeLobby(_mediator);
-            lobby.ConnectedPlayers[new PlayerDTO { Id = Guid.NewGuid(), Name = "Listener" }] = new List<IPlayerConnection> { connection.Object };
-            var controller = CreateController(_mediator, AnyUser(), LobbyServiceReturning(lobby));
+            var (lobby, controller) = WithLobby();
+            var sent = Listener(lobby);
             _mediator.Setup(m => m.Send(It.IsAny<UpdatePlaylistCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync(CommandResponse.Ok);
 
             await controller.UpdatePlaylist(Guid.NewGuid(), new UpdatePlaylistRequest { Id = Guid.NewGuid(), Name = "Tavern", Description = "", Volume = 0.4 });

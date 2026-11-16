@@ -37,41 +37,16 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                 }),
             };
 
-        // GameLobby's constructor eagerly resolves IActionProcessingService via
-        // GetRequiredService (throws on null) and IEnumerable<IWebSocketHandler> via
-        // GetService, so a bare Mock.Of<IServiceScopeFactory>() isn't enough — see
-        // SendRequestActionStepTests for the same pattern. Also regression coverage for
-        // the actual bug reported live: Execute must pass a non-null Player (SystemPlayer)
-        // into GetPropertiesByQueryCommand, otherwise PermissionsService.CheckIfHasPermissions
+        // The lobbies here have a SystemPlayer (TestLobby): regression coverage for the bug
+        // reported live. Execute must pass a non-null Player (SystemPlayer) into
+        // GetPropertiesByQueryCommand, otherwise PermissionsService.CheckIfHasPermissions
         // NREs on `player.Id` the moment a real (non-mocked) permission service runs.
-        private static GameLobby MakeLobby()
-        {
-            var actionProcessingService = new Mock<IActionProcessingService>();
-
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(actionProcessingService.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
 
         [Fact]
         public async Task Execute_PropertyFound_StoresItsValueInOutput()
         {
             var parentId = Guid.NewGuid();
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             _mediator.Setup(m => m.Send(
                     It.Is<GetPropertiesByQueryCommand>(c =>
                         c.ParentIDs.Length == 1 && c.ParentIDs[0] == parentId &&
@@ -93,7 +68,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
             // without a Player, and PermissionsService.CheckIfHasPermissions(PlayerDTO, ...)
             // dereferences player.Id unconditionally — a null Player crashed every live call.
             var parentId = Guid.NewGuid();
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             GetPropertiesByQueryCommand? captured = null;
             _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesByQueryCommand>(), It.IsAny<CancellationToken>()))
                      .Callback<IRequest<List<PropertyDTO>>, CancellationToken>((cmd, _) => captured = (GetPropertiesByQueryCommand)cmd)
@@ -110,7 +85,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         public async Task Execute_PropertyMissing_StoresDefaultValue()
         {
             var parentId = Guid.NewGuid();
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             _mediator.Setup(m => m.Send(It.IsAny<GetPropertiesByQueryCommand>(), It.IsAny<CancellationToken>()))
                      .ReturnsAsync(new List<PropertyDTO>());
 

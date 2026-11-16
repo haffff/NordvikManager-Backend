@@ -42,15 +42,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
 
             var service = new Mock<IActionProcessingService>();
             service.Setup(s => s.InputHandler).Returns(_inputs);
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(service.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            _lobby = new GameLobby(factory.Object) { GameId = Guid.NewGuid(), SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" } };
+            _lobby = TestLobby.Create(actions: service.Object);
 
             var connection = new Mock<IPlayerConnection>();
             connection.Setup(c => c.SendMessageToPlayer(It.IsAny<object>()))

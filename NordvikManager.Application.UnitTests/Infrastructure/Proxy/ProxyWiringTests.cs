@@ -36,6 +36,23 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
             return services.BuildServiceProvider();
         }
 
+        // Writes a server-settings.json in a new temp folder, runs the test with its path, then deletes the folder.
+        private static void WithSettingsFile(string json, Action<string> test)
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
+            var file = Path.Combine(folder, "server-settings.json");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(file, json);
+            try
+            {
+                test(file);
+            }
+            finally
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+
         [Fact]
         public void Register_ResolvesTheProxyAndDownloadHandlers()
         {
@@ -50,13 +67,8 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
         }
 
         [Fact]
-        public void Register_AppliesSavedSandboxOrigins_AtStartAndOnEverySave()
-        {
-            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
-            var file = Path.Combine(folder, "server-settings.json");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(file, """{ "Security": { "SandboxAllowedOrigins": [ "https://cdn.example.com" ] } }""");
-            try
+        public void Register_AppliesSavedSandboxOrigins_AtStartAndOnEverySave() =>
+            WithSettingsFile("""{ "Security": { "SandboxAllowedOrigins": [ "https://cdn.example.com" ] } }""", file =>
             {
                 using var provider = Container(("ServerSettings:FilePath", file));
                 var origins = provider.GetRequiredService<SandboxOrigins>();
@@ -67,21 +79,11 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
 
                 Assert.DoesNotContain("https://cdn.example.com", origins.Origins);
                 Assert.Contains("https://new.example.com", origins.Origins);
-            }
-            finally
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
+            });
 
         [Fact]
-        public void Register_AppliesTheSavedAddonRegistry_AtStartAndOnEverySave()
-        {
-            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
-            var file = Path.Combine(folder, "server-settings.json");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(file, """{ "Addons": { "MainRepository": "https://mine.example/addons.json" } }""");
-            try
+        public void Register_AppliesTheSavedAddonRegistry_AtStartAndOnEverySave() =>
+            WithSettingsFile("""{ "Addons": { "MainRepository": "https://mine.example/addons.json" } }""", file =>
             {
                 using var provider = Container(("ServerSettings:FilePath", file), ("AddonsConfiguration:MainRepository", "https://repo.example/addons.json"), ("AddonsConfiguration:FeaturedAddons:0", "dnd5e"));
                 var registry = provider.GetRequiredService<AddonRegistryOptions>();
@@ -91,12 +93,7 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
                 provider.GetRequiredService<IServerSettingsStore>().Update(s => s.Addons.MainRepository = null);
 
                 Assert.Equal("https://repo.example/addons.json", registry.MainRepository);
-            }
-            finally
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
+            });
 
         [Fact]
         public void Register_ReadsTheAllowedPrivateHosts()
@@ -110,13 +107,8 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
         }
 
         [Fact]
-        public void Register_AppliesTheSettingsFile_AtStartAndOnEverySave()
-        {
-            var folder = Path.Combine(Path.GetTempPath(), "nordvik-wiring-" + Guid.NewGuid().ToString("N"));
-            var file = Path.Combine(folder, "server-settings.json");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(file, """{ "Security": { "ProxyAllowedPrivateHosts": [ "localhost:8080" ] } }""");
-            try
+        public void Register_AppliesTheSettingsFile_AtStartAndOnEverySave() =>
+            WithSettingsFile("""{ "Security": { "ProxyAllowedPrivateHosts": [ "localhost:8080" ] } }""", file =>
             {
                 using var provider = Container(("ServerSettings:FilePath", file));
                 var options = provider.GetRequiredService<ProxyOptions>();
@@ -126,11 +118,6 @@ namespace NordvikManager.Application.UnitTests.Infrastructure.Proxy
 
                 Assert.False(ProxyAddressRules.IsAllowed("localhost", 8080, new[] { IPAddress.Loopback }, options));
                 Assert.True(ProxyAddressRules.IsAllowed("localhost", 9090, new[] { IPAddress.Loopback }, options));
-            }
-            finally
-            {
-                Directory.Delete(folder, recursive: true);
-            }
-        }
+            });
     }
 }
