@@ -49,8 +49,8 @@
     },
     {
       "id": "outside-connections",
-      "title": "No connections to other services",
-      "detail": "A browser page may only connect to the site it came from, so addons that work with other programs or websites (for example Trilium or Obsidian notes) don't work, and nor do actions that download a file from a link."
+      "title": "Only websites that allow browser requests",
+      "detail": "Addons reach other websites from this tab, so only https sites that allow requests from a browser answer. Programs on your computer or network (for example Trilium or Obsidian notes) and sites that refuse browser requests need the local server; you're told when an addon's request couldn't be made."
     },
     {
       "id": "upload-limits",

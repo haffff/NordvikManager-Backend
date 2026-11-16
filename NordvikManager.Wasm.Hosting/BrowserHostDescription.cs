@@ -25,9 +25,10 @@ namespace NordvikManager.Wasm.Hosting
                 "They exist only in this browser's storage, with no backup. Unless the browser grants this site persistent storage, "
                 + "it may delete them without asking when the disk gets full. Clearing the site's data deletes them too, and "
                 + "another browser, another computer or a private window doesn't have them."),
-            new HostLimitation("outside-connections", "No connections to other services",
-                "A browser page may only connect to the site it came from, so addons that work with other programs or websites "
-                + "(for example Trilium or Obsidian notes) don't work, and nor do actions that download a file from a link."),
+            new HostLimitation("outside-connections", "Only websites that allow browser requests",
+                "Addons reach other websites from this tab, so only https sites that allow requests from a browser answer. "
+                + "Programs on your computer or network (for example Trilium or Obsidian notes) and sites that refuse browser requests "
+                + "need the local server; you're told when an addon's request couldn't be made."),
             new HostLimitation("upload-limits", "Upload limits are fixed",
                 $"Uploads are capped at {FixedServerSettingsStore.GmGameLimitMb} MB per game for you and {FixedServerSettingsStore.PlayerLimitMb} MB per player, "
                 + "and can't be raised. On the local server you set them."),

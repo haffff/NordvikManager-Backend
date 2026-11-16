@@ -12,7 +12,11 @@ const server = http.createServer((req, res) => {
   if (!p.startsWith(root)) { res.writeHead(403); return res.end(); }
   fs.readFile(p.endsWith(path.sep) ? path.join(p, 'index.html') : p, (err, data) => {
     if (err) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { 'Content-Type': mime[path.extname(p)] || 'application/octet-stream' });
+    const headers = { 'Content-Type': mime[path.extname(p)] || 'application/octet-stream' };
+    // As Central serves it: the game host's worker may connect to https sites, nothing else.
+    if (path.basename(p) === 'host-worker.js')
+      headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https:; object-src 'none'; base-uri 'self'";
+    res.writeHead(200, headers);
     res.end(data);
   });
 });

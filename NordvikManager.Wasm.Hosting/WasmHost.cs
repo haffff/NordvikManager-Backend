@@ -39,8 +39,9 @@ namespace NordvikManager.Wasm.Hosting
                 ["ConnectionStrings:DBData"] = databasePath == null ? "nordvik-wasm-host" : $"Data Source={databasePath}",
                 // Central is the addon registry (CentralAddonRepository): a registry is set.
                 ["AddonsConfiguration:MainRepository"] = $"{centralServerUrl.TrimEnd('/')}/api/addons",
-                // A browser page may only connect to its own site: actions are told, not tried.
-                ["Security:OutsideConnections"] = "false",
+                // Actions' requests go out from this tab (the browser's fetch, from the game host's
+                // worker, whose own CSP from Central allows https sites; Browser mode).
+                ["Security:ProxyMode"] = "Browser",
             };
             foreach (var (key, value) in overrides ?? new Dictionary<string, string?>())
                 settings[key] = value;

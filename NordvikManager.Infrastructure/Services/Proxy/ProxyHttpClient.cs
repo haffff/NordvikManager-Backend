@@ -22,6 +22,10 @@ namespace NordvikManager.Infrastructure.Services.Proxy
                 .ConfigurePrimaryHttpMessageHandler(sp =>
                 {
                     var options = sp.GetRequiredService<ProxyOptions>();
+                    // In a browser there are no sockets: the platform's handler is the browser's
+                    // fetch, which follows redirects itself (each hop held to the worker's CSP).
+                    if (options.Mode == ProxyMode.Browser)
+                        return new HttpClientHandler();
                     return new SocketsHttpHandler
                     {
                         // Through a system proxy (HTTP_PROXY, Windows settings) ConnectCallback would
