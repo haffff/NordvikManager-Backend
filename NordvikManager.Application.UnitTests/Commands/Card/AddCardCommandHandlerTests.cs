@@ -327,7 +327,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Card
             var (_, id) = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Equal(new[] { id, templateId }.OrderBy(x => x), Db.ChangeTracker.Entries<CardModel>().Select(e => e.Entity.Id).OrderBy(x => x));
-            Assert.Equal(2, Db.ChangeTracker.Entries<PropertyModel>().Count()); // template's hp + its copy
+            Assert.Equal(3, Db.ChangeTracker.Entries<PropertyModel>().Count()); // template's hp, its copy, the card's template_id
             Db.ChangeTracker.Clear();
             Assert.Contains(Db.Cards.Include(c => c.Properties).First(c => c.Id == id).Properties, p => p.Name == "hp" && p.Value == "10");
         }

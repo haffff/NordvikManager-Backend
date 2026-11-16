@@ -64,30 +64,43 @@ namespace NordvikManager.Tests.Controllers
             Assert.Equal("Hero", (string?)json["data"]!["name"]);
         }
 
-        [Fact]
-        public async Task Export_OfSomethingNotInTheGame_IsNotFound()
+        // How each refusal is answered.
+        [Theory]
+        [InlineData("Export", "not a player", typeof(UnauthorizedObjectResult))]
+        [InlineData("Export", "not in the game", typeof(NotFoundResult))]
+        [InlineData("Export", "no Edit on the game", typeof(ForbidResult))]
+        [InlineData("Import", "not a player", typeof(UnauthorizedObjectResult))]
+        [InlineData("Import", "upload gone", typeof(NotFoundObjectResult))]
+        [InlineData("Import", "no Edit on the game", typeof(ForbidResult))]
+        public async Task Refusal_IsAnsweredWithItsStatus(string action, string refusal, Type expected)
         {
-            IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ExportEntityCommand>(), It.IsAny<CancellationToken>())).ReturnsAsync((EntityExportDto?)null);
+            IsPlayer(refusal != "not a player");
+            Exception? thrown = refusal switch
+            {
+                "no Edit on the game" => new PermissionException(Permission.Edit),
+                "upload gone" => new ResourceNotFoundException("Import upload", _uploadId),
+                _ => null,
+            };
+            var export = _mediator.Setup(m => m.Send(It.IsAny<ExportEntityCommand>(), It.IsAny<CancellationToken>()));
+            var import = _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()));
+            if (thrown != null) { export.ThrowsAsync(thrown); import.ThrowsAsync(thrown); }
+            else export.ReturnsAsync((EntityExportDto?)null); // nothing to export: not in the game
 
-            Assert.IsType<NotFoundResult>(await Controller().Export(_gameId, "card", _cardId));
+            var result = action == "Export"
+                ? await Controller().Export(_gameId, "card", _cardId)
+                : await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId });
+
+            Assert.IsType(expected, result);
         }
 
         [Fact]
-        public async Task Export_WithoutEditOnTheGame_IsForbidden()
+        public async Task CancelImport_DropsTheUpload_OrIsNotFound()
         {
             IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ExportEntityCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(new PermissionException(Permission.Edit));
+            _mediator.Setup(m => m.Send(It.Is<CancelImportUploadCommand>(c => c.UploadId == _uploadId), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
-            Assert.IsType<ForbidResult>(await Controller().Export(_gameId, "card", _cardId));
-        }
-
-        [Fact]
-        public async Task Export_NotAPlayer_IsUnauthorized()
-        {
-            IsPlayer(false);
-
-            Assert.IsType<UnauthorizedObjectResult>(await Controller().Export(_gameId, "card", _cardId));
+            Assert.IsType<NoContentResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = _uploadId }));
+            Assert.IsType<NotFoundResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = Guid.NewGuid() }));
         }
 
         [Fact]
@@ -168,33 +181,5 @@ namespace NordvikManager.Tests.Controllers
             Assert.Contains("not a card", JObject.FromObject(bad.Value!)["error"]!.ToString());
         }
 
-        [Fact]
-        public async Task Import_OfAnUploadThatIsGone_IsNotFound()
-        {
-            IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>()))
-                     .ThrowsAsync(new ResourceNotFoundException("Import upload", _uploadId));
-
-            Assert.IsType<NotFoundObjectResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId }));
-        }
-
-        [Fact]
-        public async Task Import_WithoutEditOnTheGame_IsForbidden()
-        {
-            IsPlayer();
-            _mediator.Setup(m => m.Send(It.IsAny<ImportUploadCommand>(), It.IsAny<CancellationToken>())).ThrowsAsync(new PermissionException(Permission.Edit));
-
-            Assert.IsType<ForbidResult>(await Controller().Import(_gameId, new ImportRequest { UploadId = _uploadId }));
-        }
-
-        [Fact]
-        public async Task CancelImport_DropsTheUpload_OrIsNotFound()
-        {
-            IsPlayer();
-            _mediator.Setup(m => m.Send(It.Is<CancelImportUploadCommand>(c => c.UploadId == _uploadId), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-
-            Assert.IsType<NoContentResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = _uploadId }));
-            Assert.IsType<NotFoundResult>(await Controller().CancelImport(_gameId, new ImportUploadRequest { UploadId = Guid.NewGuid() }));
-        }
     }
 }

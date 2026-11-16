@@ -426,38 +426,19 @@ namespace NordvikManager.Tests.Controllers
         // AddGame
         // =========================================================================
 
-        [Fact]
-        public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsNull()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task AddGame_ReturnsOk_WhenTheGameIsMade_BadRequestOtherwise(bool made)
         {
-            // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync((Guid?)null);
-            var controller = CreateController(mediator, contextUser: AdminUser());
-            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
-
-            // Act
-            var result = await controller.AddGame(command);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task AddGame_ReturnsOk_WhenMediatorReturnsGameId()
-        {
-            // Arrange
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(Guid.NewGuid());
+                    .ReturnsAsync(made ? Guid.NewGuid() : (Guid?)null);
             var controller = CreateController(mediator, contextUser: RegularUser());
-            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
 
-            // Act
-            var result = await controller.AddGame(command);
+            var result = await controller.AddGame(new AddGameCommand { Name = "Game", PasswordRequired = false });
 
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType(made ? typeof(OkObjectResult) : typeof(BadRequestResult), result);
         }
 
         // =========================================================================
@@ -514,36 +495,18 @@ namespace NordvikManager.Tests.Controllers
         // GetVersionInfo
         // =========================================================================
 
-        [Fact]
-        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser(bool isAdmin)
         {
-            // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
-            var controller = CreateController(mediator, contextUser: RegularUser());
+            var controller = CreateController(mediator, contextUser: isAdmin ? AdminUser() : RegularUser());
 
-            // Act
-            var result = await controller.GetVersionInfo();
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.GetVersionInfo());
         }
 
-        [Fact]
-        public async Task GetVersionInfo_ReturnsOk_WhenUserIsAdmin()
-        {
-            // Arrange
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
-            var controller = CreateController(mediator, contextUser: AdminUser());
-
-            // Act
-            var result = await controller.GetVersionInfo();
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
     }
 }
