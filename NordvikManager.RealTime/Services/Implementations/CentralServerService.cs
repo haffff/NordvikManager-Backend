@@ -363,7 +363,7 @@ namespace NordvikManager.Services.Implementations
             };
         }
 
-        public async Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode)
+        public async Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode, string? altcha, string? honeypot)
         {
             var client = _httpClientFactory.CreateClient();
             var body = JsonConvert.SerializeObject(new
@@ -372,7 +372,9 @@ namespace NordvikManager.Services.Implementations
                 email,
                 password,
                 confirmPassword = password,
-                inviteCode
+                inviteCode,
+                altcha,
+                nmTrapField = honeypot,
             });
             var content = new StringContent(body, Encoding.UTF8, "application/json");
 
@@ -398,6 +400,22 @@ namespace NordvikManager.Services.Implementations
             catch
             {
                 return (false, "Registration failed");
+            }
+        }
+
+        public async Task<System.Text.Json.JsonElement?> GetSignupChallengeAsync()
+        {
+            var client = _httpClientFactory.CreateClient();
+            try
+            {
+                var response = await client.GetAsync($"{_centralServerUrl}/api/user/signupchallenge");
+                if (!response.IsSuccessStatusCode) return null;
+                using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                return document.RootElement.Clone();
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                return null;
             }
         }
 

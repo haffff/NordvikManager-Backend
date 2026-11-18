@@ -105,6 +105,14 @@ namespace NordvikManager.Controllers
         }
 
         [HttpGet]
+        [Route("SignupChallenge")]
+        public async Task<IActionResult> SignupChallenge()
+        {
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.SignupChallenge(context));
+        }
+
+        [HttpGet]
         [Route("CheckRegistrationKey")]
         public async Task<IActionResult> CheckRegistrationKey(string key)
         {
