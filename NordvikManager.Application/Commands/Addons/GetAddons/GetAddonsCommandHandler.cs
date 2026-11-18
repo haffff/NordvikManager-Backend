@@ -29,11 +29,12 @@ namespace NordvikManager.Application.Commands.Addons.GetAddons
             // version, whatever the addon declares. The text search only narrows it down; a
             // step of that type (anywhere, e.g. in an If's branch) decides.
             var ids = addons.Select(a => a.Id).ToList();
-            var maybe = await dbContext.Addons
-                .Where(a => ids.Contains(a.Id))
-                .SelectMany(a => a.Actions!
-                    .Where(x => x.Content.Contains("SendRequest") || x.Content.Contains("DownloadResource"))
-                    .Select(x => new { AddonId = a.Id, x.Content }))
+            // From the actions by their addon key: going through Addons.Actions needs SQL APPLY,
+            // which SQLite doesn't have.
+            var maybe = await dbContext.Actions
+                .Where(x => ids.Contains(EF.Property<Guid>(x, "AddonModelId"))
+                    && (x.Content.Contains("SendRequest") || x.Content.Contains("DownloadResource")))
+                .Select(x => new { AddonId = EF.Property<Guid>(x, "AddonModelId"), x.Content })
                 .ToListAsync(token);
             var goOutside = maybe.Where(m => HasOutsideStep(m.Content)).Select(m => m.AddonId).ToHashSet();
 
