@@ -16,9 +16,12 @@ namespace NordvikManager.Infrastructure.Services.Proxy
 
         private readonly IHttpClientFactory httpClientFactory;
 
-        public ProxyHttpService(IHttpClientFactory httpClientFactory)
+        private readonly ProxyOptions options;
+
+        public ProxyHttpService(IHttpClientFactory httpClientFactory, ProxyOptions options)
         {
             this.httpClientFactory = httpClientFactory;
+            this.options = options;
         }
 
         public async Task<(bool Success, int StatusCode, string? ResponseBody)> SendJsonAsync(
@@ -58,12 +61,15 @@ namespace NordvikManager.Infrastructure.Services.Proxy
             return (response.IsSuccessStatusCode, (int)response.StatusCode, body, response.Content.Headers.ContentType?.MediaType);
         }
 
-        private static HttpRequestMessage Request(HttpMethod method, string url, string? bearerToken)
+        private HttpRequestMessage Request(HttpMethod method, string url, string? bearerToken)
         {
             var request = new HttpRequestMessage(method, url);
             if (!string.IsNullOrWhiteSpace(bearerToken))
                 request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
-            request.Headers.UserAgent.ParseAdd(UserAgent);
+            // From a browser it carries the browser's own: a custom one makes Firefox ask the site
+            // first (a CORS preflight), which many sites, GitHub raw among them, refuse.
+            if (options.Mode != ProxyMode.Browser)
+                request.Headers.UserAgent.ParseAdd(UserAgent);
             return request;
         }
     }

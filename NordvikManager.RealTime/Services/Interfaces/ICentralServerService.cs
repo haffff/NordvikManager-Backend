@@ -1,0 +1,153 @@
+using NordvikManager.Application.DataTransferObjects.Game;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace NordvikManager.Services.Interfaces
+{
+    /// <summary>
+    /// Public metadata returned by the Central Server's /meta endpoint.
+    /// Used to configure ICE servers and registration requirements without auth.
+    /// </summary>
+    public class CentralServerMeta
+    {
+        public bool IsInvitationRequired { get; set; }
+        public List<string> StunServers { get; set; } = new();
+        public string MinBackendVersion { get; set; } = "1.0.0";
+    }
+
+    /// <summary>
+    /// ICE configuration from the Central Server's authenticated /api/ice-servers endpoint:
+    /// STUN plus, when configured, TURN with short-lived coturn credentials.
+    /// </summary>
+    public class IceServersResult
+    {
+        public List<IceServerDto> IceServers { get; set; } = new();
+        /// <summary>Lifetime of the TURN credentials in seconds; null when TURN is not configured.</summary>
+        public int? Ttl { get; set; }
+    }
+
+    /// <summary>One RTCIceServer entry; <c>urls</c> may be a single string or an array on the wire.</summary>
+    public class IceServerDto
+    {
+        [JsonConverter(typeof(SingleOrArrayConverter))]
+        public List<string> Urls { get; set; } = new();
+        public string? Username { get; set; }
+        public string? Credential { get; set; }
+    }
+
+    internal class SingleOrArrayConverter : JsonConverter<List<string>>
+    {
+        public override List<string> ReadJson(JsonReader reader, Type objectType, List<string>? existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            var token = JToken.Load(reader);
+            return token.Type switch
+            {
+                JTokenType.Array => token.ToObject<List<string>>() ?? new(),
+                JTokenType.String => new List<string> { token.Value<string>()! },
+                _ => new List<string>(),
+            };
+        }
+
+        public override void WriteJson(JsonWriter writer, List<string>? value, JsonSerializer serializer)
+            => serializer.Serialize(writer, value);
+    }
+
+    /// <summary>
+    /// Carries the Central Server session plus the decoded user identity.
+    /// The CentralToken is only used server-side for proxied calls;
+    /// it is never the GM Backend's auth token.
+    /// </summary>
+    /// <summary>A refreshed Central access token and the refresh token that replaces the old one.</summary>
+    public record CentralTokens(string AccessToken, string? RefreshToken);
+
+    /// <summary>What re-sending a session's details to Central came to.</summary>
+    public enum CentralSessionUpdate
+    {
+        Updated,
+        /// <summary>Central no longer has the session (expired or deleted): make a new one.</summary>
+        Missing,
+        /// <summary>Refused, unreachable, or a Central too old to know the route.</summary>
+        Failed,
+    }
+
+    /// <summary>What joining a Central session as a player came to.</summary>
+    public enum CentralJoinResult
+    {
+        /// <summary>Joined now, already a member, or the owner.</summary>
+        Joined,
+        /// <summary>Central said no (wrong password, no such session, ...).</summary>
+        Refused,
+        Failed,
+    }
+
+    public class CentralLoginResult
+    {
+        /// <summary>Central Server JWT — used only for server-to-server proxied calls.</summary>
+        public string CentralToken { get; set; } = string.Empty;
+        public string? RefreshToken { get; set; }
+
+        // User identity decoded from the Central Server JWT (no signature validation needed here —
+        // we're just reading claims from a token the Central Server just issued to us).
+        public string UserId { get; set; } = string.Empty;
+        public string? UserName { get; set; }
+        public string? Email { get; set; }
+        public bool IsAdmin { get; set; }
+    }
+
+    public interface ICentralServerService
+    {
+        Task<CentralServerMeta?> GetMetaAsync();
+
+        /// <summary>Central's copy of the addon registry (GET api/addons: { categories, addons }), or null.</summary>
+        Task<string?> GetAddonRegistryAsync();
+
+        /// <summary>A registry addon's readme, through Central; null when it has none.</summary>
+        Task<NordvikManager.Infrastructure.Interfaces.AddonReadmeResult?> GetAddonReadmeAsync(string key);
+
+        /// <summary>A registry addon's release file, which Central downloads (by key only) for a logged-in user.</summary>
+        Task<byte[]> GetAddonPackageAsync(string centralToken, string key);
+        /// <summary>Fetches ICE servers (incl. TURN credentials) for the given Central user; null on failure.</summary>
+        Task<IceServersResult?> GetIceServersAsync(string centralToken);
+        Task<string?> CreateSessionAsync(string centralToken, GameItemDTO session);
+        /// <summary>
+        /// Re-sends an existing session's listed details (name, descriptions, cover image,
+        /// public flag, and the password when the game has one) to the Central Server.
+        /// </summary>
+        Task<CentralSessionUpdate> UpdateSessionAsync(string centralToken, string sessionId, GameItemDTO session);
+        /// <summary>Deletes a Central session (its owner or a Central admin only); false when refused or unreachable.</summary>
+        Task<bool> DeleteSessionAsync(string centralToken, string sessionId);
+        /// <summary>
+        /// Joins the token's user to a Central session as a player, with the game's password.
+        /// Central signaling only lets members (and the owner) connect as players.
+        /// </summary>
+        Task<CentralJoinResult> JoinSessionAsync(string centralToken, string sessionId, string? password);
+        /// <summary>
+        /// Central's GM signaling ticket for a session: what signaling re-authenticates with
+        /// after the socket reconnects, long after the access token expired. Null when Central
+        /// refuses, is unreachable, or is too old to know the route.
+        /// </summary>
+        Task<string?> GetSignalingTicketAsync(string centralToken, string sessionId);
+        Task<CentralLoginResult?> LoginAsync(string username, string password);
+        /// <summary>
+        /// Exchanges a Central Server refresh token for a new access token.
+        /// Returns the new access token, or null if the refresh token is invalid/expired.
+        /// </summary>
+        /// <summary>
+        /// Trades a Central refresh token for new tokens. Central rotates refresh tokens (the one
+        /// given is revoked), so the new refresh token must be stored too. Refreshing the same
+        /// token again within a minute returns the same result instead of a refused second try.
+        /// </summary>
+        Task<CentralTokens?> RefreshTokenAsync(string refreshToken);
+        Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode);
+        Task<bool> CheckRegistrationKeyAsync(string key);
+        Task<string?> GetUserNameAsync(string centralToken, string userId);
+        Task<object?> GetInvitesAsync(string centralToken, int page);
+        Task<string?> GenerateInviteAsync(string centralToken, int hours);
+        Task<bool> DeleteInviteAsync(string centralToken, string key);
+        Task<Dictionary<string, string>?> GetKeyboardBindingsAsync(string centralToken);
+        Task<bool> SetKeyboardBindingsAsync(string centralToken, Dictionary<string, string> bindings);
+    }
+}

@@ -16,7 +16,13 @@ namespace NordvikManager.Infrastructure
 {
     public class InfrastructureLayerModule
     {
-        public static void Register(IServiceCollection services, IConfiguration configuration)
+        /// <param name="useOtherDatabase">
+        /// The database when <c>UseSqlite</c> is off, set up by the host on the options with the
+        /// <c>ConnectionStrings:DBData</c> connection string (the native server: MySQL). Infrastructure
+        /// itself carries only SQLite.
+        /// </param>
+        public static void Register(IServiceCollection services, IConfiguration configuration,
+            Action<DbContextOptionsBuilder, string?>? useOtherDatabase = null)
         {
             var connectionString = configuration.GetSection("ConnectionStrings")["DBData"];
             var useSqlite = configuration.GetValue<bool>("UseSqlite");
@@ -27,9 +33,10 @@ namespace NordvikManager.Infrastructure
             if (useSqlite)
                 services.AddDbContext<IDbContext, DndOneContext>(options => options.UseSqlite(connectionString,
                     o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+            else if (useOtherDatabase != null)
+                services.AddDbContext<IDbContext, DndOneContext>(options => useOtherDatabase(options, connectionString));
             else
-                services.AddDbContext<IDbContext, DndOneContext>(options => options.UseMySQL(connectionString,
-                    o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
+                throw new InvalidOperationException("UseSqlite is off, but this host provides no other database.");
 
             services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
             services.AddSingleton<IUploadStore, LocalUploadStore>();

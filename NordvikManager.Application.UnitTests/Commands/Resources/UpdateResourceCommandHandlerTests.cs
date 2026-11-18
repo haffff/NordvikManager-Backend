@@ -73,79 +73,32 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
             Assert.Equal("Renamed", Db.Resources.First(x => x.Id == id).Name);
         }
 
-        [Fact]
-        public async Task Handle_SetsKey()
+        // Keys are unique per game: "Apple" held by another resource of the same game is refused,
+        // one held in another game is not. An empty key clears it.
+        // (The other game is a raw id, not a second BuildGame(): BuildGame() always seeds the same
+        // PlayerId, so a second call throws an EF identity conflict. The handler never reads
+        // Game.Players.)
+        [Theory]
+        [InlineData(null, null, "Apple", CommandResponse.Ok, "Apple")]
+        [InlineData("Apple", null, "", CommandResponse.Ok, null)]
+        [InlineData(null, "sameGame", "Apple", CommandResponse.AlreadyExists, null)]
+        [InlineData(null, "anotherGame", "Apple", CommandResponse.Ok, "Apple")]
+        public async Task Handle_Key(string? keyBefore, string? appleTakenIn, string newKey, CommandResponse expected, string? keyAfter)
         {
             var game = BuildGame();
-            var id = SeedResource(game.Id, PlayerId);
+            if (appleTakenIn != null)
+                SeedResource(appleTakenIn == "sameGame" ? game.Id : Guid.NewGuid(), PlayerId, key: "Apple");
+            var id = SeedResource(game.Id, PlayerId, key: keyBefore);
             var cmd = new UpdateResourceCommand
             {
                 Player = Player(),
-                Resource = new ResourceDTO { Id = id, Name = "Original Name", Key = "Apple" },
+                Resource = new ResourceDTO { Id = id, Name = "Original Name", Key = newKey },
             };
 
             var response = await Handler().Handle(cmd, CancellationToken.None);
 
-            Assert.Equal(CommandResponse.Ok, response);
-            Assert.Equal("Apple", Db.Resources.First(x => x.Id == id).Key);
-        }
-
-        [Fact]
-        public async Task Handle_ClearsKey_WhenSetToEmptyString()
-        {
-            var game = BuildGame();
-            var id = SeedResource(game.Id, PlayerId, key: "Apple");
-            var cmd = new UpdateResourceCommand
-            {
-                Player = Player(),
-                Resource = new ResourceDTO { Id = id, Name = "Original Name", Key = "" },
-            };
-
-            var response = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
-            Assert.Null(Db.Resources.First(x => x.Id == id).Key);
-        }
-
-        [Fact]
-        public async Task Handle_KeyAlreadyUsedByAnotherResourceInSameGame_ReturnsAlreadyExists()
-        {
-            var game = BuildGame();
-            SeedResource(game.Id, PlayerId, key: "Apple");
-            var id = SeedResource(game.Id, PlayerId);
-            var cmd = new UpdateResourceCommand
-            {
-                Player = Player(),
-                Resource = new ResourceDTO { Id = id, Name = "Original Name", Key = "Apple" },
-            };
-
-            var response = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.AlreadyExists, response);
-            Assert.Null(Db.Resources.First(x => x.Id == id).Key);
-        }
-
-        [Fact]
-        public async Task Handle_KeyUsedByAResourceInAnotherGame_IsAllowed()
-        {
-            // Two separate GameIds, not two BuildGame() calls — BuildGame() always seeds a
-            // PlayerModel with the same shared PlayerId, so a second call throws an EF
-            // identity conflict (see GetResourceDataCommandHandlerTests for the same note).
-            // The handler under test never reads Game.Players, so a raw second id is enough.
-            var gameA = BuildGame();
-            var gameBId = Guid.NewGuid();
-            SeedResource(gameA.Id, PlayerId, key: "Apple");
-            var id = SeedResource(gameBId, PlayerId);
-            var cmd = new UpdateResourceCommand
-            {
-                Player = Player(),
-                Resource = new ResourceDTO { Id = id, Name = "Original Name", Key = "Apple" },
-            };
-
-            var response = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
-            Assert.Equal("Apple", Db.Resources.First(x => x.Id == id).Key);
+            Assert.Equal(expected, response);
+            Assert.Equal(keyAfter, Db.Resources.First(x => x.Id == id).Key);
         }
 
         [Fact]

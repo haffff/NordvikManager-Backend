@@ -7,6 +7,7 @@ using NordvikManager.Application.Services.Interfaces;
 using NordvikManager.Application.Services.Rolls;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Reflection;
 
 namespace NordvikManager.Application
@@ -16,6 +17,8 @@ namespace NordvikManager.Application
         public static void Register(IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
             services.AddSingleton<IMapper, AppMapper>();
+            // The host's own (SkiaSharp in the native server) when it registered one first.
+            services.TryAddSingleton<Helpers.IThumbnailGenerator, Helpers.NoThumbnailGenerator>();
             services.AddScoped<IPermissionService, PermissionsService>();
             services.AddSingleton<IDiceRandomSource, DiceRandomSource>();
             services.AddSingleton<IDiceEngine, DiceEngine>();

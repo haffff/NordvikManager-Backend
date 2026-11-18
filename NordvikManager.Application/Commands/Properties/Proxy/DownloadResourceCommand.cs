@@ -26,6 +26,18 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public string? MimeType { get; set; }
 
         public Guid? ParentFolder { get; set; }
+
+        /// <summary>
+        /// The action sending it, if any: an action that came with an addon declaring its
+        /// network may only reach those hosts (AddonNetworkRules).
+        /// </summary>
+        public Guid? ActionId { get; set; }
+
+        /// <summary>
+        /// The actions whose run led to <see cref="ActionId"/>'s (Execute Action): each one's
+        /// addon network must allow the request too.
+        /// </summary>
+        public IReadOnlyList<Guid>? CallerActionIds { get; set; }
     }
 
     public class DownloadResourceResult
@@ -38,5 +50,8 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
         public string? MimeType { get; set; }
 
         public long Size { get; set; }
+
+        /// <summary>Why it didn't go out (<see cref="ProxyReasons"/>); null when it did.</summary>
+        public string? Reason { get; set; }
     }
 }

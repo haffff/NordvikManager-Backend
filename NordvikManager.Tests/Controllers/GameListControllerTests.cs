@@ -324,6 +324,7 @@ namespace NordvikManager.Tests.Controllers
             var realConfig = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
+                    ["AddonsConfiguration:MainRepository"] = TestRegistry,
                     ["AddonsConfiguration:FeaturedAddons:0"] = "featured-addon"
                 })
                 .Build();
@@ -348,9 +349,12 @@ namespace NordvikManager.Tests.Controllers
             return mock.Object;
         }
 
+        private const string TestRegistry = "https://registry.test/addons.json";
+
         private static IConfiguration FeaturedConfig(params string[] keys) =>
             new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-                .AddInMemoryCollection(keys.Select((k, i) => new KeyValuePair<string, string?>($"AddonsConfiguration:FeaturedAddons:{i}", k)))
+                .AddInMemoryCollection(keys.Select((k, i) => new KeyValuePair<string, string?>($"AddonsConfiguration:FeaturedAddons:{i}", k))
+                    .Append(new KeyValuePair<string, string?>("AddonsConfiguration:MainRepository", TestRegistry)))
                 .Build();
 
         private static AddonRegistryOptions Registry(params string[] featured) =>
@@ -402,42 +406,39 @@ namespace NordvikManager.Tests.Controllers
             Assert.Equal(new[] { "basics" }, listed.Select(a => a.Key));
         }
 
+        // No registry set (the browser host has none; a GM can clear it): the built-ins, and
+        // nothing asked of a registry that isn't there (which only logged a warning each time).
+        [Fact]
+        public async Task GetFeaturedAddons_NoRegistry_ListsBuiltIns_WithoutAskingTheRegistry()
+        {
+            var noRegistry = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["AddonsConfiguration:FeaturedAddons:0"] = "dnd5e" }).Build();
+            var controller = CreateController(_mediator, noRegistry, _lobbyService, RegularUser());
+            var builtIns = NoBuiltIns(new NordvikManager.Application.Services.BuiltInAddon("basics", "Basics", null, "0.1.0", "basics.zip", Array.Empty<byte>()));
+
+            var listed = Listed(await controller.GetFeaturedAddons(builtIns, AddonRegistryOptions.FromConfiguration(noRegistry)));
+
+            Assert.Equal(new[] { "basics" }, listed.Select(a => a.Key));
+            _mediator.Verify(m => m.Send(It.IsAny<GetAddonsFromRepositoryCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
         // =========================================================================
         // AddGame
         // =========================================================================
 
-        [Fact]
-        public async Task AddGame_ReturnsBadRequest_WhenMediatorReturnsNull()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task AddGame_ReturnsOk_WhenTheGameIsMade_BadRequestOtherwise(bool made)
         {
-            // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync((Guid?)null);
-            var controller = CreateController(mediator, contextUser: AdminUser());
-            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
-
-            // Act
-            var result = await controller.AddGame(command);
-
-            // Assert
-            Assert.IsType<BadRequestResult>(result);
-        }
-
-        [Fact]
-        public async Task AddGame_ReturnsOk_WhenMediatorReturnsGameId()
-        {
-            // Arrange
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(m => m.Send(It.IsAny<AddGameCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(Guid.NewGuid());
+                    .ReturnsAsync(made ? Guid.NewGuid() : (Guid?)null);
             var controller = CreateController(mediator, contextUser: RegularUser());
-            var command = new AddGameCommand { Name = "Game", PasswordRequired = false };
 
-            // Act
-            var result = await controller.AddGame(command);
+            var result = await controller.AddGame(new AddGameCommand { Name = "Game", PasswordRequired = false });
 
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType(made ? typeof(OkObjectResult) : typeof(BadRequestResult), result);
         }
 
         // =========================================================================
@@ -494,36 +495,18 @@ namespace NordvikManager.Tests.Controllers
         // GetVersionInfo
         // =========================================================================
 
-        [Fact]
-        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser()
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task GetVersionInfo_ReturnsOk_ForAnyAuthenticatedUser(bool isAdmin)
         {
-            // Arrange
             var mediator = new Mock<IMediator>();
             mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
                     .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
-            var controller = CreateController(mediator, contextUser: RegularUser());
+            var controller = CreateController(mediator, contextUser: isAdmin ? AdminUser() : RegularUser());
 
-            // Act
-            var result = await controller.GetVersionInfo();
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
+            Assert.IsType<OkObjectResult>(await controller.GetVersionInfo());
         }
 
-        [Fact]
-        public async Task GetVersionInfo_ReturnsOk_WhenUserIsAdmin()
-        {
-            // Arrange
-            var mediator = new Mock<IMediator>();
-            mediator.Setup(m => m.Send(It.IsAny<GetVersionInfoCommand>(), It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(new VersionInfoDTO { Version = "1.0.0" });
-            var controller = CreateController(mediator, contextUser: AdminUser());
-
-            // Act
-            var result = await controller.GetVersionInfo();
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-        }
     }
 }

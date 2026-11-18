@@ -10,5 +10,8 @@ namespace NordvikManager.Application.Commands.Actions.GetActions
         public Guid GameId { get; set; }
         public int? Page { get; set; }
         public bool flatList { get; set; } = false;
+
+        /// <summary>Leaves out the actions of disabled addons: what may run, not what the editor lists.</summary>
+        public bool ExcludeDisabledAddons { get; set; }
     }
 }

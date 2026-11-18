@@ -1,4 +1,5 @@
 using NordvikManager.Application.Commands.Resources;
+using NordvikManager.Application.Helpers;
 using NordvikManager.Domain.Enums;
 using NordvikManager.Domain.Entities.Resources;
 using SkiaSharp;
@@ -8,7 +9,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
 {
     public class GetResourceThumbnailCommandHandlerTests : HandlerTestBase
     {
-        private GetResourceThumbnailCommandHandler Handler() => new(Mapper, Db, Storage);
+        private GetResourceThumbnailCommandHandler Handler() => new(Mapper, Db, Storage, new NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator());
 
         // A real, decodable PNG — needed since the handler actually runs it through
         // SkiaSharp's decoder, not just a byte-array stand-in.
@@ -71,6 +72,27 @@ namespace NordvikManager.Application.UnitTests.Commands.Resources
 
             Assert.Equal(jsonBytes, data);
             Assert.Equal(MimeType.JSON, mimeType);
+            Assert.Null(Db.Resources.Find(id)!.ThumbnailData);
+        }
+
+        // A host without an imaging library (Application's default generator) still serves the image.
+        [Fact]
+        public async Task Handle_HostWithoutThumbnails_ReturnsTheOriginal_AndCachesNothing()
+        {
+            var game = BuildGame();
+            var original = MakeTestPng(800, 600);
+            var id = SeedResource(game.Id, original, MimeType.PNG);
+
+            var (data, mimeType) = await new GetResourceThumbnailCommandHandler(Mapper, Db, Storage, new NoThumbnailGenerator()).Handle(new GetResourceThumbnailCommand
+            {
+                GameID = game.Id,
+                ID = id,
+                Player = Player(),
+                MaxDimension = 100,
+            }, CancellationToken.None);
+
+            Assert.Equal(MimeType.PNG, mimeType);
+            Assert.Equal(original, data);
             Assert.Null(Db.Resources.Find(id)!.ThumbnailData);
         }
 

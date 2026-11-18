@@ -1,39 +1,35 @@
 using NordvikManager.Domain.Enums;
-using SkiaSharp;
 
 namespace NordvikManager.Application.Helpers
 {
     internal static class ThumbnailHelper
     {
-        // Only these MimeType values are actual raster images SkiaSharp can decode —
+        // Only these MimeType values are actual raster images a thumbnail generator can decode —
         // everything else (audio, html, json, ...) has no thumbnail to generate.
         public static bool IsImage(MimeType mimeType) =>
             mimeType == MimeType.PNG || mimeType == MimeType.JPEG ||
             mimeType == MimeType.GIF || mimeType == MimeType.TIFF;
+    }
 
+    /// <summary>
+    /// Makes resource thumbnails. Provided by the host, so Application carries no imaging
+    /// library: the native server uses SkiaSharp (NordvikManager.Infrastructure.Imaging). A host that registers
+    /// none gets <see cref="NoThumbnailGenerator"/>, and resources are served at full size.
+    /// </summary>
+    public interface IThumbnailGenerator
+    {
         /// <summary>
         /// Resizes the given image bytes to fit within maxDimension x maxDimension
         /// (preserving aspect ratio, never upscaling) and re-encodes as PNG so
-        /// transparency survives regardless of the source format.
+        /// transparency survives regardless of the source format. Throws on data it can't decode;
+        /// null when this host makes no thumbnails at all.
         /// </summary>
-        public static byte[] Generate(byte[] sourceBytes, int maxDimension)
-        {
-            using var original = SKBitmap.Decode(sourceBytes)
-                ?? throw new InvalidOperationException("Could not decode image data.");
+        byte[]? Generate(byte[] sourceBytes, int maxDimension);
+    }
 
-            var scale = Math.Min(1f, (float)maxDimension / Math.Max(original.Width, original.Height));
-            var width = Math.Max(1, (int)Math.Round(original.Width * scale));
-            var height = Math.Max(1, (int)Math.Round(original.Height * scale));
-
-            using var resized = scale < 1f
-                ? original.Resize(new SKImageInfo(width, height), SKSamplingOptions.Default)
-                : original;
-            if (resized == null)
-                throw new InvalidOperationException("Failed to resize image.");
-
-            using var image = SKImage.FromBitmap(resized);
-            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-            return data.ToArray();
-        }
+    /// <summary>The default for a host without an imaging library: no thumbnails.</summary>
+    internal sealed class NoThumbnailGenerator : IThumbnailGenerator
+    {
+        public byte[]? Generate(byte[] sourceBytes, int maxDimension) => null;
     }
 }

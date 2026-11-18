@@ -23,10 +23,10 @@ namespace NordvikManager.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("AddonModelId")
+                    b.Property<string>("Author")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Author")
+                    b.Property<string>("Dependencies")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
@@ -52,6 +52,9 @@ namespace NordvikManager.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Network")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReleaseUrl")
                         .HasColumnType("TEXT");
 
@@ -66,9 +69,8 @@ namespace NordvikManager.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AddonModelId");
-
-                    b.HasIndex("GameModelId");
+                    b.HasIndex("GameModelId", "Key")
+                        .IsUnique();
 
                     b.ToTable("Addons");
                 });
@@ -676,6 +678,21 @@ namespace NordvikManager.Infrastructure.Migrations
                     b.ToTable("Permissions");
                 });
 
+            modelBuilder.Entity("NordvikManager.Domain.Entities.ServerSecretModel", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("ServerSecrets");
+                });
+
             modelBuilder.Entity("NordvikManager.Domain.Entities.TreeEntryModel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -745,10 +762,6 @@ namespace NordvikManager.Infrastructure.Migrations
 
             modelBuilder.Entity("NordvikManager.Domain.Entities.AddonModel", b =>
                 {
-                    b.HasOne("NordvikManager.Domain.Entities.AddonModel", null)
-                        .WithMany("Dependencies")
-                        .HasForeignKey("AddonModelId");
-
                     b.HasOne("NordvikManager.Domain.Entities.BattleMap.GameModel", null)
                         .WithMany("Addons")
                         .HasForeignKey("GameModelId")
@@ -983,8 +996,6 @@ namespace NordvikManager.Infrastructure.Migrations
             modelBuilder.Entity("NordvikManager.Domain.Entities.AddonModel", b =>
                 {
                     b.Navigation("Actions");
-
-                    b.Navigation("Dependencies");
 
                     b.Navigation("Resources");
 

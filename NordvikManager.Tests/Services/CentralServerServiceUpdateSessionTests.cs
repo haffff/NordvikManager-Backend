@@ -43,7 +43,7 @@ namespace NordvikManager.Tests.Services
             var config = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?> { ["CentralServerUrl"] = "http://central" })
                 .Build();
-            return new CentralServerService(factory.Object, new HttpContextAccessor(), config);
+            return new CentralServerService(factory.Object, new NordvikManager.Services.HttpContextCentralTokenStore(new HttpContextAccessor()), config);
         }
 
         private static GameItemDTO Details() => new()

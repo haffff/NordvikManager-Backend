@@ -42,31 +42,6 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
                 Data = JObject.FromObject(new { ResourceId = resourceId, Player = player }),
             };
 
-        // Same GameLobby construction as CreateCardStepDefinitionTests — the constructor
-        // eagerly resolves services via the scope factory.
-        private static GameLobby MakeLobby()
-        {
-            var actionProcessingService = new Mock<IActionProcessingService>();
-
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService)))
-                    .Returns(actionProcessingService.Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                    .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-
-            var scopeFactory = new Mock<IServiceScopeFactory>();
-            scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
-
-            return new GameLobby(scopeFactory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
-
         private static Mock<IPlayerConnection> AddPlayer(GameLobby lobby, out PlayerDTO player, string name = "Alice")
         {
             player = new PlayerDTO { Id = Guid.NewGuid(), Name = name };
@@ -84,13 +59,13 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         public async Task PlaySound_InvalidResourceId_Throws(string? resourceId)
         {
             await Assert.ThrowsAsync<ActionProcessException>(() =>
-                _play.Execute(_mediator.Object, new(), MakeLobby(), MakeStep("PlaySound", resourceId)));
+                _play.Execute(_mediator.Object, new(), TestLobby.Create(), MakeStep("PlaySound", resourceId)));
         }
 
         [Fact]
         public async Task PlaySound_NoPlayer_BroadcastsSoundPlayWithResourceId()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var conn = AddPlayer(lobby, out _);
             var resourceId = Guid.NewGuid();
 
@@ -104,7 +79,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task PlaySound_TargetedPlayer_OnlyThatPlayerReceivesIt()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var aliceConn = AddPlayer(lobby, out var alice, "Alice");
             var bobConn = AddPlayer(lobby, out _, "Bob");
 
@@ -118,7 +93,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task PlaySound_UnknownPlayer_Throws()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             AddPlayer(lobby, out _, "Alice");
 
             await Assert.ThrowsAsync<ActionProcessException>(() =>
@@ -129,7 +104,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         [Fact]
         public async Task StopSound_NoPlayer_BroadcastsSoundStopWithResourceId()
         {
-            var lobby = MakeLobby();
+            var lobby = TestLobby.Create();
             var conn = AddPlayer(lobby, out _);
             var resourceId = Guid.NewGuid();
 
@@ -144,7 +119,7 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
         public async Task StopSound_InvalidResourceId_Throws()
         {
             await Assert.ThrowsAsync<ActionProcessException>(() =>
-                _stop.Execute(_mediator.Object, new(), MakeLobby(), MakeStep("StopSound", "nope")));
+                _stop.Execute(_mediator.Object, new(), TestLobby.Create(), MakeStep("StopSound", "nope")));
         }
 
         [Fact]

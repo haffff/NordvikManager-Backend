@@ -7,6 +7,7 @@ using NordvikManager.Services.Interfaces;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using NordvikManager.WebSockets;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -22,31 +23,70 @@ namespace NordvikManager.Tests.Services.Implementations.ActionSteps
     public class DownloadResourceStepDefinitionTests
     {
         private readonly Mock<IMediator> _mediator = new();
-        private readonly GameLobby _lobby = MakeLobby();
-
-        private static GameLobby MakeLobby()
-        {
-            var provider = new Mock<IServiceProvider>();
-            provider.Setup(p => p.GetService(typeof(IActionProcessingService))).Returns(new Mock<IActionProcessingService>().Object);
-            provider.Setup(p => p.GetService(typeof(IEnumerable<NordvikManager.WebSockets.Handlers.IWebSocketHandler>)))
-                .Returns(new List<NordvikManager.WebSockets.Handlers.IWebSocketHandler>());
-            var scope = new Mock<IServiceScope>();
-            scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
-            var factory = new Mock<IServiceScopeFactory>();
-            factory.Setup(f => f.CreateScope()).Returns(scope.Object);
-            return new GameLobby(factory.Object)
-            {
-                GameId = Guid.NewGuid(),
-                SystemPlayer = new NordvikManager.Application.DataTransferObjects.Game.PlayerDTO { Id = Guid.NewGuid(), Name = "System" },
-            };
-        }
+        private readonly GameLobby _lobby = TestLobby.Create();
 
         private async Task<Dictionary<string, object>> Run(object data)
         {
-            var variables = new Dictionary<string, object>();
+            var variables = new Dictionary<string, object> { [ActionRunContext.Key] = new ActionRunContext(Guid.NewGuid(), "Fetch") };
             await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, _lobby,
                 new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(data) });
             return variables;
+        }
+
+        [Fact]
+        public async Task Execute_Refused_TellsTheGmsOnce()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DownloadResourceResult { Success = false, StatusCode = 400, Reason = ProxyReasons.BlockedHost });
+            var lobby = NoticeLobby.Create(_mediator.Object, out var gmSent, out _);
+            var step = new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(new { TargetUrl = "http://192.168.1.5/a.png", Key = "a.png", Output = "file" }) };
+            var variables = new Dictionary<string, object> { [ActionRunContext.Key] = new ActionRunContext(Guid.NewGuid(), "Fetch") };
+
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, lobby, step);
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, lobby, step);
+
+            var notice = Assert.Single(gmSent);
+            Assert.Equal("http://192.168.1.5", (string)notice.Data["origin"]);
+            Assert.Equal(ProxyReasons.BlockedHost, ((DownloadResourceResult)variables["file"]).Reason);
+        }
+
+        [Fact]
+        public async Task Execute_SendsTheActionsId()
+        {
+            DownloadResourceCommand sent = null;
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .Callback<IRequest<DownloadResourceResult>, CancellationToken>((c, _) => sent = (DownloadResourceCommand)c)
+                .ReturnsAsync(new DownloadResourceResult { Success = true, StatusCode = 200 });
+            var actionId = Guid.NewGuid();
+            var variables = new Dictionary<string, object> { [ActionRunContext.Key] = new ActionRunContext(actionId, "Fetch") };
+
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, _lobby,
+                new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(new { TargetUrl = "https://example.com/a.png", Key = "a.png" }) });
+
+            Assert.Equal(actionId, sent.ActionId);
+        }
+
+        [Fact]
+        public async Task Execute_WithoutTheEnginesContext_IsRefused()
+        {
+            var variables = new Dictionary<string, object> { ["actionId"] = Guid.NewGuid().ToString() };
+
+            await new DownloadResourceStepDefinition().Execute(_mediator.Object, variables, _lobby,
+                new ActionStep { Type = "DownloadResource", Data = JObject.FromObject(new { TargetUrl = "https://example.com/a.png", Key = "a.png", Output = "file" }) });
+
+            Assert.Equal(ProxyReasons.UndeclaredHost, ((DownloadResourceResult)variables["file"]).Reason);
+            _mediator.Verify(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Execute_Throws_StoresANetworkError()
+        {
+            _mediator.Setup(m => m.Send(It.IsAny<DownloadResourceCommand>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new HttpRequestException("refused"));
+
+            var vars = await Run(new { TargetUrl = "https://example.com/a.png", Key = "a.png", Output = "file" });
+
+            Assert.Equal(ProxyReasons.NetworkError, ((DownloadResourceResult)vars["file"]).Reason);
         }
 
         [Fact]

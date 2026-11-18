@@ -25,14 +25,17 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
     // and the scripts/resources/actions/templates/views happy paths.
     // Dependency-resolution logic is covered separately in
     // InstallAddonDependencyCommandHandlerTests.cs.
-    public class InstallAddonCommandHandlerTests : HandlerTestBase
+    public class InstallAddonCommandHandlerTests : InstallAddonTestBase
     {
         protected readonly Mock<IMediator> Mediator = new();
         protected readonly Mock<IAddonRepositoryService> RepositoryService = new();
         protected readonly Mock<IGameEventLogger> Logger = new();
+        protected readonly Mock<IBuiltInAddons> BuiltIns = new();
 
         public InstallAddonCommandHandlerTests()
         {
+            BuiltIns.Setup(b => b.GetAll()).Returns(Array.Empty<BuiltInAddon>());
+
             Mediator.Setup(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((AddTreeEntryCommand cmd, CancellationToken _) =>
                     (CommandResponse.Ok, new List<TreeEntryDto> { new TreeEntryDto { Id = Guid.NewGuid(), Name = cmd.TreeEntryDto.Name } }));
@@ -60,13 +63,13 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
                 .ReturnsAsync((AddCardCommand cmd, CancellationToken _) =>
                 {
                     var id = Guid.NewGuid();
-                    Db.Cards.Add(new CardModel { Id = id, Name = cmd.Dto.Name, GameId = cmd.GameID, IsTemplate = cmd.IsTemplate, IsCustomUi = cmd.IsCustomUi, Properties = new List<PropertyModel>() });
+                    Db.Cards.Add(new CardModel { Id = id, Name = cmd.Dto.Name, Key = cmd.Dto.Key, GameId = cmd.GameID, IsTemplate = cmd.IsTemplate, IsCustomUi = cmd.IsCustomUi, Properties = new List<PropertyModel>() });
                     Db.SaveChanges();
                     return (CommandResponse.Ok, id);
                 });
         }
 
-        private protected InstallAddonCommandHandler Handler() => new(Db, Mapper, RepositoryService.Object, Mediator.Object, Logger.Object);
+        private protected InstallAddonCommandHandler Handler() => new(Db, Mapper, RepositoryService.Object, Mediator.Object, Logger.Object, BuiltIns.Object);
 
         protected static byte[] BuildAddonZip(string infoJson, params (string Path, string Content)[] entries)
         {
@@ -149,6 +152,17 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
         // which have no existence check of their own — duplicating every action and card.
 
         [Fact]
+        public async Task Handle_ActionWithGmPermission_DoesNotChangeTheOwnersRow()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"gmPermission\":0,\"content\":\"[]\"}"));
+
+            await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+
+            PermissionsMock.Verify(p => p.SetPermissions(game.MasterId, It.IsAny<NordvikManager.Domain.Entities.Interfaces.IEntity>(), Permission.None), Times.Never);
+        }
+
+        [Fact]
         public async Task Handle_AlreadyInstalled_WithoutReinstall_ReturnsAlreadyExistsAndDoesNotDuplicate()
         {
             var game = BuildGame();
@@ -194,6 +208,122 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.NotEqual(firstResult.AddonId, result.AddonId);
             Assert.Single(Db.Addons.Where(a => a.Key == "dnd5e"));
             Assert.Single(Db.Actions.Where(a => a.Prefix == "dnd5e"));
+        }
+
+        // An update gives the addon's files new ids. Cards elsewhere in the game that point at
+        // them (another addon's cards, cards made from its templates) used to keep the old,
+        // deleted ids.
+        [Fact]
+        public async Task Handle_Reinstall_PointsTheGamesCardsAtTheNewFiles()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("resources/sheet.css", "body{}"), ("resources/logo.png", "png"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var oldSheet = Db.Resources.Single(r => r.Key == "dnd5e_sheet.css").Id;
+            var oldLogo = Db.Resources.Single(r => r.Key == "dnd5e_logo.png").Id;
+            var unrelated = Guid.NewGuid();
+            var card = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Other addon's sheet", GameId = game.Id, Properties = new List<PropertyModel>(),
+                MainResource = oldSheet,
+                AdditionalResources = System.Text.Json.JsonSerializer.Serialize(new[] { oldLogo, unrelated }),
+            };
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            // The real uninstall removes the addon and its files.
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Resources).First(a => a.Id == cmd.AddonId);
+                    Db.Resources.RemoveRange(addon.Resources!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var reinstall = ValidCommand(game, Player(), archive);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            var newSheet = Db.Resources.Single(r => r.Key == "dnd5e_sheet.css").Id;
+            var newLogo = Db.Resources.Single(r => r.Key == "dnd5e_logo.png").Id;
+            Assert.NotEqual(oldSheet, newSheet);
+            var stored = SeedContext().Cards.Single(c => c.Id == card.Id);
+            Assert.Equal(newSheet, stored.MainResource);
+            Assert.Equal(new[] { newLogo, unrelated }, System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(stored.AdditionalResources!));
+        }
+
+        // An update removes and re-creates the addon's templates with new ids. Cards made from
+        // them (also before template keys were kept) remember the old template's key first,
+        // so they link to the new one with that key (TemplateLinks, see TemplateLinkTests).
+        [Fact]
+        public async Task Handle_Reinstall_CardsRememberTheirTemplatesKey()
+        {
+            var game = BuildGame();
+            var archive = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"monster\"}"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), archive), CancellationToken.None);
+            var template = Db.Cards.Single(c => c.IsTemplate);
+            template.Key = "monster"; // the mocked AddCard leaves keys out
+            var card = new CardModel
+            {
+                Id = Guid.NewGuid(), Name = "Goblin", GameId = game.Id,
+                Properties = new List<PropertyModel>(),
+            };
+            card.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = card.Id, Name = "template_id", Value = template.Id.ToString(), EntityName = "CardModel", Card = card });
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Templates).First(a => a.Id == cmd.AddonId);
+                    Db.Cards.RemoveRange(addon.Templates!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var reinstall = ValidCommand(game, Player(), archive);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            Assert.Equal("monster", SeedContext().Properties.Single(p => p.ParentID == card.Id && p.Name == "template_key").Value);
+        }
+
+        // Addon template keys now start with the addon's key ("monster" became "dnd5e_monster").
+        // Cards made from the old, unprefixed template follow it to the prefixed one on update.
+        [Fact]
+        public async Task Handle_Reinstall_TemplateKeyGainedTheAddonPrefix_CardsFollowIt()
+        {
+            var game = BuildGame();
+            var v1 = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"monster\"}"));
+            var (_, first) = await Handler().Handle(ValidCommand(game, Player(), v1), CancellationToken.None);
+            var oldTemplate = Db.Cards.Single(c => c.IsTemplate);
+            var card = new CardModel { Id = Guid.NewGuid(), Name = "Goblin", GameId = game.Id, Properties = new List<PropertyModel>() };
+            card.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), ParentID = card.Id, Name = "template_id", Value = oldTemplate.Id.ToString(), EntityName = "CardModel", Card = card });
+            Db.Cards.Add(card);
+            Db.SaveChanges();
+            Mediator.Setup(m => m.Send(It.Is<NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand>(
+                    c => c.AddonId == first.AddonId), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommand cmd, CancellationToken _) =>
+                {
+                    var addon = Db.Addons.Include(a => a.Templates).First(a => a.Id == cmd.AddonId);
+                    Db.Cards.RemoveRange(addon.Templates!);
+                    Db.Addons.Remove(addon);
+                    Db.SaveChanges();
+                    return (CommandResponse.Ok, new NordvikManager.Application.Commands.Addons.UninstallAddon.UninstallAddonCommandResponse());
+                });
+            var v2 = BuildAddonZip(BasicInfoJson, ("templates/monster.json", "{\"name\":\"Monster\",\"key\":\"dnd5e_monster\"}"));
+            var reinstall = ValidCommand(game, Player(), v2);
+            reinstall.Reinstall = true;
+
+            await Handler().Handle(reinstall, CancellationToken.None);
+
+            var stored = SeedContext();
+            var newTemplate = stored.Cards.Single(c => c.IsTemplate);
+            Assert.Equal(newTemplate.Id.ToString(), stored.Properties.Single(p => p.ParentID == card.Id && p.Name == "template_id").Value);
+            Assert.Equal("dnd5e_monster", stored.Properties.Single(p => p.ParentID == card.Id && p.Name == "template_key").Value);
         }
 
         // ---- Archive / info.json parsing ----
@@ -288,38 +418,32 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Mediator.Verify(m => m.Send(It.IsAny<AddTreeEntryCommand>(), It.IsAny<CancellationToken>()), Times.Exactly(4));
         }
 
+        // Where the addon's code connects outside NordvikManager (info.json "network"): kept as
+        // origins only; an addon that doesn't say has none (null), not an empty one.
         [Fact]
-        public async Task Handle_ActionPrefixIsSetToAddonKey()
+        public async Task Handle_Network_IsKeptAsOrigins_AndNullWhenTheAddonDoesntSay()
         {
             var game = BuildGame();
-            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
-            var cmd = ValidCommand(game, Player(), archive);
+            var declared = BuildAddonZip("{\"name\":\"Notes\",\"key\":\"notes\",\"version\":\"1.0\",\"network\":{\"hosts\":[\"https://API.example.com\",\"https://x.example.com/path\"],\"userHosts\":\"Your notes server\"}}");
 
-            await Handler().Handle(cmd, CancellationToken.None);
+            var (_, result) = await Handler().Handle(ValidCommand(game, Player(), declared), CancellationToken.None);
+            var (_, plain) = await Handler().Handle(ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson)), CancellationToken.None);
 
-            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
+            var network = Db.Addons.First(a => a.Id == result.AddonId).Network;
+            Assert.Equal(new[] { "https://api.example.com" }, network!.Hosts);
+            Assert.Equal("Your notes server", network.UserHosts);
+            Assert.Null(Db.Addons.First(a => a.Id == plain.AddonId).Network);
         }
 
-        // Regression test: ActionDto.IsEnabled has no explicit default (unlike
-        // AddonDto/AddonModel, which default to true), so it deserializes to false
-        // unless the addon's own JSON happens to say "isEnabled": true. Addon authors
-        // have no reason to write that — an addon's actions are meant to work
-        // immediately after install — so without forcing it here, every hook the
-        // addon declares (Install included) would silently never run.
+        // An addon's action is added with the addon's key as its prefix, its hook filter as
+        // written, and enabled.
+        // Enabled is a regression: ActionDto.IsEnabled has no explicit default (unlike
+        // AddonDto/AddonModel, which default to true), so it deserializes to false unless the
+        // addon's own JSON says "isEnabled": true. Addon authors have no reason to write that
+        // (an addon's actions are meant to work right after install), so without forcing it
+        // every hook the addon declares (Install included) would silently never run.
         [Fact]
-        public async Task Handle_InstalledActionIsEnabledByDefault_EvenWhenJsonOmitsTheField()
-        {
-            var game = BuildGame();
-            var archive = BuildAddonZip(BasicInfoJson, ("actions/greet.json", "{\"name\":\"Greet\",\"description\":\"d\",\"content\":\"[]\"}"));
-            var cmd = ValidCommand(game, Player(), archive);
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
-        }
-
-        [Fact]
-        public async Task Handle_ActionHookFilter_IsPassedOn()
+        public async Task Handle_Action_IsAddedPrefixedEnabledAndWithItsHookFilter()
         {
             var game = BuildGame();
             var archive = BuildAddonZip(BasicInfoJson, ("actions/chat.json", "{\"name\":\"chat\",\"hook\":19,\"hookFilter\":\"poll, vote\",\"content\":\"[]\"}"));
@@ -327,6 +451,8 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
 
             await Handler().Handle(cmd, CancellationToken.None);
 
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.Prefix == "dnd5e"), It.IsAny<CancellationToken>()), Times.Once);
+            Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.IsEnabled), It.IsAny<CancellationToken>()), Times.Once);
             Mediator.Verify(m => m.Send(It.Is<AddActionCommand>(c => c.Action.HookFilter == "poll, vote"), It.IsAny<CancellationToken>()), Times.Once);
         }
 
@@ -344,40 +470,26 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             Assert.Contains("hook filter", e.Message);
         }
 
-        [Fact]
-        public async Task Handle_ScriptAlreadyExists_ReinstallFalse_SkipsWithoutCallingAddResource()
+        // A script whose key is already taken: the GM's own copy stays unless reinstalling; a
+        // player's upload squatting the key is replaced either way.
+        [Theory]
+        [InlineData(true, false, false)]
+        [InlineData(true, true, true)]
+        [InlineData(false, false, true)]
+        public async Task Handle_ScriptKeyTaken(bool takenByTheGm, bool reinstall, bool replaced)
         {
             var game = BuildGame();
-            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerId };
+            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = takenByTheGm ? PlayerId : PlayerWithoutEditOnTheGame() };
             Db.Resources.Add(existing);
             Db.SaveChanges();
 
-            var archive = BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');"));
-            var cmd = ValidCommand(game, Player(), archive);
-            cmd.Reinstall = false;
+            var cmd = ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');")));
+            cmd.Reinstall = reinstall;
 
             await Handler().Handle(cmd, CancellationToken.None);
 
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Never);
-            Assert.True(Db.Resources.Any(r => r.Id == existing.Id)); // untouched
-        }
-
-        [Fact]
-        public async Task Handle_ScriptAlreadyExists_ReinstallTrue_RemovesOldAndInstallsNew()
-        {
-            var game = BuildGame();
-            var existing = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerId };
-            Db.Resources.Add(existing);
-            Db.SaveChanges();
-
-            var archive = BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');"));
-            var cmd = ValidCommand(game, Player(), archive);
-            cmd.Reinstall = true;
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.False(Db.Resources.Any(r => r.Id == existing.Id));
+            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), replaced ? Times.Once() : Times.Never());
+            Assert.Equal(!replaced, Db.Resources.Any(r => r.Id == existing.Id));
         }
 
         // A player can upload a resource under any free key (Resources.Global.Create). If it
@@ -389,23 +501,6 @@ namespace NordvikManager.Application.UnitTests.Commands.Addons
             PermissionsMock.Setup(p => p.CheckIfHasPermissions(squatter, It.Is<NordvikManager.Domain.Entities.Interfaces.IEntity>(e => e is GameModel), It.IsAny<Permission>()))
                 .Returns(false);
             return squatter;
-        }
-
-        [Fact]
-        public async Task Handle_KeyTakenByAPlayersUpload_ReplacesIt_EvenWithoutReinstall()
-        {
-            var game = BuildGame();
-            var squatted = new ResourceModel { Id = Guid.NewGuid(), Name = "main.js", Key = "dnd5e_main.js", GameId = game.Id, PlayerId = PlayerWithoutEditOnTheGame() };
-            Db.Resources.Add(squatted);
-            Db.SaveChanges();
-
-            var cmd = ValidCommand(game, Player(), BuildAddonZip(BasicInfoJson, ("scripts/main.js", "console.log('hi');")));
-            cmd.Reinstall = false;
-
-            await Handler().Handle(cmd, CancellationToken.None);
-
-            Mediator.Verify(m => m.Send(It.IsAny<AddResourceCommand>(), It.IsAny<CancellationToken>()), Times.Once);
-            Assert.False(Db.Resources.Any(r => r.Id == squatted.Id));
         }
 
         [Fact]

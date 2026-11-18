@@ -11,10 +11,12 @@ namespace NordvikManager.Application.Commands.Resources.GetResourceContent
     public class GetResourceContentCommandHandler : HandlerBase<GetResourceContentCommand, ResourceContent?>
     {
         private readonly IFileStorageProvider storage;
+        private readonly IThumbnailGenerator thumbnails;
 
-        public GetResourceContentCommandHandler(IMapper mapper, IDbContext ctx, IFileStorageProvider storage) : base(ctx, mapper)
+        public GetResourceContentCommandHandler(IMapper mapper, IDbContext ctx, IFileStorageProvider storage, IThumbnailGenerator thumbnails) : base(ctx, mapper)
         {
             this.storage = storage;
+            this.thumbnails = thumbnails;
         }
 
         private record Meta(Guid Id, MimeType MimeType, ResourceStorageKind Storage, string? Path,
@@ -101,16 +103,19 @@ namespace NordvikManager.Application.Commands.Resources.GetResourceContent
             if (!ThumbnailHelper.IsImage(meta.MimeType))
                 return new ResourceContent(data, meta.MimeType, thumbnailVersion, false);
 
-            byte[] thumbnail;
+            byte[]? thumbnail;
             try
             {
-                thumbnail = ThumbnailHelper.Generate(data, request.MaxDimension);
+                thumbnail = thumbnails.Generate(data, request.MaxDimension);
             }
             catch
             {
                 // Corrupt/unsupported image data: the original rather than failing.
                 return new ResourceContent(data, meta.MimeType, thumbnailVersion, false);
             }
+            // This host makes no thumbnails: the original.
+            if (thumbnail == null)
+                return new ResourceContent(data, meta.MimeType, thumbnailVersion, false);
 
             var row = Stub();
             row.ThumbnailData = thumbnail;

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The GM host's REST API without ASP.NET Core: endpoint classes ([ApiRoute] methods
+       returning ApiResult) with the logic of the controllers. The native server's controllers
+       delegate to them (NordvikManager); ApiRouter serves them over the data channel in hosts
+       without ASP.NET Core (the browser-wasm host). Presentation code, so not in RealTime. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NordvikManager.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
+  </ItemGroup>
+
+</Project>

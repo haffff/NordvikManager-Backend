@@ -101,6 +101,39 @@ namespace NordvikManager.Data.Contexts
                 .WithOne()
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // One copy of an addon per game: two installs at once can't both add it.
+            modelBuilder.Entity<AddonModel>()
+                .HasIndex("GameModelId", nameof(AddonModel.Key))
+                .IsUnique();
+
+            // The addons an addon needs, as JSON in one column (MySQL has no primitive collections).
+            modelBuilder.Entity<AddonModel>()
+                .Property(a => a.Dependencies)
+                .HasConversion(
+                    list => list == null || list.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(list, (System.Text.Json.JsonSerializerOptions?)null),
+                    text => string.IsNullOrEmpty(text)
+                        ? new List<AddonDependency>()
+                        : System.Text.Json.JsonSerializer.Deserialize<List<AddonDependency>>(text, (System.Text.Json.JsonSerializerOptions?)null) ?? new List<AddonDependency>(),
+                    new ValueComparer<List<AddonDependency>?>(
+                        (a, b) => (a ?? new()).Select(d => d.Key + "@" + d.Version).SequenceEqual((b ?? new()).Select(d => d.Key + "@" + d.Version)),
+                        list => (list ?? new()).Aggregate(0, (hash, d) => HashCode.Combine(hash, d.Key, d.Version)),
+                        list => list == null ? null : list.Select(d => new AddonDependency { Key = d.Key, Version = d.Version }).ToList()));
+
+            // Where an addon connects (info.json "network"), as JSON in one column. Null: it
+            // doesn't say; "{}" (no hosts): nowhere.
+            modelBuilder.Entity<AddonModel>()
+                .Property(a => a.Network)
+                .HasConversion(
+                    network => network == null ? null : System.Text.Json.JsonSerializer.Serialize(network, (System.Text.Json.JsonSerializerOptions?)null),
+                    text => string.IsNullOrEmpty(text)
+                        ? null
+                        : System.Text.Json.JsonSerializer.Deserialize<AddonNetwork>(text, (System.Text.Json.JsonSerializerOptions?)null),
+                    new ValueComparer<AddonNetwork?>(
+                        (a, b) => (a == null && b == null) || (a != null && b != null && a.UserHosts == b.UserHosts
+                            && (a.Hosts ?? new()).SequenceEqual(b.Hosts ?? new())),
+                        network => network == null ? 0 : HashCode.Combine(network.UserHosts, string.Join(" ", network.Hosts ?? new())),
+                        network => network == null ? null : new AddonNetwork { Hosts = network.Hosts == null ? null : network.Hosts.ToList(), UserHosts = network.UserHosts }));
+
             modelBuilder.Entity<MapModel>()
                 .HasMany(m => m.Elements)
                 .WithOne(e => e.Map)
@@ -213,6 +246,7 @@ namespace NordvikManager.Data.Contexts
         public DbSet<PlaylistModel>? Playlists { get; set; }
         public DbSet<TurnOrderModel>? TurnOrders { get; set; }
         public DbSet<TurnOrderEntryModel>? TurnOrderEntries { get; set; }
+        public DbSet<ServerSecretModel> ServerSecrets { get; set; }
 
         private sealed class BlobRow
         {

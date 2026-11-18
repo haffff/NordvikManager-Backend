@@ -73,52 +73,24 @@ namespace NordvikManager.Application.UnitTests.Commands.Elements
                 .Returns((Guid _, NordvikManager.Domain.Entities.Interfaces.IEntity _, Permission wanted) => granted.Contains(wanted));
         }
 
-        [Fact]
-        public async Task Handle_TokenWithControlOnMap_AddsIt()
+        // Control on a map lets a player place tokens there, not other elements; Edit allows
+        // both, Read neither.
+        [Theory]
+        [InlineData(true, new[] { Permission.Read, Permission.Execute, Permission.Control }, true)]
+        [InlineData(false, new[] { Permission.Read, Permission.Execute, Permission.Control }, false)]
+        [InlineData(true, new[] { Permission.Read }, false)]
+        [InlineData(true, new[] { Permission.Read, Permission.Edit }, true)]
+        public async Task Handle_WhoMayAddWhat(bool token, Permission[] grantedOnMap, bool allowed)
         {
             var game = BuildGame();
             var map = SeedMap(game);
-            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
-            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
+            GrantOnMap(grantedOnMap);
+            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = token ? TokenDto(map.Id) : ValidDto(map.Id) };
 
-            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
-        }
-
-        [Fact]
-        public async Task Handle_NonTokenWithOnlyControlOnMap_ThrowsPermissionException()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            GrantOnMap(Permission.Read, Permission.Execute, Permission.Control);
-            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = ValidDto(map.Id) };
-
-            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
-        }
-
-        [Fact]
-        public async Task Handle_TokenWithOnlyReadOnMap_ThrowsPermissionException()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            GrantOnMap(Permission.Read);
-            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
-
-            await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
-        }
-
-        [Fact]
-        public async Task Handle_TokenWithEditOnMap_AddsIt()
-        {
-            var game = BuildGame();
-            var map = SeedMap(game);
-            GrantOnMap(Permission.Read, Permission.Edit);
-            var cmd = new AddElementCommand { GameID = game.Id, Player = Player(), Dto = TokenDto(map.Id) };
-
-            var (response, _) = await Handler().Handle(cmd, CancellationToken.None);
-
-            Assert.Equal(CommandResponse.Ok, response);
+            if (allowed)
+                Assert.Equal(CommandResponse.Ok, (await Handler().Handle(cmd, CancellationToken.None)).Item1);
+            else
+                await Assert.ThrowsAsync<PermissionException>(() => Handler().Handle(cmd, CancellationToken.None));
         }
 
         [Fact]

@@ -1,5 +1,4 @@
 using NordvikManager.WebRTC;
-using SIPSorcery.Net;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,9 +25,9 @@ namespace NordvikManager.Tests.WebRTC
             });
 
         [Theory]
-        [InlineData(RTCPeerConnectionState.failed)]
-        [InlineData(RTCPeerConnectionState.closed)]
-        public void FailedOrClosed_IsDeadAtOnce(RTCPeerConnectionState state)
+        [InlineData(PeerState.Failed)]
+        [InlineData(PeerState.Closed)]
+        public void FailedOrClosed_IsDeadAtOnce(PeerState state)
         {
             var watcher = Create();
             watcher.OnStateChanged(state);
@@ -39,7 +38,7 @@ namespace NordvikManager.Tests.WebRTC
         public void Disconnected_IsNotDeadYet()
         {
             var watcher = Create();
-            watcher.OnStateChanged(RTCPeerConnectionState.disconnected);
+            watcher.OnStateChanged(PeerState.Disconnected);
             Assert.Equal(0, _deadCount);
         }
 
@@ -47,7 +46,7 @@ namespace NordvikManager.Tests.WebRTC
         public async Task Disconnected_PastTheGracePeriod_IsDead()
         {
             var watcher = Create();
-            watcher.OnStateChanged(RTCPeerConnectionState.disconnected);
+            watcher.OnStateChanged(PeerState.Disconnected);
 
             _graceElapsed!.SetResult();
             await Task.Yield();
@@ -59,8 +58,8 @@ namespace NordvikManager.Tests.WebRTC
         public async Task Disconnected_ThenConnectedAgain_StaysAlive()
         {
             var watcher = Create();
-            watcher.OnStateChanged(RTCPeerConnectionState.disconnected);
-            watcher.OnStateChanged(RTCPeerConnectionState.connected);
+            watcher.OnStateChanged(PeerState.Disconnected);
+            watcher.OnStateChanged(PeerState.Connected);
 
             Assert.True(_graceToken.IsCancellationRequested);
             _graceElapsed!.TrySetResult();
@@ -73,17 +72,17 @@ namespace NordvikManager.Tests.WebRTC
         public void IsDeadOnlyOnce()
         {
             var watcher = Create();
-            watcher.OnStateChanged(RTCPeerConnectionState.failed);
-            watcher.OnStateChanged(RTCPeerConnectionState.closed);
+            watcher.OnStateChanged(PeerState.Failed);
+            watcher.OnStateChanged(PeerState.Closed);
             Assert.Equal(1, _deadCount);
         }
 
         [Theory]
-        [InlineData(RTCPeerConnectionState.@new, true)]
-        [InlineData(RTCPeerConnectionState.connecting, true)]
-        [InlineData(RTCPeerConnectionState.connected, false)]
-        [InlineData(RTCPeerConnectionState.disconnected, false)]
-        public void SignalingLeave_ClosesOnlyAPeerThatIsStillNegotiating(RTCPeerConnectionState state, bool close)
+        [InlineData(PeerState.New, true)]
+        [InlineData(PeerState.Connecting, true)]
+        [InlineData(PeerState.Connected, false)]
+        [InlineData(PeerState.Disconnected, false)]
+        public void SignalingLeave_ClosesOnlyAPeerThatIsStillNegotiating(PeerState state, bool close)
         {
             // A player's signaling socket reconnecting says nothing about its data channel,
             // which runs peer to peer; only a negotiation still waiting on signaling is lost.

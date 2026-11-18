@@ -23,7 +23,8 @@ namespace NordvikManager.Application.Commands.Actions.GetActions
 
             Guard.NotFound(game, "Game", request.GameId);
 
-            game.ThrowIfNoPermission(request.Player.Id ?? default);
+            // Its steps can hold what players shouldn't see; only the editor loads an action.
+            game.ThrowIfNoPermission(request.Player.Id ?? default, Permission.Edit);
 
             Guard.Argument(game.Players.Any(x => x.Id == request.Player.Id), nameof(request.Player));
 

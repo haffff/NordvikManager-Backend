@@ -1,0 +1,403 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Newtonsoft.Json.Linq;
+using NordvikManager.Api;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.Exceptions;
+using NordvikManager.Domain.Entities.Auth;
+using NordvikManager.Services.Interfaces;
+using NordvikManager.WebRTC;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Threading.Tasks;
+using Xunit;
+
+namespace NordvikManager.Tests.Api
+{
+    // ApiRouter answers the REST requests players tunnel over the data channel, from the same
+    // endpoint classes the ASP.NET controllers delegate to, without ASP.NET Core: what the
+    // native tunnel gets from replaying the request through the pipeline (identity, binding,
+    // the exception middleware, System.Text.Json output) it has to do itself.
+    public class ApiRouterTests
+    {
+        private readonly Mock<ILocalAdminService> _localAdmin = new();
+        private readonly ApiRouter _router;
+        private readonly Guid _sessionGame = Guid.NewGuid();
+        private readonly PlayerDTO _player = new() { Id = Guid.NewGuid(), Name = "Alice", CentralServerUserId = "central-alice" };
+
+        public ApiRouterTests()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(_localAdmin.Object);
+            services.AddSingleton<Recorder>();
+            var provider = services.BuildServiceProvider();
+            _router = new ApiRouter(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<ApiRouter>.Instance,
+                ApiRoutes.FromAssemblies(typeof(SampleEndpoints).Assembly));
+            Recorded = provider.GetRequiredService<Recorder>();
+        }
+
+        private Recorder Recorded { get; }
+
+        private async Task<JObject> Send(string method, string path, Dictionary<string, string>? query = null, JToken? body = null, PlayerDTO? player = null)
+        {
+            var connection = new RecordingConnection();
+            await _router.DispatchAsync(new WebRTCApiRequest { Id = "req-1", Method = method, Path = path, Query = query, Body = body },
+                player ?? _player, _sessionGame, connection);
+            var response = JObject.FromObject(connection.Sent.Single());
+            Assert.Equal("api-response", (string?)response["type"]);
+            Assert.Equal("req-1", (string?)response["id"]);
+            return response;
+        }
+
+        [Fact]
+        public async Task Route_IsFound_WhateverTheCaseAndLeadingSlash()
+        {
+            Assert.Equal(200, (int)(await Send("get", "/API/sample/ECHO"))["status"]!);
+        }
+
+        [Fact]
+        public async Task QueryParameters_AreBound_WithDefaults_AndTheSessionsGameIdWins()
+        {
+            var someGame = Guid.NewGuid();
+
+            var response = await Send("GET", "api/sample/echo", new() { ["GAMEID"] = someGame.ToString(), ["size"] = "5", ["filter"] = "x" });
+
+            Assert.Equal(_sessionGame, (Guid)response["body"]!["gameId"]!);
+            Assert.Equal(5, (int)response["body"]!["size"]!);
+            Assert.Equal(0, (int)response["body"]!["page"]!); // its default
+            Assert.Equal("x", (string?)response["body"]!["filter"]);
+        }
+
+        [Fact]
+        public async Task TheCaller_IsTheTunnelsPlayer_WithLocalAdminFromTheService()
+        {
+            _localAdmin.Setup(a => a.IsLocalAdminAsync("central-alice", "")).ReturnsAsync(true);
+
+            await Send("GET", "api/sample/echo");
+
+            var user = Recorded.User!;
+            Assert.Equal("central-alice", user.Id);
+            Assert.Equal("Alice", user.UserName);
+            Assert.Equal("", user.Email);
+            Assert.False(user.IsAdmin);
+            Assert.True(user.IsLocalAdmin);
+        }
+
+        [Fact]
+        public async Task AQueryValueThatDoesNotParse_Is400()
+        {
+            var response = await Send("GET", "api/sample/echo", new() { ["size"] = "lots" });
+
+            Assert.Equal(400, (int)response["status"]!);
+            Assert.Contains("size", (string?)response["body"]!["error"]);
+        }
+
+        [Fact]
+        public async Task Body_IsBoundToTheComplexParameter_CaseInsensitively()
+        {
+            var response = await Send("POST", "api/sample/create", body: JObject.Parse("{\"NAME\":\"Goblin\",\"hp\":7}"));
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.Equal("Goblin", (string?)response["body"]!["name"]);
+            Assert.Equal(7, (int)response["body"]!["hp"]!);
+        }
+
+        [Fact]
+        public async Task ABodyFailingValidation_Is400()
+        {
+            var response = await Send("POST", "api/sample/create", body: JObject.Parse("{\"hp\":7}"));
+
+            Assert.Equal(400, (int)response["status"]!);
+            Assert.Contains("Name", (string?)response["body"]!["error"]);
+        }
+
+        [Theory]
+        [InlineData("permission", 403)]
+        [InlineData("notfound", 404)]
+        [InlineData("wrongargs", 400)]
+        [InlineData("uploadlimit", 413)]
+        [InlineData("other", 500)]
+        public async Task Exceptions_MapAsTheExceptionMiddlewareDoes(string kind, int status)
+        {
+            var response = await Send("GET", "api/sample/throw", new() { ["kind"] = kind });
+
+            Assert.Equal(status, (int)response["status"]!);
+            Assert.Equal(Recorded.Thrown!.Message, (string?)response["body"]!["error"]);
+        }
+
+        [Fact]
+        public async Task OkWithNull_Is204_AsAspNetCoreAnswers()
+        {
+            var response = await Send("GET", "api/sample/nothing");
+
+            Assert.Equal(204, (int)response["status"]!);
+            Assert.Equal(JTokenType.Null, response["body"]!.Type);
+        }
+
+        [Fact]
+        public async Task Unauthorized_KeepsItsBody()
+        {
+            var response = await Send("GET", "api/sample/denied");
+
+            Assert.Equal(401, (int)response["status"]!);
+            Assert.Equal("no", (string?)response["body"]!["error"]);
+        }
+
+        [Fact]
+        public async Task Output_IsCamelCase_WithoutNulls_AsTheControllersWrite()
+        {
+            var response = await Send("POST", "api/sample/create", body: JObject.Parse("{\"name\":\"Goblin\"}"));
+
+            var body = (JObject)response["body"]!;
+            Assert.Equal(new[] { "name", "hp" }, body.Properties().Select(p => p.Name));
+        }
+
+        // As [FromServices]: the parameter comes from the request's services, not the body.
+        [Fact]
+        public async Task AnApiServiceParameter_ComesFromTheServices()
+        {
+            var response = await Send("GET", "api/sample/service");
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.True((bool)response["body"]!["same"]!);
+        }
+
+        // [FromBody] Guid on the action: a simple type taken from the body, not the query.
+        [Fact]
+        public async Task AnApiBodyParameter_ComesFromTheBody()
+        {
+            var id = Guid.NewGuid();
+
+            var response = await Send("DELETE", "api/sample/remove", body: new JValue(id.ToString()));
+
+            Assert.Equal(id, (Guid)response["body"]!["id"]!);
+        }
+
+        // [Required] on a query parameter: [ApiController] answers 400 without it.
+        [Fact]
+        public async Task ARequiredQueryParameter_Missing_Is400()
+        {
+            Assert.Equal(400, (int)(await Send("GET", "api/sample/required"))["status"]!);
+            Assert.Equal(200, (int)(await Send("GET", "api/sample/required", new() { ["parentIds"] = "a" }))["status"]!);
+        }
+
+        // Content(json, "application/json") on the action: the JSON as written.
+        [Fact]
+        public async Task RawJsonContent_IsTheBody()
+        {
+            var response = await Send("GET", "api/sample/raw");
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.Equal("As Written", (string?)response["body"]!["Kept"]);
+        }
+
+        // ApiContext: the caller, the tunnel's game, and no cookies (a tunnelled request carries
+        // none, as with the native tunnel); cookie changes go nowhere.
+        [Fact]
+        public async Task AnApiContext_IsTheCallerAndTheTunnelsGame_WithoutCookies()
+        {
+            var response = await Send("GET", "api/sample/context");
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.Equal("Alice", (string?)response["body"]!["user"]);
+            Assert.Equal(_sessionGame, (Guid)response["body"]!["tunnelGame"]!);
+            Assert.True((bool)response["body"]!["noCookie"]!);
+        }
+
+        // A route template ("{gameId}/start"): its values bind before the query, as in ASP.NET Core.
+        [Fact]
+        public async Task RouteTemplateValues_AreBound_BeforeTheQuery()
+        {
+            var response = await Send("POST", $"api/sample/{_sessionGame}/start", new() { ["mode"] = "fast", ["gameId"] = Guid.NewGuid().ToString() });
+
+            Assert.Equal(200, (int)response["status"]!);
+            Assert.Equal(_sessionGame, (Guid)response["body"]!["gameId"]!);
+            Assert.Equal("fast", (string?)response["body"]!["mode"]);
+        }
+
+        // The channel's game is the one its requests are about: another game in the path is refused.
+        [Fact]
+        public async Task AnotherGameInThePath_Is403()
+        {
+            var response = await Send("POST", $"api/sample/{Guid.NewGuid()}/start", new() { ["mode"] = "fast" });
+
+            Assert.Equal(403, (int)response["status"]!);
+        }
+
+        // As [Authorize] natively: a caller the tunnel can't name isn't logged in. Routes whose
+        // action allows anonymous callers still answer.
+        [Fact]
+        public async Task ANamelessCaller_Is401_UnlessTheRouteIsAnonymous()
+        {
+            var nameless = new PlayerDTO { Id = Guid.NewGuid() };
+
+            var guarded = await Send("GET", "api/sample/echo", player: nameless);
+            var open = await Send("GET", "api/sample/open", player: nameless);
+
+            Assert.Equal(401, (int)guarded["status"]!);
+            Assert.Equal(200, (int)open["status"]!);
+        }
+
+        // As [ApiController]: a complex body parameter with no body is a 400, not a null.
+        [Fact]
+        public async Task AMissingBody_Is400()
+        {
+            var response = await Send("POST", "api/sample/create");
+
+            Assert.Equal(400, (int)response["status"]!);
+        }
+
+        // Server-only routes (files on the server's own disk) are known, but not served here.
+        [Fact]
+        public async Task ANativeOnlyRoute_Is501_SayingSo()
+        {
+            var response = await Send("POST", "api/sample/linkdisk");
+
+            Assert.Equal(501, (int)response["status"]!);
+            Assert.Equal(ApiRouter.NativeOnlyMessage, (string?)response["body"]!["error"]);
+        }
+
+        // Raw bytes can't go over the data channel: the native tunnel fails them too (its JSON
+        // read of the response throws), which is why clients use the base64 variants.
+        [Fact]
+        public async Task AFileResult_Is500()
+        {
+            Assert.Equal(500, (int)(await Send("GET", "api/sample/bytes"))["status"]!);
+        }
+
+        // The host GM's own calls (never a data channel's): the context is the host's, cookies
+        // and all; changes stay on it for the host to keep; errors map as for the tunnel.
+        [Fact]
+        public async Task InvokeAsync_UsesTheHostsContext_AndKeepsItsCookieChanges()
+        {
+            var gm = new User { Id = "central-gm", UserName = "gm" };
+            var context = new ApiContext(gm, null, name => name == "CentralToken" ? "held-token" : null);
+
+            var (status, body) = await _router.InvokeAsync(context, "GET", "api/sample/hostcookie");
+
+            Assert.Equal(200, status);
+            Assert.Equal("held-token", (string?)body!["token"]);
+            Assert.Null(body["tunnelGame"]); // not a tunnelled request (nulls are left out)
+            Assert.Equal(new ApiCookieChange("CentralToken", "renewed"), Assert.Single(context.CookieChanges));
+        }
+
+        [Fact]
+        public async Task InvokeAsync_MapsExceptions_AsTheTunnelDoes()
+        {
+            var (status, body) = await _router.InvokeAsync(new ApiContext(null, null), "GET", "api/sample/throw",
+                query: new Dictionary<string, string> { ["kind"] = "permission" });
+
+            Assert.Equal(403, status);
+            Assert.Equal(Recorded.Thrown!.Message, (string?)body!["error"]);
+        }
+
+        [Fact]
+        public async Task AnUnknownRoute_Is501()
+        {
+            var response = await Send("GET", "api/nowhere/atall");
+
+            Assert.Equal(501, (int)response["status"]!);
+            Assert.Equal(ApiRouter.NotAvailableMessage, (string?)response["body"]!["error"]);
+        }
+
+        public sealed class Recorder
+        {
+            public User? User { get; set; }
+            public Exception? Thrown { get; set; }
+        }
+
+        public sealed class CreatureBody
+        {
+            [Required]
+            public string? Name { get; set; }
+            public int Hp { get; set; }
+            public string? Note { get; set; }
+        }
+
+        public sealed class SampleEndpoints
+        {
+            private readonly Recorder _recorder;
+
+            public SampleEndpoints(Recorder recorder) => _recorder = recorder;
+
+            [ApiRoute("GET", "api/Sample/Echo")]
+            public Task<ApiResult> Echo(User? user, Guid gameId, int size = 30, int page = 0, string filter = "")
+            {
+                _recorder.User = user;
+                return Task.FromResult(ApiResult.Ok(new { gameId, size, page, filter }));
+            }
+
+            [ApiRoute("POST", "api/Sample/Create")]
+            public Task<ApiResult> Create(CreatureBody creature) => Task.FromResult(ApiResult.Ok(creature));
+
+            [ApiRoute("GET", "api/Sample/Throw")]
+            public Task<ApiResult> Throw(string kind) => throw (_recorder.Thrown = kind switch
+            {
+                "permission" => new PermissionException(NordvikManager.Domain.Enums.Permission.Edit),
+                "notfound" => new ResourceNotFoundException("card"),
+                "wrongargs" => new WrongArgumentsException("name"),
+                "uploadlimit" => new UploadLimitException("too big"),
+                _ => new InvalidOperationException("boom"),
+            });
+
+            [ApiRoute("GET", "api/Sample/Service")]
+            public Task<ApiResult> Service([ApiService] Recorder recorder)
+                => Task.FromResult(ApiResult.Ok(new { same = ReferenceEquals(recorder, _recorder) }));
+
+            [ApiRoute("POST", "api/Sample/LinkDisk", NativeOnly = true)]
+            public ApiResult LinkDisk() => ApiResult.Ok();
+
+            [ApiRoute("GET", "api/Sample/Bytes")]
+            public ApiResult Bytes() => ApiResult.File(new byte[] { 1, 2, 3 }, "image/png");
+
+            [ApiRoute("POST", "api/Sample/{gameId}/start")]
+            public ApiResult Start(Guid gameId, string mode) => ApiResult.Ok(new { gameId, mode });
+
+            [ApiRoute("GET", "api/Sample/HostCookie")]
+            public ApiResult HostCookie(ApiContext context)
+            {
+                context.SetCookie("CentralToken", "renewed");
+                return ApiResult.Ok(new { token = context.ReadCookie("CentralToken"), tunnelGame = context.TunnelGameId });
+            }
+
+            [ApiRoute("GET", "api/Sample/Context")]
+            public ApiResult Context(ApiContext context)
+            {
+                context.SetCookie("CentralToken", "ignored");
+                return ApiResult.Ok(new { user = context.User?.UserName, tunnelGame = context.TunnelGameId, noCookie = context.ReadCookie("CentralToken") == null });
+            }
+
+            [ApiRoute("DELETE", "api/Sample/Remove")]
+            public ApiResult Remove([ApiBody] Guid playlistId) => ApiResult.Ok(new { id = playlistId });
+
+            [ApiRoute("GET", "api/Sample/Required")]
+            public ApiResult Required([Required] string parentIds) => ApiResult.Ok(new { parentIds });
+
+            [ApiRoute("GET", "api/Sample/Raw")]
+            public ApiResult Raw() => ApiResult.Content("{\"Kept\":\"As Written\"}", "application/json");
+
+            [ApiRoute("GET", "api/Sample/Open", Anonymous = true)]
+            public ApiResult Open() => ApiResult.Ok(new { open = true });
+
+            [ApiRoute("GET", "api/Sample/Nothing")]
+            public Task<ApiResult> Nothing() => Task.FromResult(ApiResult.Ok(null));
+
+            [ApiRoute("GET", "api/Sample/Denied")]
+            public Task<ApiResult> Denied() => Task.FromResult(ApiResult.Unauthorized(new { error = "no" }));
+        }
+
+        private sealed class RecordingConnection : IPlayerConnection
+        {
+            public List<object> Sent { get; } = new();
+
+            public Task<bool> SendMessageToPlayer(object message)
+            {
+                Sent.Add(message);
+                return Task.FromResult(true);
+            }
+        }
+    }
+}

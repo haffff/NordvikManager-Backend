@@ -32,14 +32,28 @@ namespace NordvikManager.Infrastructure.Services.Proxy
 
         public IReadOnlyList<string> RuntimeEntries => runtime.Entries;
 
+        /// <summary>appsettings key: Server (default), Browser or None (see <see cref="ProxyMode"/>).</summary>
+        public const string ModeKey = "Security:ProxyMode";
+
+        /// <summary>Where actions' outside requests go out from, if at all.</summary>
+        public ProxyMode Mode { get; set; } = ProxyMode.Server;
+
         public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
         public long MaxResponseBytes { get; set; } = 20 * 1024 * 1024;
 
         public int MaxRedirects { get; set; } = 5;
 
-        public static ProxyOptions FromConfiguration(IConfiguration configuration) =>
-            From(configuration.GetSection(ConfigKey).Get<string[]>() ?? Array.Empty<string>());
+        public static ProxyOptions FromConfiguration(IConfiguration configuration)
+        {
+            var options = From(configuration.GetSection(ConfigKey).Get<string[]>() ?? Array.Empty<string>());
+            var mode = configuration[ModeKey];
+            // A value it doesn't know makes no requests rather than more.
+            options.Mode = mode == null ? ProxyMode.Server
+                : Enum.TryParse<ProxyMode>(mode, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) ? parsed
+                : ProxyMode.None;
+            return options;
+        }
 
         public static ProxyOptions From(IEnumerable<string?> entries)
         {
@@ -95,5 +109,22 @@ namespace NordvikManager.Infrastructure.Services.Proxy
         }
 
         internal static string NormalizeHost(string host) => host.Trim().Trim('[', ']').ToLowerInvariant();
+    }
+
+    /// <summary>Where actions' outside requests (Send Request, Download Resource) go out from.</summary>
+    public enum ProxyMode
+    {
+        /// <summary>The GM server: its own client, with the address checked on connect (DNS and all).</summary>
+        Server,
+
+        /// <summary>
+        /// The GM's browser (the browser version): the browser's fetch, from the game host's worker,
+        /// whose own CSP allows https sites. No DNS to check: addresses are judged as written, and
+        /// only sites that allow browser requests (CORS) answer.
+        /// </summary>
+        Browser,
+
+        /// <summary>Nowhere: actions are told so instead of trying.</summary>
+        None,
     }
 }

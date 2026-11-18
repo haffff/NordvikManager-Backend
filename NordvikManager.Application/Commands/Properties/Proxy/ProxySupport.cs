@@ -1,4 +1,6 @@
+using NordvikManager.Application.Commands.Addons;
 using NordvikManager.Infrastructure.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using NordvikManager.Infrastructure.Services.Proxy;
 
 namespace NordvikManager.Application.Commands.Properties.Proxy
@@ -10,11 +12,43 @@ namespace NordvikManager.Application.Commands.Properties.Proxy
             new(StringComparer.OrdinalIgnoreCase) { "http", "https" };
 
         /// <summary>
+        /// Whether the action's addon lets it reach this address: an addon declaring its network
+        /// (info.json "network") is held to it; an action the GM made, or an addon that doesn't
+        /// say, isn't. One query, the addon's network only.
+        /// </summary>
+        public static async Task<bool> IsAllowedByAddonAsync(IDbContext dbContext, Guid? actionId, IReadOnlyList<Guid>? callerActionIds,
+            string? targetUrl, CancellationToken cancellationToken)
+        {
+            var callers = (callerActionIds ?? Array.Empty<Guid>()).ToList();
+            var ids = callers.ToList();
+            if (actionId is Guid id)
+                ids.Add(id);
+            if (ids.Count == 0)
+                return true;
+            var addons = await dbContext.Addons!
+                .Where(a => a.Actions!.Any(x => ids.Contains(x.Id)))
+                .Select(a => new { a.Network, ActionIds = a.Actions!.Where(x => ids.Contains(x.Id)).Select(x => x.Id).ToList() })
+                .ToListAsync(cancellationToken);
+            Domain.Entities.AddonNetwork? NetworkOf(Guid action) => addons.FirstOrDefault(a => a.ActionIds.Contains(action))?.Network;
+
+            // An action whose addon says where it connects keeps to that, whoever runs it.
+            if (actionId is Guid own && NetworkOf(own) is { } declared)
+                return AddonNetworkRules.Allows(declared, targetUrl);
+            // One that doesn't (GM-made, or an addon without "network") may be carrying a
+            // caller's request (Execute Action passes its variables): each caller's network holds.
+            return callers.All(caller => AddonNetworkRules.Allows(NetworkOf(caller), targetUrl));
+        }
+
+        /// <summary>
         /// False for an invalid URL, a scheme other than http(s), or a host whose addresses
         /// ProxyAddressRules refuses. An early answer; the proxy client checks again on connect.
         /// </summary>
         public static async Task<bool> IsUrlAllowedAsync(string? targetUrl, ProxyOptions options)
         {
+            // From a browser nothing can be resolved first: the address is judged as written.
+            if (options.Mode == ProxyMode.Browser)
+                return ProxyAddressRules.IsAllowedWithoutDns(targetUrl);
+
             if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri))
                 return false;
 

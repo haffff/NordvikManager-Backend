@@ -1,0 +1,43 @@
+namespace NordvikManager.Api
+{
+    /// <summary>
+    /// The route an endpoint method (returning ApiResult or Task&lt;ApiResult&gt;) answers, as its controller action's (e.g. GET
+    /// api/BattleMap/GetPlayer). ApiRouteCoverageTests checks every controller action has one.
+    /// </summary>
+    /// <remarks>
+    /// The method's parameters are bound as ASP.NET Core binds the action's: a <c>User</c> is
+    /// the caller, simple types come from the query, one complex type from the JSON body.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+    public sealed class ApiRouteAttribute : Attribute
+    {
+        public ApiRouteAttribute(string method, string path)
+        {
+            Method = method.ToUpperInvariant();
+            Path = path.Trim('/');
+        }
+
+        public string Method { get; }
+
+        public string Path { get; }
+
+        /// <summary>
+        /// Served by the native server only (e.g. files on the server's own disk): a host without
+        /// one answers 501 saying so.
+        /// </summary>
+        public bool NativeOnly { get; set; }
+
+        /// <summary>
+        /// Why a <see cref="NativeOnly"/> route is server-only, in words for a GM: GET api/Host/Info
+        /// lists it for a browser host (ApiRouteCoverageTests requires it).
+        /// </summary>
+        public string? Reason { get; set; }
+
+        /// <summary>
+        /// Answers callers who aren't logged in, as its action's [AllowAnonymous] (or no
+        /// [Authorize]): otherwise a tunnelled request without a caller is 401, as natively.
+        /// ApiRouteCoverageTests checks the two agree.
+        /// </summary>
+        public bool Anonymous { get; set; }
+    }
+}

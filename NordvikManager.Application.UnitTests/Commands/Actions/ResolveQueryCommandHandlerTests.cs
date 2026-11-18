@@ -19,186 +19,42 @@ namespace NordvikManager.Application.UnitTests.Commands.Actions
             return card;
         }
 
-        [Fact]
-        public async Task Handle_SimpleVariable_IsReplacedWithValue()
+        // One game with a Goblin card (hp 7, and a protected secretHp 999). The expression gets the
+        // variables name = "World", player = Player(), cardId = the Goblin's id and foreignId = an id
+        // from no game; $CARD, $GAME and $PLAYER in a row stand for those ids.
+        [Theory]
+        [InlineData("SimpleVariable_IsReplaced", "Hello %name%!", "Hello World!")]
+        [InlineData("UnknownVariable_StaysAsItIs", "Value: %missing%", "Value: %missing%")]
+        [InlineData("GameIdAndPlayerId_AreFilledIn", "%gameId%/%playerId%", "$GAME/$PLAYER")]
+        [InlineData("ObjectField_IsReadByName", "%player.Name%", "Tester")]
+        [InlineData("UnknownObjectField_IsEmpty", "[%player.NoSuchField%]", "[]")]
+        [InlineData("QueryById_Id", "%q:{cardId}.id%", "$CARD")]
+        [InlineData("QueryById_Name", "%q:{cardId}.name%", "Goblin")]
+        [InlineData("QueryById_CustomProperty", "%q:{cardId}.hp%", "7")]
+        [InlineData("ProtectedProperty_IsNeverReturned", "[%q:{cardId}.secretHp%]", "[]")]
+        [InlineData("IdFromAnotherGame_IsEmpty", "[%q:{foreignId}.name%]", "[]")]
+        [InlineData("QueryByLiteralGuid", "%q:$CARD.name%", "Goblin")]
+        [InlineData("QueryByName", "%q:card[Goblin].name%", "Goblin")]
+        [InlineData("QueryByUnknownName_IsEmpty", "[%q:card[NoSuchCard].name%]", "[]")]
+        public async Task Handle_ResolvesTheExpression(string because, string expression, string expected)
         {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "Hello %name%!", Variables = new() { ["name"] = "World" } };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Hello World!", result);
-        }
-
-        [Fact]
-        public async Task Handle_UnknownVariable_LeavesPlaceholderUnchanged()
-        {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "Value: %missing%" };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Value: %missing%", result);
-        }
-
-        [Fact]
-        public async Task Handle_GameIdAndPlayerIdAreAutoPopulatedVariables()
-        {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "%gameId%/%playerId%" };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal($"{game.Id}/{PlayerId}", result);
-        }
-
-        [Fact]
-        public async Task Handle_VFieldReflection_ResolvesObjectPropertyByName()
-        {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "%player.Name%",
-                Variables = new() { ["player"] = Player() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Tester", result);
-        }
-
-        [Fact]
-        public async Task Handle_VFieldReflection_UnknownField_ResolvesToEmpty()
-        {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "[%player.NoSuchField%]",
-                Variables = new() { ["player"] = Player() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("[]", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryById_IdProperty_ReturnsGuidString()
-        {
+            _ = because;
             var game = BuildGame();
             var card = SeedCard(game, "Goblin");
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "%q:{cardId}.id%",
-                Variables = new() { ["cardId"] = card.Id.ToString() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal(card.Id.ToString(), result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryById_NameProperty_ReturnsEntityName()
-        {
-            var game = BuildGame();
-            var card = SeedCard(game, "Goblin");
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "%q:{cardId}.name%",
-                Variables = new() { ["cardId"] = card.Id.ToString() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Goblin", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryById_CustomProperty_ReturnsPropertyValue()
-        {
-            var game = BuildGame();
-            var card = SeedCard(game, "Goblin");
-            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, Card = card, IsProtected = false });
+            Db.Properties.AddRange(
+                new PropertyModel { Id = Guid.NewGuid(), Name = "hp", Value = "7", ParentID = card.Id, Card = card, IsProtected = false },
+                new PropertyModel { Id = Guid.NewGuid(), Name = "secretHp", Value = "999", ParentID = card.Id, Card = card, IsProtected = true });
             Db.SaveChanges();
+            string Ids(string s) => s.Replace("$CARD", card.Id.ToString()).Replace("$GAME", game.Id.ToString()).Replace("$PLAYER", PlayerId.ToString());
             var cmd = new ResolveQueryCommand
             {
-                GameId = game.Id, Player = Player(), Expression = "%q:{cardId}.hp%",
-                Variables = new() { ["cardId"] = card.Id.ToString() },
+                GameId = game.Id, Player = Player(), Expression = Ids(expression),
+                Variables = new() { ["name"] = "World", ["player"] = Player(), ["cardId"] = card.Id.ToString(), ["foreignId"] = Guid.NewGuid().ToString() },
             };
 
             var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
 
-            Assert.Equal("7", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryById_ProtectedProperty_NeverReturnsValue()
-        {
-            var game = BuildGame();
-            var card = SeedCard(game, "Goblin");
-            Db.Properties.Add(new PropertyModel { Id = Guid.NewGuid(), Name = "secretHp", Value = "999", ParentID = card.Id, Card = card, IsProtected = true });
-            Db.SaveChanges();
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "[%q:{cardId}.secretHp%]",
-                Variables = new() { ["cardId"] = card.Id.ToString() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("[]", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryById_GuidNotInGame_ReturnsEmpty_CrossGameProtection()
-        {
-            var game = BuildGame();
-            var foreignId = Guid.NewGuid(); // never seeded into this game's allowlist
-            var cmd = new ResolveQueryCommand
-            {
-                GameId = game.Id, Player = Player(), Expression = "[%q:{foreignId}.name%]",
-                Variables = new() { ["foreignId"] = foreignId.ToString() },
-            };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("[]", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryByLiteralGuid_ResolvesDirectly()
-        {
-            var game = BuildGame();
-            var card = SeedCard(game, "Goblin");
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = $"%q:{card.Id}.name%" };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Goblin", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryByName_ResolvesEntityThenReturnsProperty()
-        {
-            var game = BuildGame();
-            SeedCard(game, "Goblin");
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "%q:card[Goblin].name%" };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("Goblin", result);
-        }
-
-        [Fact]
-        public async Task Handle_QueryByName_UnknownName_ReturnsEmpty()
-        {
-            var game = BuildGame();
-            var cmd = new ResolveQueryCommand { GameId = game.Id, Player = Player(), Expression = "[%q:card[NoSuchCard].name%]" };
-
-            var result = (await Handler().Handle(cmd, CancellationToken.None)).Result;
-
-            Assert.Equal("[]", result);
+            Assert.Equal(Ids(expected), result);
         }
 
         [Fact]

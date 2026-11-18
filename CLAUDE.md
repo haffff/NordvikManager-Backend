@@ -26,18 +26,37 @@ Frontend (separate repo) can be placed as a build in `wwwroot/` or run via `npm 
 Clean Architecture with CQRS. Dependency flow is strictly one-directional:
 
 ```
-NordvikManager (API/Presentation)
+NordvikManager (API/Presentation: ASP.NET Core host, controllers, SIPSorcery; picks the adapters below)
+    → NordvikManager.Infrastructure.Imaging  (adapter: SkiaSharp thumbnails — native host only)
+    → NordvikManager.Infrastructure.MySql  (adapter: MySQL provider — native host only)
+    → NordvikManager.Api  (REST endpoints without ASP.NET Core: the controllers' logic, ApiRouter)
+    → NordvikManager.RealTime  (lobby, WebSocket-command handlers, action engine, WebRTC session + signaling)
     → NordvikManager.Application  (commands, handlers, DTOs, services)
     → NordvikManager.Infrastructure  (EF Core DbContexts, repos, HTTP clients)
     → NordvikManager.Domain  (entities, interfaces, enums — no external deps)
 ```
 
+`NordvikManager.RealTime` is a plain `Microsoft.NET.Sdk` library with no ASP.NET Core and no SIPSorcery, so a browser-wasm GM host can reference it too. Keep it that way: anything needing ASP.NET Core (`HttpContext`, `IFormFile`, middleware, controllers) or a native WebRTC stack goes in `NordvikManager`. It keeps the `NordvikManager.*` namespaces it had before it was split out. WebRTC is reached through `IPeerConnectionFactory` (`WebRTC/IPeerConnection.cs`); the native server registers `SipsorceryPeerConnectionFactory`, a browser-wasm host `BrowserPeerConnectionFactory` (`NordvikManager.Wasm.WebRtc`: the browser's own RTCPeerConnection through `JsBrowserRtc` + `Interop/nordvik-webrtc.js`; unit-tested with a fake `IBrowserRtc`, checked in a real browser by `NordvikManager.Wasm.WebRtc.BrowserCheck`, which is outside the solution). The browser-wasm GM host is `NordvikManager.Wasm.Hosting` (`WasmHost`: the composition, in the solution, `WasmHostTests`) started by `NordvikManager.Wasm.Host` (browser-wasm, outside the solution: .NET in a dedicated worker with the games in a SQLite file on OPFS, read and written in place through `opfs-fs.js`, and its file storage on OPFS too (`BrowserFileStorage`, an `IFileStorageProvider` over `IBrowserFiles` → `opfs-files.js`); the page keeps the GM's UI and the `RTCPeerConnection`s, which the worker reaches through a message bridge; a page starts it with `host.js`, as the frontend's host build does (the full GM app with this backend in its tab, at Central's `/client/host/`); `?selfcheck`; see its README). A JS file the host deploys goes in its `WasmExtraFilesToDeploy` (an input of the bundle step: a change to it alone is deployed). In browser-wasm, reflection-based `System.Text.Json` is off by default: the shared layers use it, so a wasm host sets `<JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>` (the browser check does); code meant only for wasm uses source-generated contexts. `RealTimeLayerModule.Register` (called by `Startup` and the wasm host) registers the shared real-time services and finds `IWebSocketHandler`s and `IActionStepDefinition`s by scanning the RealTime assembly (`StartupDiscoveryTests` guards it); each host adds its own WebRTC stack, REST dispatcher and Central token refresh.
+
+RealTime, Application, Infrastructure and Domain are what a browser-wasm host reaches, so none of them may reference ASP.NET Core, SIPSorcery, MySQL or SkiaSharp (`SharedAssemblyReferencesTests` guards it). The host brings those: `InfrastructureLayerModule.Register` takes the database used when `UseSqlite` is off (the native server passes `MySqlDatabase.Use` from `NordvikManager.Infrastructure.MySql`), and thumbnails go through `IThumbnailGenerator` (the native server registers `SkiaThumbnailGenerator` before `ApplicationLayerModule.Register`, which otherwise adds a no-thumbnails default that serves images at full size).
+
 Two test projects: `NordvikManager.Tests` (controller/integration) and `NordvikManager.Application.UnitTests` (handler unit tests).
 
 **Layer rules — strictly enforced:**
-- `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` (controllers, WebRTC dispatchers, WebSocket handlers, services).
+- `IDbContext` and EF Core queries belong ONLY in `NordvikManager.Application` command handlers (via `HandlerBase`). Never resolve or query `IDbContext` directly in `NordvikManager` or `NordvikManager.RealTime` (controllers, WebRTC dispatchers, WebSocket handlers, services).
 - The UI/Presentation layer (`NordvikManager`) dispatches MediatR commands and reads DTOs — it never touches the database directly.
 - When you need a new DB operation in a dispatcher or controller, create a Command + Handler pair in `Application/Commands/` and call `mediator.Send()`.
+
+## Shared REST endpoints (NordvikManager.Api)
+
+A browser-wasm GM host has no ASP.NET Core, so the REST requests players tunnel over the data channel are answered there by `ApiRouter` from shared endpoint classes (`NordvikManager.Api/Endpoints/`), instead of replaying them through the ASP.NET pipeline as the native server does. A controller moved to this pattern keeps its routes and attributes and only delegates: `(await endpoints.X(CurrentUser, ...)).ToActionResult()`. The endpoint method has the action's logic, returns `ApiResult` (`Ok`, `Unauthorized`, ... mapped by `ToActionResult` to the same MVC result types) and carries `[ApiRoute("GET", "api/Controller/Action")]`; a `User` parameter is the caller, simple parameters bind from the query (route values first; `[Required]` → 400), one complex one from the JSON body (`[ApiBody]` for a simple type from the body), `[ApiService]` from the services. An endpoint that needs cookies or the tunnel's game takes an `ApiContext` instead (`ReadCookie`, `SetCookie`, `Refreshed`, `TunnelGameId`): the controller makes it with `HttpContext.ToApiContext()` and answers with `HttpContext.Respond(context, result)`, which writes the cookie changes; a tunnelled request has no cookies and takes none back, as with the native tunnel.
+
+- `ApiJson` is the JSON of both (Startup's `AddJsonOptions` calls `ApiJson.Configure`; `ApiJsonTests`); `ApiExceptions` maps exceptions for both (`HandleExceptionMiddleWare` uses it).
+- `ApiRouteCoverageTests`: every controller action has an endpoint with its method and path, and every endpoint is an action's, except the controllers about running a server, listed with why in `ApiNativeOnly` (Backup, Meta, ServerSettings, Update; their logic stays in the controller, and the browser host answers them 501 "only on a GM server"). A server-only action of a shared controller is an endpoint with `[ApiRoute(..., NativeOnly = true)]` (Materials' disk linking). A new controller action needs an endpoint, or a place on that list.
+- `ApiResult.File` (raw bytes) is native only: the data channel can't carry it, so clients read `api/materials/resource` through its base64 variant (`ResourceWebRTC`; both tunnels rewrite to it).
+- The browser host has fixed server settings (`FixedServerSettingsStore`: constant upload limits, nothing to change).
+- `GET api/Host/Info` (`HostEndpoints`) says what kind of host this is (`IHostDescription`: `ServerHostDescription` natively, `BrowserHostDescription` in the browser host) and, for a host without the server features, lists every server-only controller and route with its reason (`ApiNativeOnly`, `[ApiRoute(..., NativeOnly = true, Reason = "...")]`; `ApiRouteCoverageTests` requires the reason) plus the host's own limitations. The reasons and limitations are shown to GMs, so they're written for them. The browser host's answer is pinned in `NordvikManager.Tests/WasmHost/Snapshots/host-info.browser.json` (`UPDATE_HOST_INFO_SNAPSHOT=1` rewrites it): when the browser host changes how it works, update `BrowserHostDescription` in the same change, and Central's user-guide page `docs-site/user-guide/getting-started-gm/browser-version.md` (the same lists, for GMs who haven't started it yet).
+- The browser host ships the built-in addons (`NordvikManager/BuiltInAddons/`) in the runtime's filesystem (`WasmFilesToIncludeInFileSystem` → `/BuiltInAddons/`; `AppContext.BaseDirectory` is `/` there), so `BuiltInAddons` finds them unchanged. Its addon registry is its Central (`CentralAddonRepository`: Central's `/api/addons`, and packages Central downloads by key), because its page may only connect to Central's origin. `AddonRepositoryService` (a GM server's) only fails when the registry is actually used, so built-in installs work without one.
 
 ## CQRS with MediatR
 
@@ -115,7 +134,7 @@ JWT tokens are stored in **cookies** (not Authorization headers). The `OnMessage
 
 ## Database
 
-Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative. There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
+Controlled by `"UseSqlite": true` in appsettings. SQLite (`data.db`) is the default/primary path; MySQL is available as a production alternative (its provider is the `NordvikManager.Infrastructure.MySql` adapter, which `Startup` passes to `InfrastructureLayerModule.Register`). There is a single DbContext, `DndOneContext` (in `NordvikManager.Infrastructure/Data/Contexts/BattleMapContext.cs`).
 
 **SQLite uses real EF Core Migrations** (`NordvikManager.Infrastructure/Migrations/`), applied automatically via `Database.Migrate()` once at startup (`Startup.Configure`). **Any change to an entity in `NordvikManager.Domain` needs a new migration before it reaches anyone's database** — schema changes no longer get picked up by just editing the model:
 
@@ -152,5 +171,5 @@ Key appsettings entries:
 1. Entity model in `Domain/Entities/` implementing `IEntity` or `INamedEntity`
 2. Command + Handler pair in `Application/Commands/{Feature}/`
 3. DTO in `Application/DataTransferObjects/` + mapping in `Mapping/AppMapper.cs` (and its snapshot pair)
-4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`
+4. Controller action in `NordvikManager/Controllers/` dispatching via `_mediator.Send()`. For a controller already moved to shared endpoints (see below), the logic goes in its `NordvikManager.Api/Endpoints/*Endpoints` method with an `[ApiRoute]`, and the action only delegates
 5. Tests in `Application.UnitTests/Commands/` (handler) and `NordvikManager.Tests/Controllers/` (controller)

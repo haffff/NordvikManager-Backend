@@ -1,0 +1,86 @@
+{
+  "kind": "browser",
+  "version": "<version>",
+  "protocol": 2,
+  "unavailable": [
+    {
+      "path": "api/Backup",
+      "reason": "Backs up and restores the whole GM server (its database and files). A browser host keeps its games in the browser's storage instead."
+    },
+    {
+      "path": "api/Materials/BrowseLocalDirectory",
+      "reason": "Browses the GM server's own disk, to pick files to link."
+    },
+    {
+      "path": "api/Materials/LinkDirectory",
+      "reason": "Links a folder on the GM server's own disk; a browser has no disk to link it from."
+    },
+    {
+      "path": "api/Materials/LinkResource",
+      "reason": "Links a file on the GM server's own disk; a browser has no disk to link it from."
+    },
+    {
+      "path": "api/Materials/TransferResourceStorage",
+      "reason": "Moves a resource between the database and files on the GM server's own disk."
+    },
+    {
+      "path": "api/Meta",
+      "reason": "Central's details, fetched through the GM server. A browser host asks Central itself."
+    },
+    {
+      "path": "api/ServerSettings",
+      "reason": "The GM server's settings file. A browser host has fixed settings, including its upload limits."
+    },
+    {
+      "path": "api/Update",
+      "reason": "Updates the GM server's program. A browser host is updated when its page is."
+    }
+  ],
+  "limitations": [
+    {
+      "id": "tab-open",
+      "title": "Keep this tab open",
+      "detail": "The game runs in this tab. Closing or reloading it disconnects every player until you start the session again, and a background tab the browser puts to sleep can drop them too."
+    },
+    {
+      "id": "browser-storage",
+      "title": "Your games can be lost",
+      "detail": "They exist only in this browser's storage, with no backup. Unless the browser grants this site persistent storage, it may delete them without asking when the disk gets full. Clearing the site's data deletes them too, and another browser, another computer or a private window doesn't have them."
+    },
+    {
+      "id": "outside-connections",
+      "title": "Only websites that allow browser requests",
+      "detail": "Addons reach other websites from this tab, so only https sites that allow requests from a browser answer. Programs on your computer or network (for example Trilium or Obsidian notes) and sites that refuse browser requests need the local server; you're told when an addon's request couldn't be made."
+    },
+    {
+      "id": "upload-limits",
+      "title": "Upload limits are fixed",
+      "detail": "Uploads are capped at 500 MB per game for you and 100 MB per player, and can't be raised. On the local server you set them."
+    },
+    {
+      "id": "no-thumbnails",
+      "title": "Images load slower for players",
+      "detail": "There are no small previews: players download every image (maps, tokens, handouts) at full size, so on a slow connection they appear later than from the local server."
+    },
+    {
+      "id": "one-tab",
+      "title": "Host from one tab only",
+      "detail": "Your games open in one tab of this site at a time. A second tab won't open them: close it and use the first one."
+    },
+    {
+      "id": "upload-restarts",
+      "title": "Interrupted uploads start over",
+      "detail": "If this tab closes or reloads while a file is uploading (yours or a player's), it has to be uploaded again from the start. The local server continues an interrupted upload where it stopped."
+    },
+    {
+      "id": "login-after-reload",
+      "title": "Log in again after a reload",
+      "detail": "The host keeps your login only while this tab is open."
+    },
+    {
+      "id": "addon-registry",
+      "title": "Addons come from Central's registry",
+      "detail": "The addons you can browse and install are the ones Central lists, downloaded through Central; another registry can't be set. An addon you have as a file still installs from the file."
+    }
+  ]
+}

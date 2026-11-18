@@ -33,8 +33,8 @@ namespace NordvikManager.Application.Commands.Game.UpdateGame
             playerToChange.Color = request.playerDTO?.Color ?? playerToChange.Color;
             playerToChange.Image = request.playerDTO?.Image ?? playerToChange.Image;
 
-            Guard.Argument(dbContext.SaveChanges() > 0, nameof(request.playerDTO));
-            return CommandResponse.Ok;
+            var result = dbContext.SaveChanges() > 0 ? CommandResponse.Ok : CommandResponse.NoChange;
+            return result;
         }
     }
 }

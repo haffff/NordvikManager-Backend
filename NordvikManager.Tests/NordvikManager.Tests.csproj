@@ -25,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NordvikManager\NordvikManager.csproj" />
+    <ProjectReference Include="..\NordvikManager.Wasm.WebRtc\NordvikManager.Wasm.WebRtc.csproj" />
+    <ProjectReference Include="..\NordvikManager.Wasm.Hosting\NordvikManager.Wasm.Hosting.csproj" />
+    <ProjectReference Include="..\NordvikManager.Api\NordvikManager.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

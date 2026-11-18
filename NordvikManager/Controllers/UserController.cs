@@ -1,3 +1,10 @@
+using MediatR;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using NordvikManager.Api.Endpoints;
 using NordvikManager.Application.Commands.Player.BanUser;
 using NordvikManager.Application.Commands.Player.CheckUserBanned;
 using NordvikManager.Application.Commands.Player.GetLocalPlayers;
@@ -5,95 +12,54 @@ using NordvikManager.Application.Commands.Player.KickPlayer;
 using NordvikManager.Application.Commands.Player.RemoveUserPlayers;
 using NordvikManager.Application.Commands.Player.UnbanUser;
 using NordvikManager.Domain.Entities.Auth;
-using NordvikManager.Services;
 using NordvikManager.Services.Interfaces;
+using NordvikManager.Services;
 using NordvikManager.WebRTC;
-using MediatR;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
-using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
+using System;
 
 namespace NordvikManager.Controllers
 {
+    /// <summary>The logic is in <see cref="UserEndpoints"/>, shared with hosts without ASP.NET Core.</summary>
     [Route("api/[controller]")]
     [ApiController]
     public class UserController : Controller
     {
-        private readonly ICentralServerService _centralServer;
-        private readonly IMediator _mediator;
-        private readonly IConfiguration _configuration;
-        private readonly ILobbyService _lobbyService;
+        private readonly UserEndpoints endpoints;
 
         public UserController(ICentralServerService centralServer, IMediator mediator, IConfiguration configuration, ILobbyService lobbyService)
         {
-            _centralServer = centralServer;
-            _mediator = mediator;
-            _configuration = configuration;
-            _lobbyService = lobbyService;
-            _configuration = configuration;
+            endpoints = new UserEndpoints(centralServer, mediator, configuration, lobbyService);
         }
 
         [HttpPost]
         [Route("Login")]
         public async Task<IActionResult> Login([FromBody] Models.LoginRequest loginData)
         {
-            var centralResult = await _centralServer.LoginAsync(loginData.Username, loginData.Password);
-            if (centralResult == null)
-                return Unauthorized("Wrong credentials");
-
-            var isBanned = await _mediator.Send(new CheckUserBannedCommand { CentralUserId = centralResult.UserId });
-            if (isBanned)
-                return Unauthorized("User is banned from this server");
-
-            // Issue a LOCAL JWT signed with this GM Backend's own secret.
-            // The Central Server's JWT_SECRET is never used or stored here.
-            var localToken = IssueLocalToken(centralResult);
-
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                IsEssential = true,
-                SameSite = SameSiteMode.None,
-                Secure = true
-            };
-
-            // Local JWT — used by the GM Admin Frontend for all GM Backend requests.
-            HttpContext.Response.Cookies.Append("Authorization", localToken, cookieOptions);
-
-            // Central Server access token (15 min JWT) — forwarded server-side to Central Server
-            // for proxied calls (invites, keyboard bindings, session creation, etc.).
-            HttpContext.Response.Cookies.Append("CentralToken", centralResult.CentralToken, cookieOptions);
-
-            // Central Server refresh token — used to silently obtain a new CentralToken
-            // when the 15-min access token expires, without requiring re-login.
-            if (!string.IsNullOrEmpty(centralResult.RefreshToken))
-                HttpContext.Response.Cookies.Append("CentralRefreshToken", centralResult.RefreshToken, cookieOptions);
-
-            return Ok(new { token = localToken });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.Login(context, loginData));
         }
 
         [Authorize]
         [HttpGet]
         [Route("CheckLogin")]
-        public IActionResult CheckLogin() => Ok();
+        public IActionResult CheckLogin()
+        {
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, endpoints.CheckLogin(context));
+        }
 
         [Authorize]
         [HttpGet]
         [Route("Logout")]
         public IActionResult Logout()
         {
-            HttpContext.Response.Cookies.Delete("Authorization");
-            HttpContext.Response.Cookies.Delete("CentralToken");
-            HttpContext.Response.Cookies.Delete("CentralRefreshToken");
-            return Ok();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, endpoints.Logout(context));
         }
 
         /// <summary>
@@ -108,17 +74,8 @@ namespace NordvikManager.Controllers
         [Route("refresh-central")]
         public async Task<IActionResult> RefreshCentralToken()
         {
-            var refreshToken = HttpContext.Request.Cookies["CentralRefreshToken"];
-            if (string.IsNullOrEmpty(refreshToken))
-                return Unauthorized(new { error = "No Central Server refresh token. Please log in again." });
-
-            var tokens = await _centralServer.RefreshTokenAsync(refreshToken);
-            if (tokens == null)
-                return Unauthorized(new { error = "Central Server refresh failed. Please log in again." });
-
-            CentralAuthCookies.WriteRefreshed(HttpContext.Response, tokens);
-
-            return Ok(new { refreshed = true, accessToken = tokens.AccessToken });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.RefreshCentralToken(context));
         }
 
         [Authorize]
@@ -126,14 +83,8 @@ namespace NordvikManager.Controllers
         [Route("UserInfo")]
         public IActionResult GetUserInfo()
         {
-            var user = HttpContext.Items["User"] as User;
-            return Ok(new
-            {
-                Admin = user?.IsAdmin,
-                LocalAdmin = user?.IsLocalAdmin,
-                UserName = user?.UserName,
-                Email = user?.Email
-            });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, endpoints.GetUserInfo(context));
         }
 
         [Authorize]
@@ -141,34 +92,24 @@ namespace NordvikManager.Controllers
         [Route("GetUserNameById")]
         public async Task<IActionResult> GetUserNameById(string id)
         {
-            var centralToken = CentralToken();
-            var userName = await _centralServer.GetUserNameAsync(centralToken, id);
-            if (userName == null) return NotFound();
-            return Ok(new { userName });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetUserNameById(context, id));
         }
-
 
         [HttpPost]
         [Route("Register")]
         public async Task<IActionResult> Register([FromBody] Models.RegisterRequest registerRequest)
         {
-            var (success, message) = await _centralServer.RegisterAsync(
-                registerRequest.Username,
-                registerRequest.Email,
-                registerRequest.Password,
-                registerRequest.InviteCode);
-
-            if (success) return Ok(new { message });
-            return BadRequest(new { message });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.Register(context, registerRequest));
         }
 
         [HttpGet]
         [Route("CheckRegistrationKey")]
         public async Task<IActionResult> CheckRegistrationKey(string key)
         {
-            var valid = await _centralServer.CheckRegistrationKeyAsync(key);
-            if (valid) return Ok(new { result = "ok" });
-            return BadRequest();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.CheckRegistrationKey(context, key));
         }
 
         [HttpGet]
@@ -176,13 +117,8 @@ namespace NordvikManager.Controllers
         [Route("users")]
         public async Task<IActionResult> Users(int page = 1, int count = 10)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            if (page < 1 || count < 1) return BadRequest();
-
-            var result = await _mediator.Send(new GetLocalPlayersCommand { Page = page, Count = count });
-            return Ok(result);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.Users(context, page, count));
         }
 
         [HttpDelete]
@@ -190,12 +126,8 @@ namespace NordvikManager.Controllers
         [Route("DeleteInvite")]
         public async Task<IActionResult> DeleteInvite([FromQuery] string key)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            var success = await _centralServer.DeleteInviteAsync(CentralToken(), key);
-            if (success) return Ok(new { result = "ok" });
-            return NotFound();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.DeleteInvite(context, key));
         }
 
         [HttpGet]
@@ -203,53 +135,17 @@ namespace NordvikManager.Controllers
         [Route("KeyboardBindings")]
         public async Task<IActionResult> KeyboardBindings()
         {
-            var bindings = await _centralServer.GetKeyboardBindingsAsync(CentralToken());
-            if (bindings == null) return StatusCode(502, "Central server unavailable");
-            return Ok(bindings);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.KeyboardBindings(context));
         }
-
-        // Key order must match the frontend's CreateActionName emission order
-        // (Ctrl, Shift, Alt) — Ctrl+Alt+Shift ordering here would silently
-        // reject triple-modifier combos. Anchored at both ends: the previous
-        // regex had no leading '^', so it matched any string merely ending in
-        // a valid-looking combo rather than requiring the whole string to be one.
-        private static readonly System.Text.RegularExpressions.Regex KeyboardBindingKeyRegex = new(
-            @"^(Ctrl\+)?(Shift\+)?(Alt\+)?(.|HOME|DELETE|INSERT|PAGEUP|END|PAGEDOWN|BACKSPACE)$");
-        // "panel.command" optionally followed by whitespace and an argument tail
-        // (e.g. "Playlist.PlaySound --resourceId=abc-123") — a ClientMediator
-        // command reference the frontend parses and dispatches. Empty string is a
-        // valid tombstone value (unbinds a built-in default's key client-side).
-        // Must stay in sync with COMMAND_REGEX (frontend KeyBoardEventsManager.js)
-        // and KEYBOARD_BINDING_COMMAND_REGEX (Central routes/user.js).
-        private static readonly System.Text.RegularExpressions.Regex KeyboardBindingCommandRegex = new(
-            @"^[A-Za-z_][\w-]*\.[A-Za-z_][\w-]*(\s+\S.*)?$");
-        private const int MaxKeyboardBindings = 200;
-        // Room for a command plus a GUID-valued argument or two.
-        private const int MaxKeyboardBindingStringLength = 256;
 
         [HttpPost]
         [Authorize]
         [Route("KeyboardBindings")]
         public async Task<IActionResult> SaveKeyboardBindings([FromBody] Dictionary<string, string> bindings)
         {
-            if (bindings.Count > MaxKeyboardBindings)
-                return BadRequest();
-
-            foreach (var (key, value) in bindings)
-            {
-                if (key.Length > MaxKeyboardBindingStringLength || !KeyboardBindingKeyRegex.IsMatch(key))
-                    return BadRequest();
-
-                if (value == null || value.Length > MaxKeyboardBindingStringLength)
-                    return BadRequest();
-
-                if (value != "" && !KeyboardBindingCommandRegex.IsMatch(value))
-                    return BadRequest();
-            }
-
-            var success = await _centralServer.SetKeyboardBindingsAsync(CentralToken(), bindings);
-            if (success) return Ok();
-            return BadRequest();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.SaveKeyboardBindings(context, bindings));
         }
 
         [HttpGet]
@@ -257,13 +153,8 @@ namespace NordvikManager.Controllers
         [Route("getplayers")]
         public async Task<IActionResult> GetPlayers(int page = 1, int count = 10)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            if (page < 1 || count < 1) return BadRequest();
-
-            var result = await _mediator.Send(new GetLocalPlayersCommand { Page = page, Count = count });
-            return Ok(result);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetPlayers(context, page, count));
         }
 
         [HttpPost]
@@ -271,13 +162,8 @@ namespace NordvikManager.Controllers
         [Route("kickplayer")]
         public async Task<IActionResult> KickPlayer([FromBody] Models.KickPlayerRequest request)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            await _mediator.Send(new KickPlayerCommand { PlayerId = request.PlayerId });
-
-            _lobbyService.SendKickToPlayer(request.PlayerId);
-            return Ok();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.KickPlayer(context, request));
         }
 
         [HttpPost]
@@ -285,11 +171,8 @@ namespace NordvikManager.Controllers
         [Route("removeuser")]
         public async Task<IActionResult> RemoveUser([FromBody] Models.CentralUserRequest request)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            await _mediator.Send(new RemoveUserPlayersCommand { CentralUserId = request.CentralUserId });
-            return Ok();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.RemoveUser(context, request));
         }
 
         [HttpPost]
@@ -297,15 +180,8 @@ namespace NordvikManager.Controllers
         [Route("banuser")]
         public async Task<IActionResult> BanUser([FromBody] Models.CentralUserRequest request, [FromServices] IWebRTCSessionService webRtcSession)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            var result = await _mediator.Send(new BanUserCommand { CentralUserId = request.CentralUserId });
-            if (result != NordvikManager.Domain.Enums.CommandResponse.Ok) return BadRequest();
-
-            // The ban applies now: the user's open game connections are closed, not only refused next time.
-            await webRtcSession.DisconnectUserAsync(request.CentralUserId);
-            return Ok();
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.BanUser(context, request, webRtcSession));
         }
 
         [HttpPost]
@@ -313,39 +189,8 @@ namespace NordvikManager.Controllers
         [Route("unbanuser")]
         public async Task<IActionResult> UnbanUser([FromBody] Models.CentralUserRequest request)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true) return Unauthorized();
-
-            await _mediator.Send(new UnbanUserCommand { CentralUserId = request.CentralUserId });
-            return Ok();
-        }
-
-        // -------------------------------------------------------------------------
-
-        private string CentralToken() =>
-            HttpContext.Request.Cookies["CentralToken"] ?? string.Empty;
-
-        private string IssueLocalToken(CentralLoginResult centralResult)
-        {
-            var secret = _configuration["JWTSecret"]!;
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-            var expireHours = _configuration.GetValue<int>("JWT:ExpireHours", 3);
-
-            var claims = new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, centralResult.UserId),
-                new Claim("username", centralResult.UserName ?? string.Empty),
-                new Claim("email",    centralResult.Email    ?? string.Empty),
-                new Claim("isAdmin",  centralResult.IsAdmin.ToString().ToLowerInvariant()),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
-
-            var token = new JwtSecurityToken(
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(expireHours),
-                signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.UnbanUser(context, request));
         }
     }
 }

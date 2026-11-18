@@ -18,6 +18,12 @@ namespace NordvikManager.Application.Commands.Resources.Upload
         public Guid? ParentFolder { get; set; }
         public ResourceStorageKind StorageKind { get; set; } = ResourceStorageKind.Blob;
         public long Size { get; set; }
+        /// <summary>
+        /// An export to import (Transfer/Inspect, Import, CancelImport): needs Edit on the game,
+        /// takes up to <see cref="Uploads.MaxImportSize"/>, doesn't count towards the upload
+        /// limits (an import the GM runs skips them) and never becomes a resource itself.
+        /// </summary>
+        public bool ForImport { get; set; }
     }
 
     /// <summary>A part at Offset; answers how much has arrived (also when refused).</summary>

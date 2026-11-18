@@ -30,6 +30,7 @@ namespace NordvikManager.Infrastructure.Interfaces
         DbSet<PlaylistModel> Playlists { get; }
         DbSet<TurnOrderModel> TurnOrders { get; }
         DbSet<TurnOrderEntryModel> TurnOrderEntries { get; }
+        DbSet<ServerSecretModel> ServerSecrets { get; }
 
         /// <summary>
         /// Part of a database-stored resource's bytes, cut by the database (the whole column is

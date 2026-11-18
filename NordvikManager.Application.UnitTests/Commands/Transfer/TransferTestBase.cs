@@ -43,6 +43,7 @@ namespace NordvikManager.Application.UnitTests.Commands.Transfer
             collection.AddSingleton<IDbContext>(Db);
             collection.AddScoped<IPermissionService, PermissionsService>();
             collection.AddSingleton(Storage.Object);
+            collection.AddSingleton<NordvikManager.Application.Helpers.IThumbnailGenerator, NordvikManager.Infrastructure.Imaging.SkiaThumbnailGenerator>();
             collection.AddMediatR(typeof(ApplicationLayerModule).Assembly);
             mediatorServices = collection.BuildServiceProvider();
             Mediator = mediatorServices.GetRequiredService<IMediator>();

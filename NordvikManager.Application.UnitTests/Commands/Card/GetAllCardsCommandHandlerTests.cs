@@ -50,6 +50,42 @@ namespace NordvikManager.Application.UnitTests.Commands.Card
             Assert.Equal("Template", cards[0].Name);
         }
 
+        private void SeedAddon(GameModel game, bool enabled, CardModel[]? views = null, CardModel[]? templates = null)
+        {
+            (game.Addons ??= new()).Add(new NordvikManager.Domain.Entities.AddonModel
+            {
+                Name = "Addon", Key = Guid.NewGuid().ToString(), IsEnabled = enabled,
+                Views = views?.ToList() ?? new(), Templates = templates?.ToList() ?? new(),
+            });
+            Db.SaveChanges();
+        }
+
+        [Fact]
+        public async Task Handle_CustomUisTrue_LeavesOutViewsOfDisabledAddons()
+        {
+            var game = BuildGame();
+            SeedAddon(game, false, views: new[] { SeedCard(game.Id, "Off", isCustomUi: true) });
+            SeedAddon(game, true, views: new[] { SeedCard(game.Id, "On", isCustomUi: true) });
+            SeedCard(game.Id, "Own", isCustomUi: true);
+            var cmd = new GetAllCardsCommand { GameId = game.Id, Player = Player(), CustomUis = true };
+
+            var (_, cards) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Equal(new[] { "On", "Own" }, cards.Select(c => c.Name).OrderBy(n => n));
+        }
+
+        [Fact]
+        public async Task Handle_TemplatesTrue_KeepsTemplatesOfDisabledAddons()
+        {
+            var game = BuildGame();
+            SeedAddon(game, false, templates: new[] { SeedCard(game.Id, "Template", isTemplate: true) });
+            var cmd = new GetAllCardsCommand { GameId = game.Id, Player = Player(), Templates = true };
+
+            var (_, cards) = await Handler().Handle(cmd, CancellationToken.None);
+
+            Assert.Single(cards);
+        }
+
         [Fact]
         public async Task Handle_CustomUisTrue_ReturnsOnlyCustomUiCards()
         {

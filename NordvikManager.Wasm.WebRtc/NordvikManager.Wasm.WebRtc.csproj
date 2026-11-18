@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- WebRTC for the browser-wasm GM host: IPeerConnectionFactory over the browser's own
+       RTCPeerConnection, through JS interop (Interop/). A plain net10.0 library so its logic
+       is built and tested with the rest of the solution; only JsBrowserRtc and
+       nordvik-webrtc.js need a browser. The host deploys Interop/nordvik-webrtc.js next to
+       its bundle and calls JsBrowserRtc.InitializeAsync before creating peers. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- The [JSImport]/[JSExport] source generator needs it. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="Interop\nordvik-webrtc.js" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NordvikManager.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NordvikManager.RealTime\NordvikManager.RealTime.csproj" />
+  </ItemGroup>
+
+</Project>

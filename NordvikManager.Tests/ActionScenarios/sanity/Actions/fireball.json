@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
   "name": "fireball",
   "prefix": "sanity",
+  "genericPermission": 2,
   "description": "Menu item: the player aims Fireball with its area following the cursor (Request Point); asks the GM before damaging the tokens in it.",
   "hook": 0,
   "isEnabled": false,

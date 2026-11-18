@@ -1,4 +1,7 @@
 using NordvikManager.Application;
+using NordvikManager.Application.Helpers;
+using NordvikManager.Infrastructure.Imaging;
+using NordvikManager.Infrastructure.MySql;
 using NordvikManager.Infrastructure;
 using NordvikManager.Data.Contexts;
 using NordvikManager.Engine.Middlewares;
@@ -54,12 +57,8 @@ namespace NordvikManager
             }
 
             services.AddLogging(options => options.AddConsole());
-            services.AddControllers().AddJsonOptions(options =>
-            {
-                options.JsonSerializerOptions.IgnoreNullValues = true;
-                options.JsonSerializerOptions.AllowTrailingCommas = true;
-                options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
-            });
+            // The same JSON as the shared API router writes (ApiJson).
+            services.AddControllers().AddJsonOptions(options => NordvikManager.Api.ApiJson.Configure(options.JsonSerializerOptions));
 
             services.AddDistributedMemoryCache();
             services.AddSession(options =>
@@ -69,24 +68,21 @@ namespace NordvikManager
                 options.Cookie.IsEssential = true;
             });
 
-            services.AddScoped<IWebSocketTokenValidator, WebSocketTokenValidator>();
-            services.AddScoped<NordvikManager.Application.Interfaces.IGameEventLogger,
-                               NordvikManager.Services.Implementations.LobbyGameEventLogger>();
+            // Lobby, handlers, action steps, WebRTC session and signaling: shared with the wasm host.
+            RealTimeLayerModule.Register(services);
+
             services.AddSingleton<IMaterialsService, MaterialsService>();
-            services.AddScoped<ILobbyService, LobbyService>();
-            services.AddSingleton<IPlaybackService, PlaybackService>();
-            services.AddScoped<IActionProcessingService, ActionProcessingService>();
             services.AddScoped<GetUserIntoItemsMiddleWare>();
             services.AddScoped<HandleExceptionMiddleWare>();
             services.AddSingleton<SecurityHeadersMiddleWare>();
+            services.AddSingleton<ICentralTokenStore, HttpContextCentralTokenStore>();
             services.AddSingleton<ICentralServerService, CentralServerService>();
-            services.AddSingleton<ILobbyRegistry, LobbyRegistry>();
-            services.AddSingleton<ISignalingService, SignalingService>();
             services.AddSingleton<RequestDelegateHolder>();
             services.AddSingleton<IWebRTCApiDispatcher, WebRTCInProcessDispatcher>();
             services.AddHttpContextAccessor();
-            services.AddSingleton<IWebRTCSessionService, WebRTCSessionService>();
+            services.AddSingleton<IPeerConnectionFactory, SipsorceryPeerConnectionFactory>();
             services.AddSingleton<ILocalAdminService, LocalAdminService>();
+            services.AddSingleton<NordvikManager.Api.IHostDescription, ServerHostDescription>();
             services.AddHostedService<ScheduledBackupService>();
 
             // Server updates (Hosting/Updates). The download client has no timeout: a release is ~70 MB.
@@ -98,20 +94,6 @@ namespace NordvikManager
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(UpdateService)),
                 () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
             services.AddHostedService<UpdateCheckService>();
-
-            var handlers = Assembly.GetExecutingAssembly().GetTypes();
-            foreach (var handler in handlers)
-            {
-                if (handler.GetInterface("IWebSocketHandler") != null)
-                    services.AddScoped(typeof(IWebSocketHandler), handler);
-            }
-
-            var definitions = Assembly.GetExecutingAssembly().GetTypes();
-            foreach (var definition in definitions)
-            {
-                if (definition.GetInterface("IActionStepDefinition") != null)
-                    services.AddSingleton(typeof(IActionStepDefinition), definition);
-            }
 
             services.AddEndpointsApiExplorer();
 
@@ -129,17 +111,14 @@ namespace NordvikManager
             services.AddCors(options =>
             {
                 options.AddPolicy("SuperPolicy", policy =>
-                {
-                    var clientUrls = Configuration["FrontUrls:Client"];
-                    if (string.IsNullOrEmpty(clientUrls))
-                        clientUrls = "http://localhost:3000,http://localhost:3002";
-
-                    var origins = clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                    policy.WithOrigins(origins).AllowCredentials().AllowAnyMethod().AllowAnyHeader();
-                });
+                    policy.WithOrigins(ClientOrigins()).AllowCredentials().AllowAnyMethod().AllowAnyHeader());
             });
+            services.AddSingleton(new CrossSiteRequestGuardMiddleWare(ClientOrigins()));
 
-            InfrastructureLayerModule.Register(services, Configuration);
+            // NordvikManager.Infrastructure carries only SQLite; this host also offers MySQL (UseSqlite off).
+            InfrastructureLayerModule.Register(services, Configuration, MySqlDatabase.Use);
+            // Before ApplicationLayerModule.Register, which otherwise adds its no-thumbnails default.
+            services.AddSingleton<IThumbnailGenerator, SkiaThumbnailGenerator>();
             ApplicationLayerModule.Register(services, Configuration);
 
             services.AddAuthorization(options =>
@@ -184,6 +163,15 @@ namespace NordvikManager
             });
         }
 
+        private string[] ClientOrigins()
+        {
+            var clientUrls = Configuration["FrontUrls:Client"];
+            if (string.IsNullOrEmpty(clientUrls))
+                clientUrls = "http://localhost:3000,http://localhost:3002";
+
+            return clientUrls.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        }
+
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
@@ -202,6 +190,9 @@ namespace NordvikManager
 
             // CORS must be applied after routing and before authentication/authorization so the CORS headers are set
             app.UseCors("SuperPolicy");
+
+            // Before anything reads the body or acts on the login cookie.
+            app.UseMiddleware<CrossSiteRequestGuardMiddleWare>();
 
             app.UseAuthentication();
             app.UseAuthorization();

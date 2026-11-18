@@ -1,0 +1,77 @@
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using NordvikManager.Wasm.Hosting;
+using NordvikManager.Wasm.WebRtc;
+using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.Versioning;
+
+namespace NordvikManager.Wasm.Host
+{
+    /// <summary>
+    /// The GM's host, in the page's worker (host-worker.js): WasmHost, the browser's WebRTC (run by
+    /// the page, nordvik-webrtc-worker.js), signaling to Central. The page's gm-page.js is its UI,
+    /// calling <see cref="Login"/> and <see cref="Call"/> over the page bridge. Games are a SQLite
+    /// file on OPFS (/opfs/data.db, mounted by host-worker.js): every commit is written there. Files
+    /// kept outside the database (big uploads) are on OPFS too (<see cref="BrowserFileStorage"/>).
+    /// Runs until the tab closes.
+    /// </summary>
+    [SupportedOSPlatform("browser")]
+    public static partial class HostPage
+    {
+        private const string DatabasePath = "/opfs/data.db";
+
+        /// <summary>nordvik-webrtc.js's stand-in in the worker (relative to the runtime's _framework/).</summary>
+        public const string WorkerRtcModule = "../nordvik-webrtc-worker.js";
+
+        private static HostGm? _gm;
+
+        [JSImport("ready", "host-bridge")]
+        private static partial void Ready(string centralUrl);
+
+        public static async Task RunAsync(string central)
+        {
+            await JsBrowserRtc.InitializeAsync(WorkerRtcModule);
+            await JSHost.ImportAsync("host-bridge", "../worker-bridge.js");
+
+            // Big uploads and files cards save as files: on OPFS too (storage/), not in memory.
+            var files = await BrowserFileStorage.OpenAsync(await JsBrowserFiles.CreateAsync());
+            var provider = WasmHost.Build(WasmHost.Configuration(central, databasePath: DatabasePath), new JsBrowserRtc(), files: files);
+            _gm = provider.GetRequiredService<HostGm>();
+            Ready(central);
+            Console.WriteLine($"GM host ready (Central {central}, games on OPFS).");
+
+            // The host lives as long as the tab: returning would stop the runtime.
+            await Task.Delay(Timeout.Infinite);
+        }
+
+        [JSExport]
+        internal static async Task<bool> Login(string username, string password) => await _gm!.LoginAsync(username, password);
+
+        [JSExport]
+        internal static void Logout() => _gm!.Logout();
+
+        [JSExport]
+        internal static string? UserName() => _gm?.User?.UserName;
+
+        /// <summary>An API call as the GM (the path may have a query); { status, body } as JSON.</summary>
+        [JSExport]
+        internal static async Task<string> Call(string method, string path, string? bodyJson)
+        {
+            // "api/x?gameId=..": the query as the router's parameters
+            var query = new Dictionary<string, string>();
+            var mark = path.IndexOf('?');
+            if (mark >= 0)
+            {
+                foreach (var pair in path[(mark + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var eq = pair.IndexOf('=');
+                    query[Uri.UnescapeDataString(eq < 0 ? pair : pair[..eq])] = eq < 0 ? "" : Uri.UnescapeDataString(pair[(eq + 1)..]);
+                }
+                path = path[..mark];
+            }
+            var (status, body) = await _gm!.CallAsync(method, path, string.IsNullOrEmpty(bodyJson) ? null : JToken.Parse(bodyJson), query);
+            return JsonConvert.SerializeObject(new { status, body });
+        }
+    }
+}

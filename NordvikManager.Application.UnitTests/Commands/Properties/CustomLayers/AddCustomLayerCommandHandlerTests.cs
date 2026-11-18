@@ -36,45 +36,23 @@ namespace NordvikManager.Application.UnitTests.Commands.Properties.CustomLayers
             return element;
         }
 
-        [Fact]
-        public async Task Handle_NullAfterLayerId_InsertsAboveTokenUi()
+        // With no layer to go after, a new layer goes above Token UI; otherwise into the band
+        // right above the given layer.
+        [Theory]
+        [InlineData(null, CustomLayerLayout.TokenUiLayerId, CustomLayerLayout.TopBandCeiling)]
+        [InlineData(CustomLayerLayout.GridLayerId, CustomLayerLayout.GridLayerId, CustomLayerLayout.TokenLayerId)]
+        [InlineData(CustomLayerLayout.MapLayerId, CustomLayerLayout.MapLayerId, CustomLayerLayout.GridLayerId)]
+        public async Task Handle_LandsInTheBandAboveTheGivenLayer(int? afterLayerId, int above, int below)
         {
             var game = BuildGame();
-            var cmd = new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "Fog", AfterLayerId = null };
+            var cmd = new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "Fog", AfterLayerId = afterLayerId };
 
             var (response, dto) = await Handler().Handle(cmd, CancellationToken.None);
 
             Assert.Equal(CommandResponse.Ok, response);
-            var items = JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(dto!.Value!);
-            var layerId = int.Parse(items!.Single().Fields["layerId"]!);
-            Assert.True(layerId > CustomLayerLayout.TokenUiLayerId);
-            Assert.True(layerId < CustomLayerLayout.TopBandCeiling);
-        }
-
-        [Fact]
-        public async Task Handle_AfterGrid_LandsBetweenGridAndToken()
-        {
-            var game = BuildGame();
-            var cmd = new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "Fog", AfterLayerId = CustomLayerLayout.GridLayerId };
-
-            var (_, dto) = await Handler().Handle(cmd, CancellationToken.None);
-
             var layerId = int.Parse(JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(dto!.Value!)!.Single().Fields["layerId"]!);
-            Assert.True(layerId > CustomLayerLayout.GridLayerId);
-            Assert.True(layerId < CustomLayerLayout.TokenLayerId);
-        }
-
-        [Fact]
-        public async Task Handle_AfterMap_LandsBetweenMapAndGrid()
-        {
-            var game = BuildGame();
-            var cmd = new AddCustomLayerCommand { Player = Player(), GameId = game.Id, Name = "Water", AfterLayerId = CustomLayerLayout.MapLayerId };
-
-            var (_, dto) = await Handler().Handle(cmd, CancellationToken.None);
-
-            var layerId = int.Parse(JsonConvert.DeserializeObject<List<PropertyListItemDTO>>(dto!.Value!)!.Single().Fields["layerId"]!);
-            Assert.True(layerId > CustomLayerLayout.MapLayerId);
-            Assert.True(layerId < CustomLayerLayout.GridLayerId);
+            Assert.True(layerId > above);
+            Assert.True(layerId < below);
         }
 
         // Pins the batch-reassignment-aliasing fix: inserting a second layer above an

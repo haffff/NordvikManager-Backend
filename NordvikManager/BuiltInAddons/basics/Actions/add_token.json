@@ -1,5 +1,6 @@
 {
   "name": "add_token",
+  "genericPermission": 2,
   "hook": 0,
   "prefix": "basics",
   "isEnabled": false,

@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/haffff/NordvikManager-Addons/refs/heads/main/schemas/action.json",
   "name": "burning_hands",
   "prefix": "sanity",
+  "genericPermission": 2,
   "description": "Menu item: the player picks their character, aims a 15 ft cone from it (Request Point), and the GM confirms the damage to the tokens in it.",
   "hook": 0,
   "isEnabled": false,

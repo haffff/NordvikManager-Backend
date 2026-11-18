@@ -28,6 +28,17 @@ namespace NordvikManager.Application.Commands.Actions.GetActions
 
             // A fixed order, so pages don't skip or repeat actions.
             IEnumerable<ActionModel> actions = game.Actions.OrderBy(x => x.Prefix).ThenBy(x => x.Name);
+            if (request.ExcludeDisabledAddons)
+            {
+                var ofDisabledAddons = await dbContext.Games
+                    .Where(g => g.Id == request.GameId)
+                    .SelectMany(g => g.Addons)
+                    .Where(a => !a.IsEnabled)
+                    .SelectMany(a => a.Actions!)
+                    .Select(a => a.Id)
+                    .ToListAsync(cancellationToken);
+                actions = actions.Where(a => !ofDisabledAddons.Contains(a.Id));
+            }
             if (request.Page != null)
             {
                 actions = actions.Skip((int)request.Page * 10).Take(10);

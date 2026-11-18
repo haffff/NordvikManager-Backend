@@ -1,64 +1,53 @@
-﻿using NordvikManager.Infrastructure.Services.Settings;
-using NordvikManager.Application.Services;
-using NordvikManager.Application.Commands.Addons.GetAddonsFromRepository;
-using NordvikManager.Application.Commands.Application;
-using NordvikManager.Application.Commands.BattleMap;
-using NordvikManager.Application.Commands.Game.DeleteGame;
-using NordvikManager.Application.Commands.Game.Player.GetPlayer;
-using NordvikManager.Application.Commands.Game.GetGameSessionDetails;
-using NordvikManager.Application.Commands.Game.GetGameCentralSessionId;
-using NordvikManager.Application.Commands.Game.SetGameCentralSession;
-using NordvikManager.Application.Commands.Game.UpdateGame;
-using NordvikManager.Controllers.Requests;
-using NordvikManager.Application.Commands.Player.CheckUserBanned;
-using NordvikManager.Application.Commands.Properties.GetPropertiesByQuery;
-using NordvikManager.Application.DataTransferObjects;
-using NordvikManager.Application.DataTransferObjects.Game;
-using NordvikManager.Domain.Entities.Auth;
-using NordvikManager.Services;
-using NordvikManager.Services.Interfaces;
-using NordvikManager.WebRTC;
-using NordvikManager.WebSockets;
-using NordvikManager.WebSockets.Core;
-using MediatR;
+﻿using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
-using System;
+using NordvikManager.Api.Endpoints;
+using NordvikManager.Application.Commands.Addons.GetAddonsFromRepository;
+using NordvikManager.Application.Commands.Application;
+using NordvikManager.Application.Commands.BattleMap;
+using NordvikManager.Application.Commands.Game.DeleteGame;
+using NordvikManager.Application.Commands.Game.GetGameCentralSessionId;
+using NordvikManager.Application.Commands.Game.GetGameSessionDetails;
+using NordvikManager.Application.Commands.Game.Player.GetPlayer;
+using NordvikManager.Application.Commands.Game.SetGameCentralSession;
+using NordvikManager.Application.Commands.Game.UpdateGame;
+using NordvikManager.Application.Commands.Player.CheckUserBanned;
+using NordvikManager.Application.Commands.Properties.GetPropertiesByQuery;
+using NordvikManager.Application.DataTransferObjects.Game;
+using NordvikManager.Application.DataTransferObjects;
+using NordvikManager.Application.Services;
+using NordvikManager.Controllers.Requests;
+using NordvikManager.Domain.Entities.Auth;
+using NordvikManager.Infrastructure.Services.Settings;
+using NordvikManager.Services.Interfaces;
+using NordvikManager.Services;
+using NordvikManager.WebRTC;
+using NordvikManager.WebSockets.Core;
+using NordvikManager.WebSockets;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
+using System.Threading;
+using System;
 
 namespace NordvikManager.Controllers
 {
+    /// <summary>The logic is in <see cref="GameListEndpoints"/>, shared with hosts without ASP.NET Core.</summary>
     [Route("api/[controller]")]
     [ApiController]
     public class GameListController : Controller
     {
-        private readonly IMediator mediator;
-        private readonly IConfiguration configuration;
-        private static readonly Dictionary<string, DateTime> registrationInvite = new Dictionary<string, DateTime>();
-        private readonly ILobbyService lobbyService;
-        private readonly ICentralServerService _centralServerService;
-        private readonly IWebRTCSessionService _webRtcSessionService;
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ILogger<GameListController> _logger;
+        private readonly GameListEndpoints endpoints;
 
         public GameListController(IMediator mediator, IConfiguration configuration, ILobbyService lobbyService, ICentralServerService centralServerService, IWebRTCSessionService webRtcSessionService, IHttpClientFactory httpClientFactory, ILogger<GameListController> logger)
         {
-            this.mediator = mediator;
-            this.configuration = configuration;
-            this.lobbyService = lobbyService;
-            _centralServerService = centralServerService;
-            _webRtcSessionService = webRtcSessionService;
-            _httpClientFactory = httpClientFactory;
-            _logger = logger;
+            endpoints = new GameListEndpoints(mediator, configuration, lobbyService, centralServerService, webRtcSessionService, httpClientFactory, logger);
         }
 
         /// <summary>
@@ -71,32 +60,8 @@ namespace NordvikManager.Controllers
         [Route("publicgames")]
         public async Task<IActionResult> GetPublicGames([FromQuery] int page = 1, [FromQuery] int count = 10, CancellationToken cancellationToken = default)
         {
-            var centralServerUrl = configuration["CentralServerUrl"]?.TrimEnd('/') ?? "http://localhost:3000";
-            var url = $"{centralServerUrl}/api/gamelist/publicgames?page={page}&count={count}";
-
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
-
-            // Forward CentralToken if present as a cookie — Central Server auth middleware reads req.cookies['Authorization']
-            var centralToken = Request.Cookies["CentralToken"];
-            if (!string.IsNullOrEmpty(centralToken))
-                requestMessage.Headers.Add("Cookie", $"Authorization={centralToken}");
-
-            try
-            {
-                var client = _httpClientFactory.CreateClient();
-                var response = await client.SendAsync(requestMessage, cancellationToken);
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                return new ContentResult
-                {
-                    StatusCode = (int)response.StatusCode,
-                    Content = body,
-                    ContentType = response.Content.Headers.ContentType?.ToString()
-                };
-            }
-            catch (HttpRequestException)
-            {
-                return StatusCode(502, new { error = "Central Server is unreachable." });
-            }
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetPublicGames(context, page, count, cancellationToken));
         }
 
         /// <summary>
@@ -107,10 +72,8 @@ namespace NordvikManager.Controllers
         [Route("GetGames")]
         public async Task<IActionResult> GetGames()
         {
-            var user = HttpContext.Items["User"] as User;
-            GetGameListCommand command = new GetGameListCommand() { UserId = user.Id, AllGames = user.IsLocalAdmin };
-            var res = await mediator.Send(command);
-            return Ok(res.GameItemList);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetGames(context));
         }
 
         [HttpDelete]
@@ -118,38 +81,8 @@ namespace NordvikManager.Controllers
         [Route("DeleteGame")]
         public async Task<IActionResult> DeleteGame(Guid gameId)
         {
-            var user = HttpContext.Items["User"] as User;
-
-            GetPlayerCommand playerCmd = new GetPlayerCommand() { User = user, GameID = gameId };
-
-            var player = await mediator.Send(playerCmd);
-
-            RemoveGameCommand removeGameCommand = new RemoveGameCommand()
-            {
-                GameID = gameId,
-                Player = player?.Player,
-                // The server's local admin may delete any game, member or not.
-                AsLocalAdmin = user?.IsLocalAdmin == true,
-            };
-
-            // Read before the game (and with it the id) is gone.
-            var centralSessionId = await mediator.Send(new GetGameCentralSessionIdCommand { GameID = gameId });
-
-            var res = await mediator.Send(removeGameCommand);
-
-            // The game's Central session goes too, or it stays listed in Central's database for
-            // good. Best effort: Central lets only the session's owner (or a Central admin) delete it.
-            if (res == NordvikManager.Domain.Enums.CommandResponse.Ok && !string.IsNullOrEmpty(centralSessionId))
-            {
-                var centralToken = await GetOrRefreshCentralTokenAsync();
-                if (string.IsNullOrEmpty(centralToken)
-                    || !await _centralServerService.DeleteSessionAsync(centralToken, centralSessionId))
-                {
-                    _logger.LogWarning("Game {GameId} was deleted, but its Central session {CentralSessionId} could not be deleted", gameId, centralSessionId);
-                }
-            }
-
-            return Ok(res);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.DeleteGame(context, gameId));
         }
 
         /// <summary>
@@ -161,66 +94,17 @@ namespace NordvikManager.Controllers
         [Route("UpdateGame")]
         public async Task<IActionResult> UpdateGame([FromBody] UpdateGameRequest request)
         {
-            var user = HttpContext.Items["User"] as User;
-            var player = await mediator.Send(new GetPlayerCommand { User = user, GameID = request.GameId });
-            var isLocalAdmin = user?.IsLocalAdmin == true;
-            if (player?.Player == null && !isLocalAdmin)
-                return Forbid();
-
-            var res = await mediator.Send(new UpdateGameCommand
-            {
-                GameId = request.GameId,
-                Player = player?.Player,
-                AsLocalAdmin = isLocalAdmin,
-                Name = string.IsNullOrWhiteSpace(request.Name) ? null : request.Name,
-                ShortDescription = request.Description,
-            });
-
-            return Ok(res);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.UpdateGame(context, request));
         }
+
         [HttpGet]
         [Authorize]
         [Route("GetFeaturedAddons")]
         public async Task<IActionResult> GetFeaturedAddons([FromServices] IBuiltInAddons builtInAddons, [FromServices] AddonRegistryOptions addonRegistry)
         {
-            // Built-in addons first (shipped with the server, offered ticked), then the
-            // registry's featured ones. The built-ins are listed even when the registry
-            // can't be reached.
-            var addons = builtInAddons.GetAll()
-                .Select(x => new FeaturedAddonDto
-                {
-                    Name = x.Name,
-                    Key = x.Key,
-                    Description = x.Description,
-                    Version = x.Version,
-                    BuiltIn = true,
-                })
-                .ToList();
-
-            var featuredAddonsConfig = addonRegistry.FeaturedAddons;
-
-            try
-            {
-                var res = await mediator.Send(new GetAddonsFromRepositoryCommand());
-                addons.AddRange(res
-                    .Where(x => featuredAddonsConfig.Contains(x.Key) && addons.All(a => a.Key != x.Key))
-                    .Select(x => new FeaturedAddonDto
-                    {
-                        Name = x.Name,
-                        Key = x.Key,
-                        Description = x.Description,
-                        Version = x.Version,
-                        Author = x.Author,
-                        License = x.License,
-                        Dependencies = x.Dependencies?.Select(d => d.Key).ToList()
-                    }));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Couldn't load featured addons from the registry");
-            }
-
-            return Ok(addons);
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetFeaturedAddons(context, builtInAddons, addonRegistry));
         }
 
         /// <summary>
@@ -232,63 +116,8 @@ namespace NordvikManager.Controllers
         [Route("AddGame")]
         public async Task<IActionResult> AddGame([FromBody] AddGameCommand addGameCommand)
         {
-            var user = HttpContext.Items["User"] as User;
-
-            addGameCommand.User = user;
-
-            var gameId = await mediator.Send(addGameCommand);
-
-            if (gameId == null)
-                return BadRequest();
-
-            string? centralSessionId = null;
-            var centralToken = await GetOrRefreshCentralTokenAsync();
-            if (!string.IsNullOrEmpty(centralToken))
-            {
-                centralSessionId = await _centralServerService.CreateSessionAsync(
-                    centralToken,
-                    new GameItemDTO
-                    {
-                        Name = addGameCommand.Name,
-                        ShortDescription = addGameCommand.Summary,
-                        LongDescription = addGameCommand.Description,
-                        Image = addGameCommand.Image,
-                        PasswordRequired = addGameCommand.PasswordRequired,
-                        Password = addGameCommand.Password,
-                        IsPublic = addGameCommand.IsPublic
-                    });
-
-                if (centralSessionId != null)
-                {
-                    await mediator.Send(new SetGameCentralSessionCommand
-                    {
-                        GameId = gameId.Value,
-                        CentralSessionId = centralSessionId
-                    });
-
-                    try
-                    {
-                        await _webRtcSessionService.StartSessionAsync(gameId.Value, centralSessionId, centralToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Game and Central Server session were created successfully; only signaling failed.
-                        // Return sessionCreated=false so the client knows to retry via POST /assignSession.
-                        _logger.LogWarning(ex,
-                            "Signaling session could not be started for game {GameId} (centralSessionId={CentralSessionId}). " +
-                            "Game was saved — retry via POST /api/gamelist/assignSession.",
-                            gameId.Value, centralSessionId);
-                        centralSessionId = null;
-                    }
-                }
-            }
-
-            return Ok(new
-            {
-                gameId,
-                centralSessionId,
-                sessionCreated = centralSessionId != null
-            });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.AddGame(context, addGameCommand));
         }
 
         /// <summary>
@@ -300,34 +129,8 @@ namespace NordvikManager.Controllers
         [Route("assignSession")]
         public async Task<IActionResult> AssignSession([FromQuery] Guid gameId)
         {
-            var user = HttpContext.Items["User"] as User;
-            if (user?.IsLocalAdmin != true)
-                return Forbid();
-
-            var centralToken = Request.Cookies["CentralToken"];
-            if (string.IsNullOrEmpty(centralToken))
-                return BadRequest(new { error = "No CentralToken cookie. Please log in to the Central Server first." });
-
-            // A new session (with the game's password); the one it replaces is deleted on Central.
-            var central = await new CentralSessionSync(mediator, _centralServerService).ReplaceAsync(gameId, centralToken);
-            if (central.Details == null)
-                return NotFound(new { error = "Game not found." });
-
-            var sessionId = central.SessionId;
-            if (sessionId == null)
-                return StatusCode(502, new { error = "Central Server did not return a session ID. Please try again later." });
-
-            try
-            {
-                await _webRtcSessionService.StartSessionAsync(gameId, sessionId, centralToken);
-            }
-            catch (SignalingAuthException ex)
-            {
-                // Central Server refused this backend (e.g. outdated protocol version).
-                return Conflict(new { error = ex.Message });
-            }
-
-            return Ok(new { centralSessionId = sessionId });
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.AssignSession(context, gameId));
         }
 
         /// <summary>
@@ -340,92 +143,8 @@ namespace NordvikManager.Controllers
         [Route("join")]
         public async Task<IActionResult> JoinGame([FromBody] AddPlayerCommand cmd)
         {
-            var currentUser = HttpContext.Items["User"] as User;
-
-            var isBanned = await mediator.Send(new CheckUserBannedCommand { CentralUserId = currentUser!.Id });
-            if (isBanned)
-                return StatusCode(403, new { error = "You are banned from this server." });
-
-            cmd.User = currentUser;
-
-            var result = await mediator.Send(cmd);
-            if (result == null)
-                return BadRequest();
-
-            await AddDefaultCharacterSheet(cmd.GameID, result.Value);
-
-            if (cmd.GameID.HasValue)
-            {
-                var centralSessionId = await mediator.Send(new GetGameCentralSessionIdCommand { GameID = cmd.GameID.Value });
-                var centralToken = Request.Cookies["CentralToken"];
-                if (!string.IsNullOrEmpty(centralSessionId) && !string.IsNullOrEmpty(centralToken))
-                {
-                    try
-                    {
-                        await _webRtcSessionService.StartSessionAsync(cmd.GameID.Value, centralSessionId, centralToken);
-                    }
-                    catch
-                    {
-                        // Central server unreachable — session will not be started
-                    }
-                }
-            }
-
-            return Ok(result);
-        }
-
-        private async Task AddDefaultCharacterSheet(Guid? gameId, Guid? playerId)
-        {
-            if (gameId == null || playerId == null)
-                return;
-
-            GetSystemPlayerCommand getSystemPlayerCommand = new GetSystemPlayerCommand()
-            {
-                GameID = gameId
-            };
-
-            GetPlayerCommand getPlayerCommand = new GetPlayerCommand()
-            {
-                GameID = gameId,
-                User = HttpContext.Items["User"] as User
-            };
-
-            var systemPlayer = await mediator.Send(getSystemPlayerCommand);
-            var player = (await mediator.Send(getPlayerCommand)).Player;
-
-            var getCharSheetDefaultsCommand = new GetPropertiesByQueryCommand()
-            {
-                GameId = (Guid)gameId,
-                Player = systemPlayer,
-                ParentIDs = [(Guid)gameId],
-                PropertyNames = ["useDefaultCharacterSheets", "characterSheetTemplate"]
-            };
-
-            var getCharSheetDefaultsResponse = await mediator.Send(getCharSheetDefaultsCommand);
-            var useDefaultCharacterSheets = getCharSheetDefaultsResponse.FirstOrDefault(x => x.Name == "useDefaultCharacterSheets");
-
-            if (useDefaultCharacterSheets != null && bool.TryParse(useDefaultCharacterSheets.Value, out bool useDefault) && useDefault)
-            {
-                var characterSheetTemplate = getCharSheetDefaultsResponse.FirstOrDefault(x => x.Name == "characterSheetTemplate");
-                if (characterSheetTemplate != null && Guid.TryParse(characterSheetTemplate.Value, out var templateId))
-                {
-                    var WebSocketCommand = new WebSocketCommand()
-                    {
-                        Command = WebSocketCommandNames.CardAdd,
-                        Data = JToken.FromObject(new CardDto()
-                        {
-                            Name = player.Name + "_Card",
-                            TemplateId = templateId,
-                            FirstOpen = true,
-                            Owner = player.Id,
-                        }),
-                        GameId = gameId,
-                        PlayerId = systemPlayer.Id,
-                    };
-
-                    await lobbyService.HandleCommandInLobbyAsync(gameId, WebSocketCommand, systemPlayer);
-                }
-            }
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.JoinGame(context, cmd));
         }
 
         [Authorize]
@@ -433,46 +152,8 @@ namespace NordvikManager.Controllers
         [Route("versionInfo")]
         public async Task<IActionResult> GetVersionInfo()
         {
-            var user = HttpContext.Items["User"] as User;
-
-            GetVersionInfoCommand cmd = new GetVersionInfoCommand();
-            var result = await mediator.Send(cmd);
-
-            return Ok(result);
-        }
-
-        /// <summary>
-        /// Returns the current CentralToken if still valid (> 1 min remaining).
-        /// If expired, silently refreshes using the stored CentralRefreshToken cookie
-        /// and updates the cookie before returning the new value.
-        /// Returns null only if no token and no refresh token are available.
-        /// </summary>
-        private async Task<string?> GetOrRefreshCentralTokenAsync()
-        {
-            var token = Request.Cookies["CentralToken"];
-
-            if (!string.IsNullOrEmpty(token))
-            {
-                var handler = new JwtSecurityTokenHandler();
-                if (handler.CanReadToken(token))
-                {
-                    var jwt = handler.ReadJwtToken(token);
-                    if (jwt.ValidTo > DateTime.UtcNow.AddMinutes(1))
-                        return token;
-                }
-            }
-
-            // Token missing or expired — attempt silent refresh.
-            var refreshToken = Request.Cookies["CentralRefreshToken"];
-            if (string.IsNullOrEmpty(refreshToken))
-                return null;
-
-            var tokens = await _centralServerService.RefreshTokenAsync(refreshToken);
-            if (tokens == null)
-                return null;
-
-            CentralAuthCookies.WriteRefreshed(Response, tokens);
-            return tokens.AccessToken;
+            var context = HttpContext.ToApiContext();
+            return HttpContext.Respond(context, await endpoints.GetVersionInfo(context));
         }
     }
 }

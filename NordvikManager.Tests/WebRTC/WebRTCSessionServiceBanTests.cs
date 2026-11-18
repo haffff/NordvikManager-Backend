@@ -70,7 +70,6 @@ namespace NordvikManager.Tests.WebRTC
             _lobby = new GameLobby(scopes.Object)
             {
                 GameId = _gameId,
-                ConnectedPlayers = new Dictionary<PlayerDTO, List<IPlayerConnection>>(),
             };
             games[_gameId] = _lobby;
             registry.Setup(r => r.Games).Returns(games);
@@ -82,6 +81,7 @@ namespace NordvikManager.Tests.WebRTC
                 new Mock<ICentralServerService>().Object,
                 scopes.Object,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build(),
+                new SipsorceryPeerConnectionFactory(),
                 NullLogger<WebRTCSessionService>.Instance);
         }
 
@@ -153,7 +153,8 @@ namespace NordvikManager.Tests.WebRTC
             var channel = await _browser.createDataChannel("game");
             await OfferAsync();
             var deadline = DateTime.UtcNow.AddSeconds(15);
-            while (_lobby.ConnectedPlayers[bob].Count == 0 && DateTime.UtcNow < deadline)
+            // The backend's side opens first; the browser's follows when the backend's ack arrives.
+            while ((_lobby.ConnectedPlayers[bob].Count == 0 || channel.readyState != RTCDataChannelState.open) && DateTime.UtcNow < deadline)
                 await Task.Delay(50);
 
             await _service.DisconnectUserAsync("someone-else");
