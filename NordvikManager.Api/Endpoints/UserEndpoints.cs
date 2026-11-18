@@ -133,10 +133,20 @@ namespace NordvikManager.Api.Endpoints
                 registerRequest.Username,
                 registerRequest.Email,
                 registerRequest.Password,
-                registerRequest.InviteCode);
+                registerRequest.InviteCode,
+                registerRequest.Altcha,
+                registerRequest.NmTrapField);
 
             if (success) return ApiResult.Ok(new { message });
             return ApiResult.BadRequest(new { message });
+        }
+
+        /// <summary>Central's signup puzzle for the GM app's register form (none: 404).</summary>
+        [ApiRoute("GET", "api/User/SignupChallenge", Anonymous = true)]
+        public async Task<ApiResult> SignupChallenge(ApiContext context)
+        {
+            var challenge = await _centralServer.GetSignupChallengeAsync();
+            return challenge is { } found ? ApiResult.Ok(found) : ApiResult.NotFound();
         }
 
         [ApiRoute("GET", "api/User/CheckRegistrationKey", Anonymous = true)]

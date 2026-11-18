@@ -104,13 +104,40 @@ namespace NordvikManager.Tests.Controllers
         public async Task Register_ReturnsOk_WhenCentralCreatesTheUser_BadRequestOtherwise(bool created)
         {
             var central = new Mock<ICentralServerService>();
-            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
                 .ReturnsAsync((created, created ? "User created successfully!" : "User already exists!"));
             var controller = CreateController(central);
 
             var result = await controller.Register(new RegisterRequest { Username = "user", Password = "pass", Email = "a@b.com", InviteCode = "code" });
 
             Assert.IsType(created ? typeof(OkObjectResult) : typeof(BadRequestObjectResult), result);
+        }
+
+        // Central's signup guard: the answer to its puzzle and the hidden field go on as they came.
+        [Fact]
+        public async Task Register_PassesTheSignupAnswerAndHiddenFieldToCentral()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.Setup(x => x.RegisterAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
+                .ReturnsAsync((true, "User created successfully!"));
+            var controller = CreateController(central);
+
+            await controller.Register(new RegisterRequest { Username = "user", Password = "pass", InviteCode = "", Altcha = "answer", NmTrapField = "" });
+
+            central.Verify(x => x.RegisterAsync("user", null, "pass", "", "answer", ""));
+        }
+
+        [Fact]
+        public async Task SignupChallenge_ReturnsCentralsPuzzle_NotFoundWithoutOne()
+        {
+            var central = new Mock<ICentralServerService>();
+            central.SetupSequence(x => x.GetSignupChallengeAsync())
+                .ReturnsAsync(System.Text.Json.JsonDocument.Parse("{\"challenge\":\"abc\"}").RootElement)
+                .ReturnsAsync((System.Text.Json.JsonElement?)null);
+            var controller = CreateController(central);
+
+            Assert.IsType<OkObjectResult>(await controller.SignupChallenge());
+            Assert.IsType<NotFoundResult>(await controller.SignupChallenge());
         }
 
         [Fact]

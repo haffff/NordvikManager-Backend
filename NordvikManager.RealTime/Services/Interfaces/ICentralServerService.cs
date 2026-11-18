@@ -141,7 +141,16 @@ namespace NordvikManager.Services.Interfaces
         /// token again within a minute returns the same result instead of a refused second try.
         /// </summary>
         Task<CentralTokens?> RefreshTokenAsync(string refreshToken);
-        Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode);
+        /// <summary>
+        /// Registers a Central account. <paramref name="altcha"/> and <paramref name="honeypot"/>
+        /// are what the register form sent for Central's signup guard, passed on unchanged.
+        /// </summary>
+        Task<(bool success, string message)> RegisterAsync(string username, string? email, string password, string inviteCode, string? altcha, string? honeypot);
+        /// <summary>
+        /// Central's signup puzzle for the register form, as Central sent it; null when Central
+        /// has none (its check is off, or it's older) or can't be reached.
+        /// </summary>
+        Task<System.Text.Json.JsonElement?> GetSignupChallengeAsync();
         Task<bool> CheckRegistrationKeyAsync(string key);
         Task<string?> GetUserNameAsync(string centralToken, string userId);
         Task<object?> GetInvitesAsync(string centralToken, int page);
