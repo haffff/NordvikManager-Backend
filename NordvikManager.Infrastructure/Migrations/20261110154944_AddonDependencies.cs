@@ -22,9 +22,14 @@ namespace NordvikManager.Infrastructure.Migrations
                 "WHERE GameModelId IS NOT NULL AND rowid NOT IN " +
                 "(SELECT MIN(rowid) FROM Addons WHERE GameModelId IS NOT NULL GROUP BY GameModelId, Key);");
 
-            migrationBuilder.DropForeignKey(
-                name: "FK_Addons_Addons_AddonModelId",
-                table: "Addons");
+            // The old parent column stays in the table, unmapped and empty. Dropping it (or its
+            // foreign key) makes SQLite rebuild Addons, and EF runs that rebuild's
+            // PRAGMA foreign_keys outside the transaction: a host stopped in between (a closed
+            // browser tab) would be left with the schema changed and the migration unrecorded,
+            // and fail to start. Databases that ran this migration before 0.0.3 don't have the
+            // column, so a later migration must not drop it by name; the next rebuild of Addons
+            // leaves it out by itself.
+            migrationBuilder.Sql("UPDATE Addons SET AddonModelId = NULL;");
 
             migrationBuilder.DropIndex(
                 name: "IX_Addons_AddonModelId",
@@ -32,10 +37,6 @@ namespace NordvikManager.Infrastructure.Migrations
 
             migrationBuilder.DropIndex(
                 name: "IX_Addons_GameModelId",
-                table: "Addons");
-
-            migrationBuilder.DropColumn(
-                name: "AddonModelId",
                 table: "Addons");
 
             migrationBuilder.AddColumn<string>(
@@ -62,12 +63,7 @@ namespace NordvikManager.Infrastructure.Migrations
                 name: "Dependencies",
                 table: "Addons");
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "AddonModelId",
-                table: "Addons",
-                type: "TEXT",
-                nullable: true);
-
+            // AddonModelId and its foreign key were never dropped (see Up).
             migrationBuilder.CreateIndex(
                 name: "IX_Addons_AddonModelId",
                 table: "Addons",
@@ -77,13 +73,6 @@ namespace NordvikManager.Infrastructure.Migrations
                 name: "IX_Addons_GameModelId",
                 table: "Addons",
                 column: "GameModelId");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Addons_Addons_AddonModelId",
-                table: "Addons",
-                column: "AddonModelId",
-                principalTable: "Addons",
-                principalColumn: "Id");
         }
     }
 }
